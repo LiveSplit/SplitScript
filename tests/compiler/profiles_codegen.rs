@@ -16,6 +16,116 @@ fn release_emission(source: &str) -> (Vec<u8>, splitscript::compiler::CodegenRep
 }
 
 #[test]
+fn managed_metadata_demand_ignores_dead_and_debug_reads() {
+    for provider in ["Unity.il2cpp(2020)", "Unity.mono(MonoVersion.V2)", "Unity"] {
+        let source = format!(
+            r#"
+            image "Assembly-CSharp" {{
+                class Probe {{ static String unobservedText maxLength 64; static i32 value; }}
+                class UnobservedClass {{ static i32 absent; }}
+            }}
+            image "UnobservedImage" {{ class AnotherAbsentClass {{ static i32 absent; }} }}
+            state {provider} ["game.exe"] {{ value = Probe.value?; }}
+            fn dead() {{ return Probe.unobservedText }}
+            fn deadInstances() {{ return await UnobservedClass.instances() }}
+            whileAttached {{ debug print(Probe.unobservedText) }}
+        "#
+        );
+        let (wasm, report) = release_emission(&source);
+        Validator::new_with_features(WasmFeatures::all())
+            .validate_all(&wasm)
+            .unwrap();
+        for name in [
+            "unobservedText",
+            "UnobservedClass",
+            "UnobservedImage",
+            "AnotherAbsentClass",
+        ] {
+            assert!(
+                !wasm
+                    .windows(name.len())
+                    .any(|bytes| bytes == name.as_bytes()),
+                "retained {name} in {provider}"
+            );
+        }
+        assert!(
+            report
+                .runtime_helpers
+                .iter()
+                .all(|name| !name.contains("ReadManagedString"))
+        );
+        let debug = splitscript::compile_with_options(
+            &source,
+            splitscript::CompilerOptions {
+                profile: splitscript::BuildProfile::Debug,
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        Validator::new_with_features(WasmFeatures::all())
+            .validate_all(&debug)
+            .unwrap();
+        assert!(
+            debug_function_names(&debug)
+                .unwrap()
+                .1
+                .iter()
+                .any(|(_, name)| name.contains("ReadManagedString"))
+        );
+    }
+}
+
+#[test]
+fn managed_snapshot_demand_keeps_unprojected_instance_fields() {
+    let source = r#"
+        image "Assembly-CSharp" {
+            class Probe { static Probe instance; i32 value; String snapshotText maxLength 64; }
+        }
+        state Unity.il2cpp(2020) ["game.exe"] { probe = Probe.instance?.snapshot()?; }
+        whileAttached { print(current.probe.value) }
+    "#;
+    let (wasm, report) = release_emission(source);
+    Validator::new_with_features(WasmFeatures::all())
+        .validate_all(&wasm)
+        .unwrap();
+    assert!(
+        wasm.windows(b"snapshotText".len())
+            .any(|bytes| bytes == b"snapshotText")
+    );
+    assert!(
+        report
+            .runtime_helpers
+            .iter()
+            .any(|name| name.contains("ReadManagedString"))
+    );
+}
+
+#[test]
+fn managed_metadata_keeps_automatic_evidence_but_prunes_unused_explicit_shape_fields() {
+    let source = r#"
+        enum Edition { Base, Demo }
+        let edition: Edition
+        image "Assembly-CSharp" {
+            class Probe {
+                static i32 value;
+                if edition == Edition.Base { i32 evidenceBase; }
+                else { i32 evidenceDemo; }
+            }
+        }
+        state Unity.il2cpp(2020) ["game.exe"] { value = Probe.value?; }
+    "#;
+    for (suffix, present) in [("", true), ("onAttach { edition = Edition.Base }", false)] {
+        let (wasm, _) = release_emission(&format!("{source}\n{suffix}"));
+        Validator::new_with_features(WasmFeatures::all())
+            .validate_all(&wasm)
+            .unwrap();
+        for name in [b"evidenceBase", b"evidenceDemo"] {
+            assert_eq!(wasm.windows(name.len()).any(|bytes| bytes == name), present);
+        }
+    }
+}
+
+#[test]
 fn scratch_reservations_follow_reachable_operations() {
     let (_, native) = release_emission("state \"game.exe\" {}");
     assert_eq!(native.scratch_bytes, 0);
@@ -189,6 +299,10 @@ fn release_managed_report_excludes_unused_strings_and_opposite_backend() {
     ] {
         let ordinary = compile(provider, "", "value");
         let unused = compile(provider, "static String text maxLength 64;", "value");
+        assert!(
+            ordinary.0 == unused.0,
+            "unused managed metadata changed Release Wasm for {provider}"
+        );
         // Metadata binding currently still visits unread declarations. The
         // paired size fixtures record that gap; decoder retention is already
         // operation-driven and must not regress while binding is reworked.

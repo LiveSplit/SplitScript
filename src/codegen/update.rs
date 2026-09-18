@@ -1646,6 +1646,21 @@ fn emit_managed_field_presence_validation(
 
     for class in &lowering.managed.classes {
         for group in &class.conditional_fields {
+            let present_fields = group
+                .fields
+                .iter()
+                .filter_map(|field| {
+                    let name = managed_field_presence_name(field.id.index());
+                    bindings
+                        .fields
+                        .iter()
+                        .enumerate()
+                        .find(|(_, candidate)| candidate.name == name)
+                })
+                .collect::<Vec<_>>();
+            if present_fields.is_empty() {
+                continue;
+            }
             emit_shape_predicate(
                 function,
                 program,
@@ -1656,14 +1671,7 @@ fn emit_managed_field_presence_validation(
                 PredicateState::Unavailable,
             );
             function.instruction(&Instruction::If(BlockType::Empty));
-            for field in &group.fields {
-                let name = managed_field_presence_name(field.id.index());
-                let (field_index, presence) = bindings
-                    .fields
-                    .iter()
-                    .enumerate()
-                    .find(|(_, candidate)| candidate.name == name)
-                    .expect("conditional managed fields have generated presence storage");
+            for (field_index, presence) in present_fields {
                 let presence_type = struct_field_type(presence.id, lowering.semantics);
                 function
                     .instruction(&Instruction::GlobalGet(bindings_global))

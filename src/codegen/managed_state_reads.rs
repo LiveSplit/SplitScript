@@ -57,12 +57,16 @@ pub(super) fn encode(
     gc: &GcLayout,
     wasm_ir: &wasm_ir::Program,
     managed: &ManagedBindingPlan,
+    reachability: &super::reachability::Reachability,
 ) -> ManagedStateReadCache {
     // Collect every referenced static rather than only direct state-expression
     // paths. A helper called by a state expression is emitted once and must be
     // able to join the transaction too; the runtime `active` flag determines
     // whether its read is cached at a particular call site.
-    let mut collector = ManagedStaticCollector::default();
+    let mut collector = ManagedStaticCollector {
+        fields: HashSet::new(),
+        reachability,
+    };
     wasm_ir::Visitor::visit_program(&mut collector, wasm_ir);
 
     let static_fields = managed
@@ -135,13 +139,16 @@ pub(super) fn encode(
     ManagedStateReadCache { active, entries }
 }
 
-#[derive(Default)]
-struct ManagedStaticCollector {
+struct ManagedStaticCollector<'a> {
     fields: HashSet<ManagedFieldId>,
+    reachability: &'a super::reachability::Reachability,
 }
 
-impl wasm_ir::Visitor for ManagedStaticCollector {
+impl wasm_ir::Visitor for ManagedStaticCollector<'_> {
     fn visit_expression(&mut self, expression: &wasm_ir::Expression, program: &wasm_ir::Program) {
+        if !self.reachability.contains_expression(expression.id) {
+            return;
+        }
         if let wasm_ir::ExpressionKind::Path {
             root: Some(ResolvedValue::ManagedStatic { field, .. }),
             ..

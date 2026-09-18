@@ -97,6 +97,7 @@ pub(super) struct Inputs<'a> {
     pub gc: &'a GcLayout,
     pub wasm_ir: &'a wasm_ir::Program,
     pub managed: &'a ManagedBindingPlan,
+    pub reachability: &'a super::reachability::Reachability,
     pub provider_attachment: Option<&'a FunctionInstance>,
     pub provider_alternatives: &'a [(EnumVariantId, StdlibStateProviderId, FunctionInstance)],
     pub provider_preparation: Option<&'a FunctionInstance>,
@@ -110,6 +111,7 @@ pub(super) fn encode(inputs: Inputs<'_>) -> GlobalPlan {
         gc,
         wasm_ir,
         managed,
+        reachability,
         provider_attachment,
         provider_alternatives,
         provider_preparation,
@@ -298,7 +300,7 @@ pub(super) fn encode(inputs: Inputs<'_>) -> GlobalPlan {
     });
 
     let managed_state_reads =
-        managed_state_reads::encode(&mut section, semantics, gc, wasm_ir, managed);
+        managed_state_reads::encode(&mut section, semantics, gc, wasm_ir, managed, reachability);
     let selected_provider_type = program
         .state
         .as_ref()

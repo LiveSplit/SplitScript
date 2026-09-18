@@ -1,0 +1,25 @@
+// The existing Mono fixture has none of the unused metadata declared here.
+// Attachment must still finish and read the inherited singleton's state.
+image "Assembly-CSharp" {
+    class LevelFlowService {
+        static LevelFlowService instance from "_instance";
+        i32 state from "_state";
+        String missingText maxLength 64;
+        static i32 missingStatic;
+    }
+    class MissingClass { static i32 missing; }
+}
+image "MissingAssembly" {
+    class MissingClassInOtherImage { static i32 missing; }
+}
+
+state Unity.mono(MonoVersion.V2) ["game.exe"] {
+    state: i32 = LevelFlowService.instance?.state?;
+}
+
+fn _unusedInstances() { return await MissingClass.instances() }
+fn _unusedRead() { return LevelFlowService.missingStatic }
+whileAttached {
+    debug print(LevelFlowService.missingStatic)
+    print(current.state)
+}

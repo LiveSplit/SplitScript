@@ -132,8 +132,35 @@ and unreachable reads do not enlarge it. The initial and rolling reports show:
 No measured fixture grows. Native/map/set savings come from moving static data
 to address zero when no scratch is needed; Mono string savings come from
 shorter buffer-address immediates. Scratch byte savings do not reduce allocated
-memory unless a page boundary is crossed. Unread schema fields still incur
-metadata-binding cost; the paired unused-string fixtures keep that gap visible.
+memory unless a page boundary is crossed. At this stage, unread schema fields
+still incurred metadata-binding cost; the following slice addresses that.
+
+### Reachable metadata binding
+
+Generated provider preparation now resolves only demanded fields, classes, and
+images. Snapshot fields and automatic shape evidence remain demand roots.
+Unused lookup awaits and binding storage disappear before async lowering;
+unreachable static reads no longer reserve transaction-cache globals.
+
+| Fixture | Previous Wasm bytes | Current Wasm bytes | Change |
+| --- | ---: | ---: | ---: |
+| IL2CPP with unused string | 15,580 | 14,881 | -699 |
+| Mono with unused string | 20,980 | 20,277 | -703 |
+| Mono instances | 21,465 | 17,506 | -3,959 |
+| Lunistice explicit | 27,677 | 27,677 | 0 |
+| Lunistice automatic | 51,354 | 51,354 | 0 |
+
+All other fixtures and scratch reservations are unchanged. The unused-string
+artifacts are now byte-identical to their scalar counterparts. The Mono
+instances fixture still resolves its class header, but no longer resolves the
+unread `health` field; three field-discovery functions and their async poll
+functions disappear. Both Lunistice edition scenarios pass.
+
+The comparison against the previous and initial reports requires review only
+for a synthetic future name changing from `expr6432::poll` to `expr6424::poll`
+as lowered expression IDs shift. Its body remains 437 bytes; there is no new
+runtime helper or module/section/body/memory growth. This rename was reviewed
+when updating the rolling baseline; the strict name-retention gate is unchanged.
 
 ## 2026-09-12 source-path suggestion indexing
 

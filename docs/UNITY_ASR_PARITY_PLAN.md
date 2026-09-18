@@ -1,6 +1,6 @@
 # Unity support: ASR research and SplitScript implementation plan
 
-Status: researched on 2026-09-18; the Step 1 measurement gate and demand-driven scratch allocation are implemented. The profile and recursive managed-reader work remains planned. See [implementation progress](#implementation-progress).
+Status: researched on 2026-09-18; the Step 1 measurement gate, demand-driven scratch allocation, and reachable metadata binding are implemented. The profile and recursive managed-reader work remains planned. See [implementation progress](#implementation-progress).
 
 ## Objective and baseline
 
@@ -24,7 +24,7 @@ The first implementation slice establishes measurement before changing Unity beh
 - Added `cargo xtask unity-baseline` and `tests/baselines/unity.json`. The gate validates 14 Release artifacts, accounts for every section and defined function, checks growth and newly retained helpers/functions, and executes Lunistice base/DLC host scenarios. It is part of both `conformance` and `check`. See [baseline instructions](BASELINES.md#unity-migration-gate).
 - Recorded initial Lunistice size: **27,677 bytes** with explicit IL2CPP selection; **51,354 bytes** with automatic Unity selection. The initial reported artifact was byte-identical to the module produced by the pre-change conformance run. Automatic selection currently has size coverage only in this new gate.
 - Added Release tests for unused string-decoder exclusion, explicit backend pruning, and local collections excluding managed runtime functions. The report path preserves Release bytes; Debug runtime/name/metadata sections are also unchanged. Existing Debug DWARF global ordering is nondeterministic and is excluded from the byte comparison.
-- Baseline verification revealed two existing demand gaps: unconditional **22,528-byte scratch reservations** and generated schema preparation binding unread declarations even though their decoders are pruned. The scratch gap is now fixed as described below; paired scalar/unused-string fixtures continue to record the binding gap. Do not mistake decoder exclusion for complete metadata-discovery exclusion.
+- Baseline verification revealed two existing demand gaps: unconditional **22,528-byte scratch reservations** and generated schema preparation binding unread declarations even though their decoders are pruned. The next two slices address these gaps. Do not mistake decoder exclusion for complete metadata-discovery exclusion.
 
 The second implementation slice makes scratch reservations follow reachable operations:
 
@@ -34,7 +34,16 @@ The second implementation slice makes scratch reservations follow reachable oper
 - `tests/baselines/unity-initial.json` preserves the original measurements; `unity.json` is the rolling reviewed baseline. This change does not fix eager schema metadata binding or add profile/collection APIs.
 - Validation: full `cargo xtask conformance` passes, including all 97 runtime scenarios and the Lunistice base/DLC size gate; the comparison against the preserved initial report also passes. Clippy with warnings denied and formatting checks pass. Added regressions cover absent buffers, alias-bank bounds, unused large declarations/dead reads, reader pointer width, and normalized string-read headroom. No live-game validation was performed.
 
-Step 1 is **in progress**, not complete: executable contracts for new profile/read APIs, richer shared host fixtures, and the remaining acceptance examples still need implementation. No new managed collection or recursive snapshot support is claimed by this slice. The initial conformance run passed all 97 runtime scenarios; live game validation has not been performed.
+The third implementation slice makes generated metadata binding follow reachable operations:
+
+- Analyze resolved, profile-filtered operations before making generated provider preparation reachable. Keep fields used by live reads, every instance field read by a reachable snapshot, class headers needed by instances/components, and automatic shape-selection evidence. Prune unused class/image lookup awaits, field probes, binding fields, and constructor values before rebuilding async control flow. User-authored effects and checked tooling products retain their original declarations.
+- Conditional presence validation follows the retained binding fields. Automatically selected shapes still probe their evidence even when it is never read by the script; explicitly selected shapes do not require unread fields to exist.
+- Static-read transaction caches now follow reachability too. A dead string read previously caused cache planning to request a Result GC type that was never emitted; regression coverage now checks both the missing metadata and the unused decoder/cache paths.
+- Compiler regressions cover byte-identical Release output for scalar versus unused-string schemas on both backends, dead and Debug-only reads, unused classes/images/instance scans, complete snapshot reads, and automatic versus explicit shape evidence. A Mono runtime fixture reuses inherited-static memory with missing unread metadata to verify that attachment still completes.
+- Size comparison: unused-string schemas shrink by **699 bytes (IL2CPP)** and **703 bytes (Mono)** and become byte-identical to scalar schemas. Mono instances shrink by **3,959 bytes** by omitting unread `health` metadata discovery. All other fixtures and scratch reservations are unchanged; Lunistice remains **27,677 bytes** explicit / **51,354 bytes** automatic, and both edition scenarios pass. The strict gate flags only a synthetic future rename (`expr6432` → `expr6424`, same 437-byte body); no module, section, body, or memory grows. This rename is reviewed in the rolling baseline; the original baseline is preserved.
+- Validation: full `cargo xtask conformance` passes with **652 compiler integration tests**, **98 runtime scenarios**, and the 14-fixture size gate plus Lunistice base/DLC. Clippy with warnings denied, formatting, and diff checks pass. No live-game validation was performed.
+
+Step 1 is **in progress**, not complete: executable contracts for new profile/read APIs, richer shared host fixtures, and the remaining acceptance examples still need implementation. No new managed collection or recursive snapshot support is claimed by these slices. Live game validation has not been performed.
 
 ## What changed upstream
 

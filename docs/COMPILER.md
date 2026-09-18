@@ -796,6 +796,16 @@ values, match inputs and payload bindings, and numeric-intrinsic scratch locals
 with semantic `TypeId`s. Code generation assigns their concrete Wasm local or
 GC-frame indices.
 
+Unity metadata demand is derived from resolved, profile-filtered reachability
+before generated provider preparation becomes a root. Live field reads,
+complete snapshot reads, instances/components, and automatic shape evidence
+retain their required bindings. The backend privately prunes unused generated
+lookup statements and binding-struct fields, then rebuilds HIR and Wasm control
+flow with the same semantic identities. This removes lookup awaits and their
+frame storage together without mutating the checked products used by tooling
+or eliminating user-authored effects. Static-read transaction caches also
+exclude unreachable reads.
+
 Async storage is selected by backward liveness over the lowered suspension
 segments. Every `Suspend` records, in deterministic declaration order, the
 source locals required by its continuation. The generated GC frame contains

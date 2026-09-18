@@ -1022,7 +1022,7 @@ mod tests {
             .expect("exact-representation fixture should check");
         let backend = crate::lower_wasm(&checked);
         let reachability = Reachability::analyze(
-            backend.program,
+            &backend.program,
             &backend.semantics,
             &backend.wasm_ir,
             &backend.standard_library,
@@ -1030,13 +1030,13 @@ mod tests {
             std::iter::empty(),
         );
         let frames = AsyncFrameLayouts::plan(
-            backend.program,
+            &backend.program,
             &backend.wasm_ir,
             &backend.semantics,
             &reachability,
         );
         let exact = ExactRuntimeRepresentations::analyze(
-            backend.program,
+            &backend.program,
             &backend.wasm_ir,
             &backend.semantics,
             &reachability,

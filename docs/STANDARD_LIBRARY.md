@@ -403,6 +403,11 @@ The runtime traversal types and raw metadata offsets remain private to the
 trusted standard library and generated schema binder. Generated backend
 discovery, metadata bindings, field readers, snapshot readers, and instance
 scanners are retained only when the checked script can reach them.
+Declaring an unread field, class, or image does not require that metadata to
+exist in the game. Reads in unreachable functions and Debug-only reads in a
+Release build do not bind metadata. A reachable `snapshot()` still requires
+every active instance field, and automatic attachment-shape selection still
+probes its metadata evidence even when the script never reads those fields.
 
 The IL2CPP implementation supports the existing 64-bit base, 2019, 2020, and
 2022 layouts. The Mono implementation supports modern 64-bit Windows V2 and V3

@@ -1731,6 +1731,19 @@ impl SemanticModel {
         self.path_members.get(&expression).map(Vec::as_slice)
     }
 
+    /// Keep generated binding literals aligned with their pruned declarations.
+    /// This only mutates the backend's private semantic model.
+    pub(crate) fn remove_generated_struct_literal_fields(
+        &mut self,
+        removed: &std::collections::HashSet<StructFieldId>,
+    ) {
+        for fields in self.struct_literal_fields.values_mut() {
+            fields.retain(
+                |field| !matches!(field, ResolvedStructFieldId::Source(id) if removed.contains(id)),
+            );
+        }
+    }
+
     pub fn struct_literal_fields(&self, expression: ExprId) -> Option<&[ResolvedStructFieldId]> {
         self.struct_literal_fields
             .get(&expression)

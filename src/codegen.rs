@@ -46,6 +46,7 @@ mod gc_layout;
 mod gc_types;
 mod global_plan;
 mod imports;
+mod managed_demand;
 mod managed_snapshots;
 mod managed_state_reads;
 mod memory_plan;
@@ -278,7 +279,7 @@ struct ConstructedTypes {
 /// model, constructed-type table, or capability analysis.
 pub struct BackendProgram<'a> {
     standard_library: StandardLibrary,
-    program: &'a Program,
+    program: std::borrow::Cow<'a, Program>,
     semantics: SemanticModel,
     wasm_ir: wasm_ir::Program,
     constructed_types: ConstructedTypes,
@@ -291,7 +292,7 @@ pub struct BackendProgram<'a> {
 }
 
 impl<'a> BackendProgram<'a> {
-    pub(crate) fn new(checked: &'a crate::CheckedProgram, wasm_ir: wasm_ir::Program) -> Self {
+    pub(crate) fn new(checked: &'a crate::CheckedProgram, mut wasm_ir: wasm_ir::Program) -> Self {
         let mut semantics = checked.semantics.clone();
         let mut constructed_types = ConstructedTypes {
             enums: checked.enum_types.clone(),
@@ -320,9 +321,39 @@ impl<'a> BackendProgram<'a> {
             &mut constructed_types.sets,
             &mut constructed_types.applications,
         );
+        let program = if let Some(program) = managed_demand::prune(
+            &checked.compilation_syntax,
+            &mut semantics,
+            &wasm_ir,
+            &checked.capabilities,
+        ) {
+            // Rebuild control flow after pruning so discarded awaits never
+            // acquire frame slots or async states. Checked tooling products
+            // retain the complete schema and original generated declarations.
+            let hir = crate::hir::TypedProgram::build(
+                checked.hir.declarations_arc(),
+                &program,
+                &semantics,
+                checked.context.standard_library(),
+                true,
+                checked.hir.visible_expression_count(),
+                checked.hir.visible_function_count(),
+            );
+            wasm_ir = wasm_ir::Program::lower(
+                &hir,
+                &semantics,
+                &checked.effects,
+                &checked.capabilities,
+                &checked.scoped_globals,
+                wasm_ir.profile(),
+            );
+            std::borrow::Cow::Owned(program)
+        } else {
+            std::borrow::Cow::Borrowed(checked.compilation_syntax.as_ref())
+        };
         Self {
             standard_library: checked.context.standard_library(),
-            program: &checked.compilation_syntax,
+            program,
             semantics,
             wasm_ir,
             constructed_types,
@@ -403,6 +434,7 @@ fn compile_internal(inputs: BackendProgram<'_>, report: Option<&mut CodegenRepor
         source_name,
         source,
     } = inputs;
+    let program = program.as_ref();
     let ConstructedTypes {
         enums,
         arrays: array_types,
@@ -603,6 +635,7 @@ fn compile_internal(inputs: BackendProgram<'_>, report: Option<&mut CodegenRepor
         gc: &gc,
         wasm_ir,
         managed: &managed,
+        reachability: &reachability,
         provider_attachment: provider_attachment.as_ref(),
         provider_alternatives: &provider_alternatives,
         provider_preparation: provider_preparation.as_ref(),
