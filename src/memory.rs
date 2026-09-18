@@ -313,9 +313,9 @@ impl MemoryLayouts {
             .map_err(String::as_str)
     }
 
-    /// Largest fixed-layout value represented by this analysis. Backend
-    /// scratch planning uses this conservative bound so every generated
-    /// `process.read<T>` destination is sized before body emission.
+    /// Largest fixed-layout value represented by this analysis, including
+    /// unused declarations. Runtime scratch is planned separately from the
+    /// types of reachable reads rather than this whole-program upper bound.
     pub fn maximum_size(&self) -> u32 {
         self.structs
             .values()

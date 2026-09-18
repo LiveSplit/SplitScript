@@ -743,6 +743,26 @@ fn main() -> ExitCode {
                 ExitCode::FAILURE
             }
         },
+        [command, arguments @ ..] if command == "unity-baseline" => {
+            let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+            let mut args = vec![
+                "run",
+                "--quiet",
+                "--profile",
+                "max-opt",
+                "--example",
+                "unity_baseline",
+                "--",
+            ];
+            args.extend(arguments.iter().map(String::as_str));
+            match run(&root, "cargo", &args) {
+                Ok(()) => ExitCode::SUCCESS,
+                Err(error) => {
+                    eprintln!("Unity baseline failed: {error}");
+                    ExitCode::FAILURE
+                }
+            }
+        }
         [command] if command == "docs" => {
             match documentation_site::generate(Some(Path::new("target/generated-docs"))) {
                 Ok(()) => ExitCode::SUCCESS,
@@ -771,7 +791,9 @@ fn main() -> ExitCode {
             }
         }
         _ => {
-            eprintln!("usage: cargo xtask <check | conformance | docs [OUTPUT | --check]>");
+            eprintln!(
+                "usage: cargo xtask <check | conformance | unity-baseline [--record | --compare REPORT.json] | docs [OUTPUT | --check]>"
+            );
             ExitCode::FAILURE
         }
     }
@@ -889,6 +911,18 @@ fn compiler_runtime_conformance(root: &Path) -> Result<(), String> {
             "tests/debug_profile_runtime.mjs",
             path_text(&debug)?,
             path_text(&release)?,
+        ],
+    )?;
+    run(
+        root,
+        "cargo",
+        &[
+            "run",
+            "--quiet",
+            "--profile",
+            "max-opt",
+            "--example",
+            "unity_baseline",
         ],
     )?;
     Ok(())

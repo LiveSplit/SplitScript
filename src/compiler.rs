@@ -4,7 +4,7 @@
 //! facade classifies the data models that compiler integrations may inspect;
 //! implementation passes and registries remain private to the crate.
 
-pub use crate::codegen::BackendProgram;
+pub use crate::codegen::{BackendProgram, CodegenReport};
 pub use crate::{
     BuildProfile, CheckedProgram, CompilerContext, CompilerOptions, LoweredProgram, ParsedProgram,
     RecoveredCheck, RecoveredParse, WarningLevel, WarningPolicy, check, check_recovering, compile,
@@ -23,6 +23,15 @@ pub fn codegen(checked: &CheckedProgram) -> Vec<u8> {
 /// Generates WebAssembly with explicit profile-sensitive options.
 pub fn codegen_with_options(checked: &CheckedProgram, options: CompilerOptions) -> Vec<u8> {
     crate::codegen_with_options(checked, options)
+}
+
+/// Emits the ordinary module and a sidecar describing its retained functions
+/// and linear-memory reservations. The report does not change the artifact.
+pub fn codegen_with_report(
+    checked: &CheckedProgram,
+    options: CompilerOptions,
+) -> (Vec<u8>, CodegenReport) {
+    crate::codegen::compile_with_report(crate::lower_wasm_with_options(checked, options))
 }
 
 /// Host ABI contracts available for backend inspection.

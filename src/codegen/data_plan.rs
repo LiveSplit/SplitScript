@@ -4,12 +4,11 @@ use wasm_encoder::{ConstExpr, DataSection};
 
 use crate::{
     ast::{Program, SettingFileFilter, SettingKind, StateSource},
-    memory::MemoryLayouts,
     signature::parse_signature,
     wasm_ir,
 };
 
-use super::memory_plan::{LinearMemoryLayout, ScratchRequirements};
+use super::memory_plan::LinearMemoryLayout;
 use super::reachability::Reachability;
 use super::{dependencies::BackendDependencies, runtime_helpers::float_format};
 
@@ -52,7 +51,6 @@ impl StaticData {
         automatic_shape: Option<&crate::shape_selection::ShapeSelectionPlan>,
         wasm_ir: &wasm_ir::Program,
         reachability: &Reachability,
-        memory: &MemoryLayouts,
         dependencies: &BackendDependencies,
     ) -> Self {
         let state = program.state.as_ref().expect("checked programs have state");
@@ -150,19 +148,7 @@ impl StaticData {
             .expect("static data length must fit the host address space");
         let layout = LinearMemoryLayout::plan(
             static_data_len,
-            ScratchRequirements {
-                // Word-swapped emulator storage may need one leading byte and
-                // one trailing byte while normalizing an unaligned guest read
-                // in place before the shared decoder consumes it.
-                abi_read_capacity: memory.maximum_size().saturating_add(2).max(
-                    if dependencies.needs_native_pointer_size() {
-                        64
-                    } else {
-                        16
-                    },
-                ),
-                maximum_signature_len: signatures.maximum_len(),
-            },
+            dependencies.scratch_requirements(signatures.maximum_len()),
         );
         strings.base = layout.static_data_start();
         signatures.base = strings

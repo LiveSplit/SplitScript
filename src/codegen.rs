@@ -349,6 +349,30 @@ impl std::ops::Deref for BackendProgram<'_> {
 }
 
 pub fn compile(inputs: BackendProgram<'_>) -> Vec<u8> {
+    compile_internal(inputs, None)
+}
+
+/// Sidecar information from the same plan that emitted the module. Requesting
+/// this report never adds names, custom sections, or helpers to the Wasm.
+#[derive(Debug, Default, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct CodegenReport {
+    pub functions: Vec<(u32, String)>,
+    pub runtime_helpers: Vec<String>,
+    /// Reserved scratch banks, excluding padding before immutable data.
+    pub scratch_bytes: u64,
+    pub abi_read_capacity: u32,
+    pub static_data_start: u32,
+    pub static_data_end: u64,
+    pub minimum_memory_pages: u64,
+}
+
+pub(crate) fn compile_with_report(inputs: BackendProgram<'_>) -> (Vec<u8>, CodegenReport) {
+    let mut report = CodegenReport::default();
+    let wasm = compile_internal(inputs, Some(&mut report));
+    (wasm, report)
+}
+
+fn compile_internal(inputs: BackendProgram<'_>, report: Option<&mut CodegenReport>) -> Vec<u8> {
     // These contracts describe immutable compiler-owned tables, independent of
     // the source, profile, or injected standard-library graph.
     static VALIDATED_CONTRACTS: std::sync::OnceLock<()> = std::sync::OnceLock::new();
@@ -528,7 +552,6 @@ pub fn compile(inputs: BackendProgram<'_>) -> Vec<u8> {
         automatic_shape,
         wasm_ir,
         &reachability,
-        memory_layouts,
         &dependencies,
     );
     let strings = &static_data.strings;
@@ -611,6 +634,7 @@ pub fn compile(inputs: BackendProgram<'_>) -> Vec<u8> {
         &mut types,
         &mut function_types,
         imported_functions,
+        report.is_some(),
         function_plan::Inputs {
             standard_library: &standard_library,
             program,
@@ -1029,6 +1053,22 @@ pub fn compile(inputs: BackendProgram<'_>) -> Vec<u8> {
             source,
         })
     });
+
+    if let Some(report) = report {
+        let memory = static_data.layout();
+        *report = CodegenReport {
+            functions: function_debug_names,
+            runtime_helpers: runtime_helpers
+                .entries()
+                .map(|helper| format!("{helper:?}"))
+                .collect(),
+            scratch_bytes: memory.scratch_bytes(),
+            abi_read_capacity: memory.scratch().abi_read.capacity() as u32,
+            static_data_start: memory.static_data_start(),
+            static_data_end: memory.static_data_end(),
+            minimum_memory_pages: memory.minimum_pages(),
+        };
+    }
 
     module_assembly::finish(
         module_assembly::Sections {

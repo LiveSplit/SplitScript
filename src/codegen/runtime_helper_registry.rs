@@ -16,6 +16,7 @@ use crate::{
     types::ResolvedArrayType,
 };
 
+use super::memory_plan::ScratchRole;
 use super::{GcLayout, Type, runtime_helpers, try_array_element_type};
 
 pub(super) struct RuntimeHelperPlan {
@@ -69,12 +70,13 @@ pub(super) struct RuntimeHelperDescriptor {
     pub signature: HelperSignature,
     pub dependencies: &'static [RuntimeHelperId],
     pub host_imports: &'static [AbiImportId],
+    pub scratch: &'static [ScratchRole],
     pub build_body: BodyBuilder,
 }
 
 macro_rules! helper {
     ($id:ident, ($($param:expr),* $(,)?) -> ($($result:expr),* $(,)?),
-     deps [$($dependency:ident),* $(,)?], imports [$($import:ident),* $(,)?], $builder:ident) => {
+     deps [$($dependency:ident),* $(,)?], imports [$($import:ident),* $(,)?], $builder:ident $(, scratch [$($scratch:ident),* $(,)?])?) => {
         RuntimeHelperDescriptor {
             id: RuntimeHelperId::$id,
             signature: HelperSignature {
@@ -83,6 +85,7 @@ macro_rules! helper {
             },
             dependencies: &[$(RuntimeHelperId::$dependency),*],
             host_imports: &[$(AbiImportId::$import),*],
+            scratch: &[$($(ScratchRole::$scratch),*)?],
             build_body: runtime_helpers::$builder,
         }
     };
@@ -113,17 +116,17 @@ pub(super) const DESCRIPTORS: &[RuntimeHelperDescriptor] = &[
     helper!(StringReplaceAll, (StringValue, StringValue, StringValue) -> (StringValue), deps [StringFind], imports [], build_string_replace_all),
     helper!(StringSplit, (StringValue, StringValue) -> (StringArray), deps [StringFind], imports [], build_string_split),
     helper!(StringParseInteger, (StringValue, I32, I64, I64) -> (I32, I64), deps [], imports [], build_string_parse_integer),
-    helper!(DecimalLeftShift, (I32, I32, I32, I32) -> (I32, I32, I32), deps [], imports [], build_decimal_left_shift),
-    helper!(DecimalRightShift, (I32, I32, I32, I32) -> (I32, I32, I32), deps [], imports [], build_decimal_right_shift),
-    helper!(DecimalRound, (I32, I32, I32) -> (I64), deps [], imports [], build_decimal_round),
-    helper!(StringParseFloat, (StringValue, I32) -> (I32, F64), deps [DecimalLeftShift, DecimalRightShift, DecimalRound], imports [], build_string_parse_float),
+    helper!(DecimalLeftShift, (I32, I32, I32, I32) -> (I32, I32, I32), deps [], imports [], build_decimal_left_shift, scratch [FloatParseDigits, FloatParseTemp]),
+    helper!(DecimalRightShift, (I32, I32, I32, I32) -> (I32, I32, I32), deps [], imports [], build_decimal_right_shift, scratch [FloatParseDigits]),
+    helper!(DecimalRound, (I32, I32, I32) -> (I64), deps [], imports [], build_decimal_round, scratch [FloatParseDigits]),
+    helper!(StringParseFloat, (StringValue, I32) -> (I32, F64), deps [DecimalLeftShift, DecimalRightShift, DecimalRound], imports [], build_string_parse_float, scratch [FloatParseDigits]),
     helper!(StringInspect, (StringValue, I32, I32) -> (I32, I32), deps [], imports [], build_string_inspect),
     helper!(StringSlice, (StringValue, I32, I32) -> (StringValue), deps [], imports [], build_string_slice),
     helper!(StringTrimAsciiWhitespace, (StringValue) -> (StringValue), deps [StringSlice], imports [], build_string_trim_ascii_whitespace),
     helper!(StringIsBlank, (StringValue) -> (I32), deps [StringInspect], imports [], build_string_is_blank),
     helper!(StringPad, (StringValue, I32, I32, I32) -> (StringValue), deps [], imports [], build_string_pad),
-    helper!(ScanProcessRange, (I64, I64, I64, I32, I32, I32) -> (I64), deps [], imports [ProcessRead], build_scan_process_range),
-    helper!(ScanAlignedPointerRange, (I64, I64, I64, I64, I32) -> (I64), deps [], imports [ProcessRead], build_scan_aligned_pointer_range),
+    helper!(ScanProcessRange, (I64, I64, I64, I32, I32, I32) -> (I64), deps [], imports [ProcessRead], build_scan_process_range, scratch [Scan]),
+    helper!(ScanAlignedPointerRange, (I64, I64, I64, I64, I32) -> (I64), deps [], imports [ProcessRead], build_scan_aligned_pointer_range, scratch [Scan]),
     helper!(ReadRelative32, (I64, I64) -> (I64), deps [], imports [ProcessRead], build_read_relative32),
     helper!(ScanRelative32TargetRange, (I64, I64, I64, I32, I32, I32, I64, I64) -> (I64), deps [ScanProcessRange, ReadRelative32], imports [], build_scan_relative32_target_range),
     helper!(StringFromMemory, (I32, I32) -> (StringValue), deps [], imports [], build_string_from_memory),
@@ -135,14 +138,14 @@ pub(super) const DESCRIPTORS: &[RuntimeHelperDescriptor] = &[
     helper!(Md5UpdateBlocks, (I32, I32, I32, I32, I32, I32) -> (I32, I32, I32, I32), deps [], imports [], build_md5_update_blocks),
     helper!(Md5Format, (I32, I32, I32, I32) -> (StringValue), deps [], imports [], build_md5_format),
     helper!(ModuleMd5Poll, (StringValue, I64, I64, I64, I64, I64, I64) -> (I32, I64, I64, I64, I64, I64, I64, StringValue), deps [FileOpenReadOnly, Md5UpdateBlocks, Md5Format], imports [WasiFdRead, WasiFdSeek, WasiFdFilestatGet, WasiFdClose], build_module_md5_poll),
-    helper!(FormatF32, (F32) -> (StringValue), deps [ZmijDecimalF32, StringFromMemory], imports [], build_format_f32),
-    helper!(FormatF64, (F64) -> (StringValue), deps [ZmijDecimalF64, StringFromMemory], imports [], build_format_f64),
-    helper!(Utf16StringFromMemory, (I32) -> (StringValue), deps [], imports [], build_utf16_string_from_memory),
-    helper!(Utf16LeStringFromMemory, (I32) -> (StringValue), deps [Utf16StringFromMemory], imports [], build_utf16_le_string_from_memory),
-    helper!(Utf8StringFromMemory, (I32) -> (StringValue), deps [StringFromMemory], imports [], build_utf8_string_from_memory),
-    helper!(ReadUtf8String, (I64, I64, I32) -> (StringValue), deps [Utf8StringFromMemory], imports [ProcessRead], build_read_utf8_string),
-    helper!(ReadUtf16LeString, (I64, I64, I32) -> (StringValue), deps [Utf16LeStringFromMemory], imports [ProcessRead], build_read_utf16_le_string),
-    helper!(ReadManagedString, (I64, I64, I32) -> (I32, StringValue), deps [], imports [ProcessRead], build_read_managed_string),
+    helper!(FormatF32, (F32) -> (StringValue), deps [ZmijDecimalF32, StringFromMemory], imports [], build_format_f32, scratch [FloatFormat]),
+    helper!(FormatF64, (F64) -> (StringValue), deps [ZmijDecimalF64, StringFromMemory], imports [], build_format_f64, scratch [FloatFormat]),
+    helper!(Utf16StringFromMemory, (I32) -> (StringValue), deps [], imports [], build_utf16_string_from_memory, scratch [Utf16Input, Utf16Output]),
+    helper!(Utf16LeStringFromMemory, (I32) -> (StringValue), deps [Utf16StringFromMemory], imports [], build_utf16_le_string_from_memory, scratch [Utf16Input]),
+    helper!(Utf8StringFromMemory, (I32) -> (StringValue), deps [StringFromMemory], imports [], build_utf8_string_from_memory, scratch [NativeUtf8]),
+    helper!(ReadUtf8String, (I64, I64, I32) -> (StringValue), deps [Utf8StringFromMemory], imports [ProcessRead], build_read_utf8_string, scratch [NativeUtf8]),
+    helper!(ReadUtf16LeString, (I64, I64, I32) -> (StringValue), deps [Utf16LeStringFromMemory], imports [ProcessRead], build_read_utf16_le_string, scratch [Utf16Input]),
+    helper!(ReadManagedString, (I64, I64, I32) -> (I32, StringValue), deps [], imports [ProcessRead], build_read_managed_string, scratch [Utf16Input, Utf16Output]),
     helper!(ReadManagedStringField, (I64, I64, I32, I32) -> (StringResult), deps [ReadManagedString], imports [ProcessRead], build_read_managed_string_field),
     helper!(ReadOptionalManagedStringField, (I64, I64, I32, I32) -> (OptionalStringResult), deps [ReadManagedString], imports [ProcessRead], build_read_optional_managed_string_field),
     helper!(DetectProcessPointerSize, (I64, I64) -> (I32), deps [], imports [ProcessRead], build_detect_process_pointer_size),
@@ -151,8 +154,8 @@ pub(super) const DESCRIPTORS: &[RuntimeHelperDescriptor] = &[
     helper!(ProcessPath, (I64) -> (StringValue), deps [StringFromMemory], imports [ProcessGetPath], build_process_path),
     helper!(RuntimeOperatingSystem, () -> (StringValue), deps [StringFromMemory], imports [RuntimeGetOs], build_runtime_operating_system),
     helper!(RuntimeArchitecture, () -> (StringValue), deps [StringFromMemory], imports [RuntimeGetArch], build_runtime_architecture),
-    helper!(CStringEquality, (I64, I64, StringValue, I32, I32) -> (I32), deps [], imports [ProcessRead], build_c_string_equality),
-    helper!(BackingFieldEquality, (I64, I64, StringValue) -> (I32), deps [], imports [ProcessRead], build_backing_field_equality),
+    helper!(CStringEquality, (I64, I64, StringValue, I32, I32) -> (I32), deps [], imports [ProcessRead], build_c_string_equality, scratch [CString]),
+    helper!(BackingFieldEquality, (I64, I64, StringValue) -> (I32), deps [], imports [ProcessRead], build_backing_field_equality, scratch [CString]),
     helper!(UnityGetImage, (I64, Standard(StdlibTypeId::UnityModule), StringValue) -> (Standard(StdlibTypeId::UnityImage)), deps [CStringEquality], imports [ProcessRead], build_unity_get_image),
     helper!(UnityGetClass, (I64, Standard(StdlibTypeId::UnityImage), StringValue) -> (I32, Standard(StdlibTypeId::UnityClass)), deps [CStringEquality], imports [ProcessRead], build_unity_get_class),
     helper!(UnityGetClassAny, (I64, Standard(StdlibTypeId::UnityImage), StringArray) -> (I32, Standard(StdlibTypeId::UnityClass)), deps [UnityGetClass], imports [], build_unity_get_class_any),

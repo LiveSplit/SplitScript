@@ -46,7 +46,8 @@ pub(super) struct FunctionPlan<'a> {
     pub start: u32,
     pub update: u32,
     pub arrays: &'a [ResolvedArrayType],
-    /// Names assigned alongside final function indices in debug builds only.
+    /// Names assigned alongside final indices for debug builds or an opt-in
+    /// compiler sidecar report. Reporting does not emit a Wasm name section.
     pub debug_names: Vec<(u32, String)>,
 }
 
@@ -125,6 +126,7 @@ pub(super) fn encode<'a>(
     types: &mut TypeSection,
     signatures: &mut FunctionTypes,
     imported_functions: u32,
+    report_names: bool,
     inputs: Inputs<'a>,
 ) -> FunctionPlan<'a> {
     let Inputs {
@@ -149,6 +151,9 @@ pub(super) fn encode<'a>(
     } = inputs;
     let mut declarations =
         FunctionDeclarations::new(types, signatures, imported_functions, wasm_ir.profile());
+    if report_names && declarations.debug_names.is_none() {
+        declarations.debug_names = Some(Vec::new());
+    }
 
     let mut helper_functions = HashMap::new();
     let ordered_helpers = dependencies.helpers().collect::<Vec<_>>();

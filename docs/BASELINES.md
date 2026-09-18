@@ -46,6 +46,95 @@ compiler regression. Generated Wasm byte counts are deterministic, but should
 also be reviewed rather than frozen into brittle assertions because valid
 backend changes can alter them intentionally.
 
+## Unity migration gate
+
+Run the gate after each Unity implementation step:
+
+```console
+cargo xtask unity-baseline
+```
+
+It builds the runner with Cargo's `max-opt` profile, compiles 14 fixtures with
+SplitScript's Release profile, validates the modules, and runs the Lunistice
+base and DLC synthetic host scenarios. `cargo xtask conformance` and
+`cargo xtask check` include this gate. The automatic Unity Lunistice variant
+is measured but not executed here: the current host fixture does not provide
+the mapped player identity needed for automatic attachment. Live game checks
+remain separate from these synthetic scenarios.
+
+`tests/baselines/unity.json` holds the rolling reviewed measurements;
+`tests/baselines/unity-initial.json` preserves the initial migration baseline.
+Each invocation
+writes the current report, Wasm modules, and Lunistice runtime JSON to
+`target/unity-baseline/`. Reports record compiler/Rust/Node versions, compiler
+build mode, LF-normalized source fingerprints, total and per-section bytes,
+defined-function/type counts, individual function body sizes, retained
+runtime helpers, scratch bytes, static data bounds, and initial memory pages.
+Section sizes include framing and sum to the module size minus its eight-byte
+header. Function body sizes exclude their LEB length prefixes. The standard
+`splitscript` custom section is counted; no name or DWARF sections or external
+Wasm optimization are added for measurement. The source fingerprint is
+FNV-1a 64-bit for reproducibility, not a cryptographic identity.
+
+The compiler sidecar comes from the same plan that emits the Release artifact.
+The runner verifies its function count against the binary, and compiler tests
+verify that requesting it leaves Release bytes unchanged. Names alone do not
+prove pruning: the gate also examines actual section sizes and memory demand.
+An increase in any tracked section, function body, memory demand, function/type count, or a
+new helper/function requires review even if an unrelated saving reduces the
+total size. Source changes, added/removed fixtures, and changed toolchain/build
+mode also require review. A single compilation duration is recorded for
+diagnosis, including first-use initialization and reporting; it is not a
+stable performance threshold. Use the warmed runner above for latency work.
+
+For an intentional change, preserve the previous and initial JSON before
+updating the reviewed baseline. Compare against both snapshots:
+
+```console
+cargo xtask unity-baseline --compare PATH_TO_PREVIOUS_REPORT.json
+cargo xtask unity-baseline --compare tests/baselines/unity-initial.json
+cargo xtask unity-baseline --record
+```
+
+`--record` runs validation and both Lunistice scenarios before writing the
+baseline, but is an explicit overwrite, not evidence that growth is justified.
+Review the report diff and record which used feature requires every increase
+in the implementation log/PR before accepting it. Keep the initial report
+unchanged throughout the migration; `--compare` does not replace the checked-in
+baseline.
+
+The initial measurements use SplitScript `81cd3e83950c`, Rust 1.98.1, and Node
+24.14.0 on Windows x86-64. Explicit IL2CPP Lunistice is **27,677 bytes**;
+automatic Unity selection is **51,354 bytes**. The paired unused-string
+fixtures expose existing metadata-binding overhead without retaining a string
+decoder. All initial fixtures reserve **22,528 scratch bytes**, including the
+1,009-byte empty native artifact. These are measured shortcomings to remove,
+not acceptable reasons to retain unused managed collection support later.
+
+### Demand-driven scratch allocation
+
+Scratch now follows retained helper roles and reachable read types, including
+provider pointer widths and Genesis normalization padding. Unused declarations
+and unreachable reads do not enlarge it. The initial and rolling reports show:
+
+| Fixture | Wasm bytes, initial → current | Scratch bytes, initial → current | Initial memory pages |
+| --- | ---: | ---: | ---: |
+| Empty native | 1,009 → 1,005 | 22,528 → 0 | 2 → 1 |
+| Local map | 5,250 → 5,246 | 22,528 → 0 | 2 → 1 |
+| Local set | 3,571 → 3,567 | 22,528 → 0 | 2 → 1 |
+| IL2CPP scalar | 14,881 → 14,881 | 22,528 → 8,192 | 2 → 2 |
+| IL2CPP string | 15,599 → 15,599 | 22,528 → 14,336 | 2 → 2 |
+| Mono scalar | 20,277 → 20,277 | 22,528 → 4,104 | 2 → 2 |
+| Mono string | 20,996 → 20,985 | 22,528 → 10,248 | 2 → 2 |
+| Lunistice | 27,677 → 27,677 | 22,528 → 14,336 | 2 → 2 |
+| Lunistice auto | 51,354 → 51,354 | 22,528 → 14,336 | 2 → 2 |
+
+No measured fixture grows. Native/map/set savings come from moving static data
+to address zero when no scratch is needed; Mono string savings come from
+shorter buffer-address immediates. Scratch byte savings do not reduce allocated
+memory unless a page boundary is crossed. Unread schema fields still incur
+metadata-binding cost; the paired unused-string fixtures keep that gap visible.
+
 ## 2026-09-12 source-path suggestion indexing
 
 Source baseline: `d741ef4`. Intervening work changed process readers, pointer

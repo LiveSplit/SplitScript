@@ -3,6 +3,229 @@
 use super::catalogs_types::TypedExpressionCounter;
 use super::*;
 
+fn release_emission(source: &str) -> (Vec<u8>, splitscript::compiler::CodegenReport) {
+    let checked =
+        splitscript::check(splitscript::lower(splitscript::parse(source).unwrap())).unwrap();
+    splitscript::compiler::codegen_with_report(
+        &checked,
+        splitscript::CompilerOptions {
+            profile: splitscript::BuildProfile::Release,
+            ..Default::default()
+        },
+    )
+}
+
+#[test]
+fn scratch_reservations_follow_reachable_operations() {
+    let (_, native) = release_emission("state \"game.exe\" {}");
+    assert_eq!(native.scratch_bytes, 0);
+    assert_eq!(native.abi_read_capacity, 0);
+    assert_eq!(native.static_data_start, 0);
+    assert_eq!(native.minimum_memory_pages, 1);
+    for source in [
+        include_str!("../map_runtime.split"),
+        include_str!("../set_runtime.split"),
+    ] {
+        assert_eq!(release_emission(source).1.scratch_bytes, 0);
+    }
+    let (_, scalar) = release_emission("state \"game.exe\" { value: i32 at 0x1234 }");
+    assert_eq!(scalar.scratch_bytes, 16);
+    let managed = |field| {
+        format!(
+            r#"
+        image "Assembly-CSharp" {{ class Probe {{ {field} }} }}
+        state Unity.il2cpp(2020) ["game.exe"] {{ value = Probe.value?; }}
+    "#
+        )
+    };
+    assert_eq!(
+        release_emission(&managed("static i32 value;"))
+            .1
+            .scratch_bytes,
+        8192
+    );
+    assert_eq!(
+        release_emission(&managed("static String value maxLength 64;"))
+            .1
+            .scratch_bytes,
+        8192 + 6144
+    );
+}
+
+#[test]
+fn unread_memory_layouts_and_dead_reads_do_not_inflate_scratch() {
+    let original = "state \"game.exe\" { value: i32 at 0x1234 }";
+    let source = format!(
+        r#"{original}
+        struct Unused {{ bytes: [u8; 4096] }}
+        fn unused() {{ return process.read<Unused>(0x5678) }}
+    "#
+    );
+    let (before, baseline) = release_emission(original);
+    let (after, report) = release_emission(&source);
+    assert_eq!(baseline, report);
+    assert!(
+        before == after,
+        "unused layouts/reads changed Release bytes"
+    );
+    let used = format!(
+        r#"{source} whileAttached {{ let value = unused() else return; print(value.bytes[0]); }}"#
+    );
+    assert_eq!(release_emission(&used).1.abi_read_capacity, 4096);
+}
+
+#[test]
+fn scratch_uses_the_readers_pointer_width_and_normalization_headroom() {
+    let (_, native) =
+        release_emission(r#"state "game.exe" { pointers: [address; 1024] at 0x1234 }"#);
+    let (_, gba) = release_emission("state GBA { pointers: [address; 1024] at 0x02000000 }");
+    assert_eq!(native.abi_read_capacity, 8192);
+    assert_eq!(gba.abi_read_capacity, 4096);
+    let (_, genesis) = release_emission("state Genesis { bytes: [u8; 4096] at 0xFF0001 }");
+    assert_eq!(genesis.abi_read_capacity, 4098);
+}
+
+#[test]
+fn codegen_report_leaves_debug_and_release_artifacts_unchanged() {
+    use splitscript::{BuildProfile, CompilerOptions, compiler};
+
+    for source in [
+        "state \"game.exe\" {}",
+        include_str!("../../examples/lunistice.split"),
+    ] {
+        let checked =
+            splitscript::check(splitscript::lower(splitscript::parse(source).unwrap())).unwrap();
+        for profile in [BuildProfile::Debug, BuildProfile::Release] {
+            let options = CompilerOptions {
+                profile,
+                ..Default::default()
+            };
+            let ordinary = compiler::codegen_with_options(&checked, options);
+            let (reported, report) = compiler::codegen_with_report(&checked, options);
+            // Existing DWARF global order depends on a HashMap. Compare all
+            // runtime/name/metadata sections byte-for-byte in Debug as well;
+            // Release has no DWARF and is compared as a complete artifact.
+            let stable_sections = |wasm: &[u8]| {
+                Parser::new(0).parse_all(wasm).filter_map(|payload| {
+                    let payload = payload.unwrap();
+                    if matches!(&payload, Payload::CustomSection(section) if section.name().starts_with(".debug_")) {
+                        return None;
+                    }
+                    payload.as_section().map(|(id, range)| (id, wasm[range].to_vec()))
+                }).collect::<Vec<_>>()
+            };
+            let unchanged = match profile {
+                BuildProfile::Debug => stable_sections(&ordinary) == stable_sections(&reported),
+                BuildProfile::Release => ordinary == reported,
+            };
+            assert!(
+                unchanged,
+                "reporting changed {profile:?} artifact ({} -> {} bytes; first difference {:?})",
+                ordinary.len(),
+                reported.len(),
+                ordinary.iter().zip(&reported).position(|(a, b)| a != b)
+            );
+            let mut imported_functions = 0;
+            let mut defined_functions = 0;
+            for payload in Parser::new(0).parse_all(&reported) {
+                match payload.unwrap() {
+                    Payload::ImportSection(section) => imported_functions = section.count(),
+                    Payload::FunctionSection(section) => defined_functions = section.count(),
+                    Payload::MemorySection(section) => {
+                        assert_eq!(
+                            section.into_iter().next().unwrap().unwrap().initial,
+                            report.minimum_memory_pages
+                        );
+                    }
+                    _ => {}
+                }
+            }
+            assert_eq!(report.functions.len(), defined_functions as usize);
+            for (position, (index, _)) in report.functions.iter().enumerate() {
+                assert_eq!(*index, imported_functions + position as u32);
+            }
+            assert!(report.scratch_bytes >= u64::from(report.abi_read_capacity));
+            assert!(report.static_data_end >= u64::from(report.static_data_start));
+            if profile == BuildProfile::Debug {
+                let names = debug_function_names(&reported).unwrap().1;
+                let defined = names
+                    .into_iter()
+                    .filter(|(index, _)| *index >= imported_functions)
+                    .collect::<Vec<_>>();
+                assert_eq!(defined, report.functions);
+            } else {
+                assert!(debug_function_names(&reported).is_none());
+            }
+        }
+    }
+}
+
+#[test]
+fn release_managed_report_excludes_unused_strings_and_opposite_backend() {
+    use splitscript::{BuildProfile, CompilerOptions, compiler};
+
+    let compile = |provider: &str, declarations: &str, field: &str| {
+        let source = format!(
+            r#"
+            image "Assembly-CSharp" {{
+                class Probe {{ static i32 value; {declarations} }}
+            }}
+            state {provider} ["game.exe"] {{ value = Probe.{field}?; }}
+        "#
+        );
+        let checked =
+            splitscript::check(splitscript::lower(splitscript::parse(&source).unwrap())).unwrap();
+        compiler::codegen_with_report(
+            &checked,
+            CompilerOptions {
+                profile: BuildProfile::Release,
+                ..Default::default()
+            },
+        )
+    };
+    for (provider, excluded) in [
+        ("Unity.il2cpp(2020)", "Mono"),
+        ("Unity.mono(MonoVersion.V2)", "Il2Cpp"),
+    ] {
+        let ordinary = compile(provider, "", "value");
+        let unused = compile(provider, "static String text maxLength 64;", "value");
+        // Metadata binding currently still visits unread declarations. The
+        // paired size fixtures record that gap; decoder retention is already
+        // operation-driven and must not regress while binding is reworked.
+        assert_eq!(ordinary.1.runtime_helpers, unused.1.runtime_helpers);
+        assert_eq!(ordinary.1.scratch_bytes, unused.1.scratch_bytes);
+        assert!(
+            unused
+                .1
+                .functions
+                .iter()
+                .all(|(_, name)| !name.contains("ReadManagedString"))
+        );
+        assert!(
+            ordinary
+                .1
+                .functions
+                .iter()
+                .all(|(_, name)| !name.contains(excluded))
+        );
+        assert!(
+            ordinary
+                .1
+                .functions
+                .iter()
+                .all(|(_, name)| !name.contains("ReadManagedString"))
+        );
+        let used = compile(provider, "static String text maxLength 64;", "text");
+        assert!(
+            used.1
+                .functions
+                .iter()
+                .any(|(_, name)| name.ends_with("ReadManagedStringField"))
+        );
+        assert!(used.0.len() > ordinary.0.len());
+    }
+}
+
 #[test]
 fn ordinary_function_types_are_shared_after_the_gc_group() {
     for profile in [
@@ -1571,7 +1794,7 @@ fn compiles_a_complete_autosplitter_to_valid_wasm_gc() {
 }
 
 #[test]
-fn linear_memory_grows_beyond_runtime_scratch_for_large_static_data() {
+fn linear_memory_grows_for_large_static_data_without_an_unused_scratch_page() {
     let source = format!(
         "state \"game.exe\" {{}}\nwhileAttached {{ print(\"{}\") }}",
         "x".repeat(70_000)
@@ -1594,7 +1817,7 @@ fn linear_memory_grows_beyond_runtime_scratch_for_large_static_data() {
         )
         .expect("generated module should contain a memory section");
 
-    assert_eq!(minimum_pages, 3);
+    assert_eq!(minimum_pages, 2);
     Validator::new_with_features(WasmFeatures::all())
         .validate_all(&wasm)
         .expect("large static-data WebAssembly GC should validate");

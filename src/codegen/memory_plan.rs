@@ -7,6 +7,7 @@
 
 pub(super) const WASM_PAGE_SIZE: u64 = 65_536;
 use crate::intrinsic_registry::MAX_NATIVE_STRING_BYTES;
+use std::collections::BTreeSet;
 
 const SETTINGS_STRING_CAPACITY: u32 = 16_384;
 const C_STRING_CAPACITY: u32 = 8_192;
@@ -19,10 +20,28 @@ pub(super) const FLOAT_PARSE_DIGITS: u32 = 768;
 const FLOAT_PARSE_TEMP: u32 = 800;
 const FLOAT_FORMAT_CAPACITY: u32 = 64;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub(super) enum ScratchRole {
+    SettingsLength,
+    SettingsString,
+    Scan,
+    CString,
+    NativeUtf8,
+    FloatParseDigits,
+    FloatParseTemp,
+    FloatFormat,
+    Utf16Input,
+    Utf16Output,
+}
+
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub(super) struct ScratchRequirements {
     pub abi_read_capacity: u32,
     pub maximum_signature_len: u32,
+    /// Provider reads may normalize word-swapped bytes in place. This is
+    /// physical headroom, not an increase to the supported string length.
+    pub read_padding: u32,
+    pub roles: BTreeSet<ScratchRole>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -50,6 +69,10 @@ impl ScratchRegion {
     }
 
     pub(super) const fn start(self) -> i32 {
+        assert!(
+            self.capacity > 0,
+            "scratch role was not demanded before emission"
+        );
         self.start
     }
 
@@ -63,7 +86,7 @@ impl ScratchRegion {
 
     pub(super) const fn at(self, offset: i32) -> i32 {
         assert!(offset >= 0 && offset <= self.capacity);
-        self.start + offset
+        self.start() + offset
     }
 
     /// Returns the host-write destination after proving its maximum size fits
@@ -75,7 +98,7 @@ impl ScratchRegion {
             "a {maximum_size}-byte host write exceeds the {}-byte scratch region",
             self.capacity
         );
-        self.start
+        self.start()
     }
 
     const fn end(self) -> i32 {
@@ -147,6 +170,7 @@ pub(super) struct RuntimeScratch {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) struct LinearMemoryLayout {
     scratch: RuntimeScratch,
+    scratch_bytes: u64,
     static_data_start: u32,
     static_data_end: u64,
     minimum_pages: u64,
@@ -162,22 +186,49 @@ impl LinearMemoryLayout {
         // ABI reads execute synchronously in distinct phases. Bank 1 holds the
         // data that must coexist with bank 0: settings length and managed UTF-8
         // output respectively.
-        let scan_capacity = SIGNATURE_SCAN_WINDOW
-            .checked_add(requirements.maximum_signature_len.saturating_sub(1))
-            .expect("signature scan scratch must fit wasm32");
+        let capacity = |role, size| {
+            if requirements.roles.contains(&role) {
+                size
+            } else {
+                0
+            }
+        };
+        let settings_length = capacity(ScratchRole::SettingsLength, 4);
+        let settings_string = capacity(ScratchRole::SettingsString, SETTINGS_STRING_CAPACITY);
+        let c_string = capacity(ScratchRole::CString, C_STRING_CAPACITY);
+        let native_utf8 = capacity(
+            ScratchRole::NativeUtf8,
+            MAX_NATIVE_STRING_BYTES + requirements.read_padding,
+        );
+        let float_digits = capacity(ScratchRole::FloatParseDigits, FLOAT_PARSE_DIGITS);
+        let float_temp = capacity(ScratchRole::FloatParseTemp, FLOAT_PARSE_TEMP);
+        let float_format = capacity(ScratchRole::FloatFormat, FLOAT_FORMAT_CAPACITY);
+        let utf16_input = capacity(
+            ScratchRole::Utf16Input,
+            UTF16_INPUT_CAPACITY + requirements.read_padding,
+        );
+        let utf16_output = capacity(ScratchRole::Utf16Output, UTF16_OUTPUT_CAPACITY);
+        let scan_capacity = capacity(
+            ScratchRole::Scan,
+            SIGNATURE_SCAN_WINDOW
+                .checked_add(requirements.maximum_signature_len.saturating_sub(1))
+                .expect("signature scan scratch must fit wasm32"),
+        );
         let bank_0_capacity = requirements
             .abi_read_capacity
-            .max(SETTINGS_STRING_CAPACITY)
+            .max(settings_string)
             .max(scan_capacity)
-            .max(C_STRING_CAPACITY)
-            .max(MAX_NATIVE_STRING_BYTES)
-            .max(UTF16_INPUT_CAPACITY);
+            .max(c_string)
+            .max(native_utf8)
+            .max(float_digits)
+            .max(float_format)
+            .max(utf16_input);
         let bank_1_start = align_up(u64::from(bank_0_capacity), 8);
-        let bank_1_capacity = UTF16_OUTPUT_CAPACITY.max(4);
+        let bank_1_capacity = utf16_output.max(settings_length).max(float_temp);
         let scratch_end = bank_1_start
             .checked_add(u64::from(bank_1_capacity))
             .expect("runtime scratch must fit wasm32");
-        let static_data_start = align_up(scratch_end.max(1), WASM_PAGE_SIZE);
+        let static_data_start = align_up(scratch_end, WASM_PAGE_SIZE);
         assert!(
             static_data_start < 1u64 << 32,
             "runtime scratch exceeds the wasm32 address space"
@@ -210,11 +261,15 @@ impl LinearMemoryLayout {
                 i32::try_from(requirements.abi_read_capacity)
                     .expect("ABI read scratch must fit wasm32 signed arithmetic"),
             ),
-            settings_length: ScratchRegion::new(ScratchAliasClass::Companion, bank_1_start, 4),
+            settings_length: ScratchRegion::new(
+                ScratchAliasClass::Companion,
+                bank_1_start,
+                settings_length as i32,
+            ),
             settings_string: ScratchRegion::new(
                 ScratchAliasClass::Primary,
                 0,
-                SETTINGS_STRING_CAPACITY as i32,
+                settings_string as i32,
             ),
             scan: ScratchRegion::new(
                 ScratchAliasClass::Primary,
@@ -222,40 +277,28 @@ impl LinearMemoryLayout {
                 i32::try_from(scan_capacity)
                     .expect("signature scan scratch must fit wasm32 signed arithmetic"),
             ),
-            c_string: ScratchRegion::new(ScratchAliasClass::Primary, 0, C_STRING_CAPACITY as i32),
-            native_utf8: ScratchRegion::new(
-                ScratchAliasClass::Primary,
-                0,
-                MAX_NATIVE_STRING_BYTES as i32,
-            ),
+            c_string: ScratchRegion::new(ScratchAliasClass::Primary, 0, c_string as i32),
+            native_utf8: ScratchRegion::new(ScratchAliasClass::Primary, 0, native_utf8 as i32),
             float_parse_digits: ScratchRegion::new(
                 ScratchAliasClass::Primary,
                 0,
-                FLOAT_PARSE_DIGITS as i32,
+                float_digits as i32,
             ),
-            utf16_input: ScratchRegion::new(
-                ScratchAliasClass::Primary,
-                0,
-                UTF16_INPUT_CAPACITY as i32,
-            ),
+            utf16_input: ScratchRegion::new(ScratchAliasClass::Primary, 0, utf16_input as i32),
             utf16_output: ScratchRegion::new(
                 ScratchAliasClass::Companion,
                 bank_1_start,
-                UTF16_OUTPUT_CAPACITY as i32,
+                utf16_output as i32,
             ),
             float_parse_temp: ScratchRegion::new(
                 ScratchAliasClass::Companion,
                 bank_1_start,
-                FLOAT_PARSE_TEMP as i32,
+                float_temp as i32,
             ),
-            float_format: ScratchRegion::new(
-                ScratchAliasClass::Primary,
-                0,
-                FLOAT_FORMAT_CAPACITY as i32,
-            ),
+            float_format: ScratchRegion::new(ScratchAliasClass::Primary, 0, float_format as i32),
             host_strings_start,
         };
-        assert_eq!(scratch.abi_read.start() % 8, 0);
+        assert_eq!(scratch.abi_read.0.start % 8, 0);
         assert_eq!(scratch.abi_read.0.alias_class(), ScratchAliasClass::Primary);
         for region in [
             scratch.settings_string,
@@ -267,7 +310,7 @@ impl LinearMemoryLayout {
             scratch.utf16_input,
         ] {
             assert_eq!(region.alias_class(), ScratchAliasClass::Primary);
-            assert_eq!(region.start(), 0);
+            assert_eq!(region.start, 0);
         }
         for region in [
             scratch.settings_length,
@@ -275,7 +318,7 @@ impl LinearMemoryLayout {
             scratch.float_parse_temp,
         ] {
             assert_eq!(region.alias_class(), ScratchAliasClass::Companion);
-            assert_eq!(region.start(), bank_1_start);
+            assert_eq!(region.start, bank_1_start);
         }
         assert!(scratch.abi_read.capacity() <= bank_0_capacity);
         assert!(scratch.settings_string.end() <= bank_0_capacity);
@@ -283,16 +326,16 @@ impl LinearMemoryLayout {
         assert!(scratch.c_string.end() <= bank_0_capacity);
         assert!(scratch.native_utf8.end() <= bank_0_capacity);
         assert!(scratch.float_parse_digits.end() <= bank_0_capacity);
+        assert!(scratch.float_format.end() <= bank_0_capacity);
         assert!(scratch.utf16_input.end() <= bank_0_capacity);
-        assert_eq!(
-            scratch.settings_length.start(),
-            scratch.utf16_output.start()
-        );
+        assert_eq!(scratch.settings_length.start, scratch.utf16_output.start);
         assert!(scratch.utf16_output.end() as u64 <= u64::from(static_data_start));
         assert!(scratch.float_parse_temp.end() as u64 <= u64::from(static_data_start));
+        assert!(scratch.settings_length.end() as u64 <= scratch_end);
         assert!(host_strings_address >= static_data_end);
         Self {
             scratch,
+            scratch_bytes: scratch_end,
             static_data_start,
             static_data_end,
             minimum_pages,
@@ -301,6 +344,10 @@ impl LinearMemoryLayout {
 
     pub(super) fn scratch(self) -> RuntimeScratch {
         self.scratch
+    }
+
+    pub(super) fn scratch_bytes(self) -> u64 {
+        self.scratch_bytes
     }
 
     pub(super) fn minimum_pages(self) -> u64 {
@@ -326,15 +373,32 @@ const fn align_up(value: u64, alignment: u64) -> u64 {
 
 #[cfg(test)]
 mod tests {
-    use super::{FLOAT_PARSE_DIGITS, LinearMemoryLayout, ScratchRequirements, WASM_PAGE_SIZE};
+    use super::{
+        FLOAT_PARSE_DIGITS, LinearMemoryLayout, ScratchRequirements, ScratchRole, WASM_PAGE_SIZE,
+    };
 
     #[test]
     fn reserves_runtime_scratch_and_sizes_memory_for_static_data() {
         let requirements = ScratchRequirements {
             abi_read_capacity: 16,
             maximum_signature_len: 20,
+            read_padding: 0,
+            roles: [
+                ScratchRole::Scan,
+                ScratchRole::SettingsLength,
+                ScratchRole::SettingsString,
+                ScratchRole::CString,
+                ScratchRole::NativeUtf8,
+                ScratchRole::FloatParseDigits,
+                ScratchRole::FloatParseTemp,
+                ScratchRole::FloatFormat,
+                ScratchRole::Utf16Input,
+                ScratchRole::Utf16Output,
+            ]
+            .into_iter()
+            .collect(),
         };
-        let empty = LinearMemoryLayout::plan(0, requirements);
+        let empty = LinearMemoryLayout::plan(0, requirements.clone());
         assert_eq!(empty.static_data_start(), WASM_PAGE_SIZE as u32);
         assert_eq!(empty.static_data_end(), WASM_PAGE_SIZE);
         assert_eq!(empty.minimum_pages(), 1);
@@ -356,7 +420,7 @@ mod tests {
         );
         assert_eq!(empty.scratch().host_strings_start, WASM_PAGE_SIZE as i32);
 
-        let one_byte = LinearMemoryLayout::plan(1, requirements);
+        let one_byte = LinearMemoryLayout::plan(1, requirements.clone());
         assert_eq!(one_byte.static_data_end(), WASM_PAGE_SIZE + 1);
         assert_eq!(one_byte.minimum_pages(), 2);
         assert_eq!(
@@ -364,7 +428,7 @@ mod tests {
             2 * WASM_PAGE_SIZE as i32
         );
 
-        let large = LinearMemoryLayout::plan(WASM_PAGE_SIZE as usize + 1, requirements);
+        let large = LinearMemoryLayout::plan(WASM_PAGE_SIZE as usize + 1, requirements.clone());
         assert_eq!(large.minimum_pages(), 3);
 
         let large_read = LinearMemoryLayout::plan(
@@ -372,6 +436,7 @@ mod tests {
             ScratchRequirements {
                 abi_read_capacity: 100_000,
                 maximum_signature_len: 20,
+                ..requirements.clone()
             },
         );
         assert_eq!(large_read.scratch().abi_read.capacity(), 100_000);
@@ -383,6 +448,7 @@ mod tests {
             ScratchRequirements {
                 abi_read_capacity: 16,
                 maximum_signature_len: 70_000,
+                ..requirements
             },
         );
         assert!(long_signature.scratch().scan.capacity() >= 74_095);
@@ -434,5 +500,52 @@ mod tests {
                 );
             }
         }
+    }
+    #[test]
+    fn unused_buffers_have_no_capacity_and_need_no_scratch_page() {
+        let layout = LinearMemoryLayout::plan(20, ScratchRequirements::default());
+        assert_eq!(layout.scratch_bytes(), 0);
+        assert_eq!(layout.static_data_start(), 0);
+        assert_eq!(layout.minimum_pages(), 1);
+        assert_eq!(layout.scratch().utf16_input.capacity(), 0);
+        assert_eq!(layout.scratch().utf16_output.capacity(), 0);
+        assert_eq!(layout.scratch().scan.capacity(), 0);
+    }
+
+    #[test]
+    fn only_live_roles_contribute_to_each_alias_bank() {
+        let layout = LinearMemoryLayout::plan(
+            20,
+            ScratchRequirements {
+                roles: [ScratchRole::FloatParseDigits, ScratchRole::FloatParseTemp]
+                    .into_iter()
+                    .collect(),
+                ..Default::default()
+            },
+        );
+        assert_eq!(layout.scratch_bytes(), 768 + 800);
+        assert_eq!(layout.scratch().float_parse_digits.capacity(), 768);
+        assert_eq!(layout.scratch().float_parse_temp.start(), 768);
+        assert_eq!(layout.scratch().float_parse_temp.capacity(), 800);
+        assert_eq!(layout.scratch().utf16_output.capacity(), 0);
+        assert_eq!(layout.scratch().settings_string.capacity(), 0);
+        assert_eq!(layout.scratch().native_utf8.capacity(), 0);
+    }
+
+    #[test]
+    fn normalized_string_reads_cannot_overlap_the_conversion_output() {
+        let layout = LinearMemoryLayout::plan(
+            0,
+            ScratchRequirements {
+                read_padding: 2,
+                roles: [ScratchRole::Utf16Input, ScratchRole::Utf16Output]
+                    .into_iter()
+                    .collect(),
+                ..Default::default()
+            },
+        );
+        assert_eq!(layout.scratch().utf16_input.capacity(), 4098);
+        assert_eq!(layout.scratch().utf16_output.start(), 4104);
+        assert_eq!(layout.scratch_bytes(), 4104 + 6144);
     }
 }

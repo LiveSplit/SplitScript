@@ -18,6 +18,7 @@ pub(super) struct BackendDependencies {
     helpers: BTreeSet<RuntimeHelperId>,
     host_imports: BTreeSet<AbiImportId>,
     needs_native_pointer_size: bool,
+    memory_read_capacity: u32,
 }
 
 impl BackendDependencies {
@@ -100,22 +101,22 @@ impl BackendDependencies {
                     if matches!(path.base, crate::ast::PointerPathBase::Module { .. }) {
                         dependencies.require_import(AbiImportId::ProcessGetModuleAddress);
                     }
-                    let native = semantics
-                        .state_field_provider(field.id)
-                        .is_some_and(|provider| {
-                            matches!(
+                    let direct_read = semantics.state_field_provider(field.id).map(|provider| {
+                        let Implementation::Intrinsic(intrinsic) = wasm_ir
+                            .standard_library()
+                            .item(
                                 wasm_ir
                                     .standard_library()
-                                    .item(
-                                        wasm_ir
-                                            .standard_library()
-                                            .state_provider(provider)
-                                            .direct_read
-                                    )
-                                    .implementation,
-                                Implementation::Intrinsic(IntrinsicId::ProcessRead)
+                                    .state_provider(provider)
+                                    .direct_read,
                             )
-                        });
+                            .implementation
+                        else {
+                            unreachable!("provider reads are intrinsic")
+                        };
+                        intrinsic
+                    });
+                    let native = direct_read == Some(IntrinsicId::ProcessRead);
                     let value =
                         semantics
                             .value_type(field.id)
@@ -123,6 +124,16 @@ impl BackendDependencies {
                                 TypeKind::Option { value, .. } => *value,
                                 _ => ty,
                             });
+                    if path.decoder.is_none() {
+                        dependencies.require_memory_read(
+                            value.expect("checked pointer fields have value types"),
+                            direct_read
+                                .and_then(intrinsic_registry::provider_read_contract)
+                                .map(|contract| contract.address_width),
+                            semantics,
+                            capabilities,
+                        );
+                    }
                     if native
                         && (!path.offsets.is_empty()
                             || value.is_some_and(|ty| {
@@ -278,6 +289,17 @@ impl BackendDependencies {
                     };
                     dependencies.stdlib_items.insert(*item);
                     dependencies.require_intrinsic(*intrinsic);
+                    if *intrinsic == IntrinsicId::ProcessRead
+                        || intrinsic_registry::provider_read_contract(*intrinsic).is_some()
+                    {
+                        dependencies.require_memory_read(
+                            specialize(type_arguments[0]),
+                            intrinsic_registry::provider_read_contract(*intrinsic)
+                                .map(|contract| contract.address_width),
+                            semantics,
+                            capabilities,
+                        );
+                    }
                     if *intrinsic == IntrinsicId::ProcessFollow
                         || (*intrinsic == IntrinsicId::ProcessRead
                             && type_arguments.first().is_some_and(|ty| {
@@ -500,6 +522,7 @@ impl BackendDependencies {
             self.needs_native_pointer_size = true;
         }
         if declaration.max_length.is_none() {
+            self.require_memory_read(value, None, semantics, capabilities);
             return;
         }
         self.require(
@@ -513,6 +536,100 @@ impl BackendDependencies {
 
     pub fn uses_helper(&self, helper: RuntimeHelperId) -> bool {
         self.helpers.contains(&helper)
+    }
+
+    fn require_memory_read(
+        &mut self,
+        mut ty: TypeId,
+        address_width: Option<crate::memory::MemoryAddressWidth>,
+        semantics: &SemanticModel,
+        capabilities: &crate::capabilities::CapabilityAnalysis,
+    ) {
+        if let TypeKind::Option { value, .. } = semantics.types().kind(ty) {
+            ty = *value;
+        }
+        if matches!(semantics.types().kind(ty), TypeKind::ManagedReference(_)) {
+            self.memory_read_capacity = self.memory_read_capacity.max(8);
+            return;
+        }
+        for width in [
+            crate::memory::MemoryAddressWidth::Bit32,
+            crate::memory::MemoryAddressWidth::Bit64,
+        ] {
+            if address_width.is_some_and(|selected| selected != width) {
+                continue;
+            }
+            let size = capabilities
+                .memory()
+                .layout(ty, semantics, width)
+                .expect("reachable fixed-layout reads are MemoryReadable")
+                .size();
+            self.memory_read_capacity = self.memory_read_capacity.max(size);
+        }
+    }
+
+    pub fn scratch_requirements(
+        &self,
+        maximum_signature_len: u32,
+    ) -> super::memory_plan::ScratchRequirements {
+        use super::memory_plan::{ScratchRequirements, ScratchRole};
+        let mut requirements = ScratchRequirements {
+            maximum_signature_len,
+            read_padding: u32::from(self.uses_helper(RuntimeHelperId::GenesisReadMemory)) * 2,
+            roles: self
+                .helpers()
+                .flat_map(|helper| {
+                    runtime_helper_registry::descriptor(helper)
+                        .scratch
+                        .iter()
+                        .copied()
+                })
+                .collect(),
+            ..Default::default()
+        };
+        // Fixed helper/ABI records need at most 16 bytes; native pointer-width
+        // detection reads a 64-byte executable header. Dynamic-size process
+        // reads are bounded by their reachable types, not all declared types.
+        if self.host_imports().any(|import| {
+            matches!(
+                import,
+                AbiImportId::ProcessRead
+                    | AbiImportId::ProcessGetModulePath
+                    | AbiImportId::ProcessGetPath
+                    | AbiImportId::RuntimeGetOs
+                    | AbiImportId::RuntimeGetArch
+                    | AbiImportId::WasiClockTimeGet
+                    | AbiImportId::WasiFdPrestatGet
+                    | AbiImportId::WasiPathOpen
+                    | AbiImportId::WasiFdRead
+                    | AbiImportId::WasiFdSeek
+            )
+        }) {
+            // Word-swapped emulator reads can need a byte at either end.
+            requirements.abi_read_capacity = self
+                .memory_read_capacity
+                .saturating_add(requirements.read_padding)
+                .max(if self.needs_native_pointer_size {
+                    64
+                } else {
+                    16
+                });
+        }
+        if self
+            .host_imports
+            .contains(&AbiImportId::SettingValueGetString)
+        {
+            requirements.roles.insert(ScratchRole::SettingsString);
+            requirements.roles.insert(ScratchRole::SettingsLength);
+        }
+        if self
+            .host_imports
+            .contains(&AbiImportId::SettingValueGetBool)
+            || self.host_imports.contains(&AbiImportId::ProcessListByName)
+        {
+            requirements.roles.insert(ScratchRole::SettingsLength);
+        }
+        requirements
     }
 
     pub fn uses_float_format(&self) -> bool {
