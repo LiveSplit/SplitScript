@@ -32,7 +32,9 @@ fn __splitscript_stdlib_collection_probe() {
                 let scanBudget = process.read<u32>(0x60018) else 0
                 let elementBudget = process.read<u32>(0x6001c) else 0
                 let byteBudget = process.read<u64>(0x60020) else 0
-                match layout.readSlots(object, keyBytes, valueBytes, scanBudget, elementBudget, byteBudget) {
+                let keyKinds = process.read<u32>(0x60028) else 0
+                let valueKinds = process.read<u32>(0x6002c) else 0
+                match layout.readSlots(object, keyBytes, valueBytes, keyKinds, valueKinds, scanBudget, elementBudget, byteBudget) {
                     Ok(read) => {
                         process.read<u8>(0x60040)
                         match read.verify() {

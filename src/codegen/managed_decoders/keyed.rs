@@ -147,6 +147,8 @@ pub(super) fn compile(
         f.instruction(&I::I32Const(0));
     }
     width(&mut f, &r, value);
+    f.instruction(&I::I32Const(storage_kinds(&r, key) as i32))
+        .instruction(&I::I32Const(storage_kinds(&r, value) as i32));
     remaining(
         &mut f,
         l,
@@ -500,6 +502,56 @@ fn width(f: &mut Function, r: &Reader<'_, '_>, source: TypeId) {
             .instruction(&I::Select);
     } else {
         f.instruction(&I::LocalGet(2));
+    }
+}
+
+// CLR type-tag masks describe remote storage, not the projected owned type.
+// Nullable references have the same storage as their non-null child. Enum
+// schemas also admit their explicit scalar representation; field/class facts
+// are still needed to validate remote value types and generic instances fully.
+fn storage_kinds(r: &Reader<'_, '_>, source: TypeId) -> u32 {
+    match r.capabilities.managed_decoder(source).unwrap().kind {
+        ManagedDecoderKind::Optional { value } => storage_kinds(r, value),
+        ManagedDecoderKind::String => 1 << 0x0e,
+        ManagedDecoderKind::Array { .. } => 1 << 0x1d,
+        ManagedDecoderKind::Class { .. }
+        | ManagedDecoderKind::List { .. }
+        | ManagedDecoderKind::Map { .. }
+        | ManagedDecoderKind::Set { .. } => (1 << 0x12) | (1 << 0x15),
+        ManagedDecoderKind::Memory => match r.lowering.semantics.types().kind(source) {
+            TypeKind::Builtin(core) => match core {
+                CoreTypeId::Bool => 1 << 0x02,
+                CoreTypeId::Char => 1 << 0x03,
+                CoreTypeId::I8 => 1 << 0x04,
+                CoreTypeId::U8 => 1 << 0x05,
+                CoreTypeId::I16 => 1 << 0x06,
+                CoreTypeId::U16 => (1 << 0x03) | (1 << 0x07),
+                CoreTypeId::I32 => 1 << 0x08,
+                CoreTypeId::U32 => 1 << 0x09,
+                CoreTypeId::I64 => 1 << 0x0a,
+                CoreTypeId::U64 => 1 << 0x0b,
+                CoreTypeId::F32 => 1 << 0x0c,
+                CoreTypeId::F64 => 1 << 0x0d,
+                CoreTypeId::Address => {
+                    (1 << 0x18)
+                        | (1 << 0x19)
+                        | (1 << 0x0e)
+                        | (1 << 0x12)
+                        | (1 << 0x1c)
+                        | (1 << 0x1d)
+                }
+                _ => unreachable!("non-memory scalar in a managed memory decoder"),
+            },
+            TypeKind::Enum(enumeration) => {
+                let representation = r
+                    .lowering
+                    .semantics
+                    .enum_representation(*enumeration)
+                    .unwrap();
+                (1 << 0x11) | storage_kinds(r, representation)
+            }
+            _ => (1 << 0x11) | (1 << 0x15),
+        },
     }
 }
 fn binding(

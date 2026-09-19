@@ -3,6 +3,8 @@ image "Assembly-CSharp" {
         static Map<String, [String?]> rows;
         static [Map<String, [String?]>?] maps;
         static ProfileProbe instance;
+        static Map<[String], [String?]> wrongKeys;
+        static Map<String, String> wrongValues;
         Map<String, [String?]> values;
         i32 score;
     }
@@ -22,6 +24,12 @@ whileAttached {
         Err(error) => error,
     })
     let mutation = process.read<i32>(0x6f000) else return
+    if mutation == 8 {
+        setVariable("wrong", match ProfileProbe.wrongValues { Ok(_) => "ok", Err(error) => error })
+    }
+    if mutation == 9 {
+        setVariable("wrong", match ProfileProbe.wrongKeys { Ok(_) => "ok", Err(error) => error })
+    }
     if mutation == 1 { current.rows.clear() }
     if mutation == 2 { current.rows.insert("seed", []) }
     if mutation == 3 { current.rows.remove("seed") }

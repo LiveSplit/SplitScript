@@ -8,14 +8,16 @@ const modes=['holes','renamed','reversed','inline','empty allocated','empty null
     'unreadable hash','unreadable next','unreadable count','unreadable backing','scan budget','element budget','byte budget',
     'header budget','scan boundary','scan hard limit','byte boundary','zero value width','value overrun','key overrun','short reference',
     'short keys','short values','null keys','null values','torn count','torn backing','torn class',
-    'postscan count','postscan backing','postscan class','full hash bits','retry','empty at address limit'];
+    'postscan count','postscan backing','postscan class','full hash bits','retry','empty at address limit',
+    'value kind mismatch','key kind mismatch','scalar wrong width'];
 let cases=0,maximumReads=0;
 const boundaryTimings=[];
 for(const family of backend==='mono'?['V1Cattrs','V2','V3']:['il2cpp'])for(const width of [32,64])for(const dictionary of [true,false])for(const parallel of [false,true])for(const mode of modes){
     if((!parallel||!dictionary)&&['short keys','null keys'].includes(mode))continue;
     if(!parallel&&['short values','null values'].includes(mode))continue;
     if(parallel&&['unreadable next','value overrun','short reference'].includes(mode))continue;
-    if((parallel||!dictionary)&&mode==='key overrun')continue;
+    if((parallel||!dictionary)&&['key overrun','key kind mismatch'].includes(mode))continue;
+    if(parallel&&['value kind mismatch','scalar wrong width'].includes(mode))continue;
     const f=createKeyedCollectionFixture({family,width,dictionary,parallel,reversed:mode==='reversed',renamed:mode==='renamed',inline:mode==='inline'});
     const {memory,number,ptr,object,vtable,root,outer,stride,hash,next,key,value,bytes}=f;
     const arrays=[0x80000n,0x120000n,0x180000n], limit=(1n<<BigInt(width))-1n;
@@ -38,6 +40,9 @@ for(const family of backend==='mono'?['V1Cattrs','V2','V3']:['il2cpp'])for(const
     if(mode==='byte boundary')byteBudget=cost;
     if(mode==='header budget')byteBudget=767;
     number(0x60010n,4,keyBytes);number(0x60014n,4,valueBytes);number(0x60018n,4,scanBudget);number(0x6001cn,4,elementBudget);number(0x60020n,8,byteBudget);number(0x60040n,1,0);
+    number(0x60028n,4,mode==='key kind mismatch'?1<<0x1d:0xffffffff);
+    number(0x6002cn,4,mode==='value kind mismatch'?1<<0x1d:0xffffffff);
+    if(mode==='scalar wrong width')number(0x50400n+BigInt(bytes+2),1,0x06);
     const countIndex=parallel?outer.length-2:2;
     const first=object+BigInt(outer[countIndex][1]),second=object+BigInt(outer[countIndex+1][1]);
     const setCounts=(t,l)=>{number(first,4,parallel||dictionary?t:l);number(second,4,parallel?l:dictionary?t-l:t);};
@@ -110,6 +115,10 @@ for(const family of backend==='mono'?['V1Cattrs','V2','V3']:['il2cpp'])for(const
     }else assert(host.variables.get('result').length>0,label);
     if(mode==='retry'){number(firstHash,4,parallel?0x80000042:0x123);host.updateUntil(()=>host.variables.get('result')==='ok',label);}
     if(['scan budget','element budget','byte budget','header budget','scan hard limit','negative first count','negative second count','count ordering'].includes(mode))assert.equal(reads,0,`${label}: budget/count failure read backing storage`);
+    if(['value kind mismatch','key kind mismatch','scalar wrong width'].includes(mode)) {
+        assert.match(host.variables.get('result'), /incompatible with/, label);
+        assert.equal(reads,0,`${label}: invalid storage read payload`);
+    }
     maximumReads=Math.max(maximumReads,reads);cases++;
 }
 boundaryTimings.sort((a,b)=>a-b);

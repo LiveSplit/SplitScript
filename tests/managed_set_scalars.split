@@ -1,0 +1,14 @@
+enum Code: i32 { First = 1, Second = 2 }
+image "Assembly-CSharp" {
+    class ProfileProbe {
+        static Set<i32> rows;
+        static Set<Code> codes;
+        static Set<f32> floats;
+    }
+}
+state Unity ["game.exe"] { rows = ProfileProbe.rows?; }
+whileAttached {
+    setVariable("rows", current.rows)
+    setVariable("codes", match ProfileProbe.codes { Ok(value) => value.length(), Err(_) => 0 })
+    setVariable("wrong", match ProfileProbe.floats { Ok(_) => "ok", Err(error) => error })
+}

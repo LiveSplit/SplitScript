@@ -3,6 +3,7 @@ image "Assembly-CSharp" {
         static Set<[String?]> rows;
         static [Set<[String?]>?] sets;
         static ProfileProbe instance;
+        static Set<String> wrongValues;
         Set<[String?]> values;
         i32 score;
     }
@@ -19,6 +20,9 @@ whileAttached {
     setVariable("old", old.rows)
     setVariable("result", match ProfileProbe.rows { Ok(_) => "ok", Err(error) => error })
     let mutation = process.read<i32>(0x6f000) else return
+    if mutation == 8 {
+        setVariable("wrong", match ProfileProbe.wrongValues { Ok(_) => "ok", Err(error) => error })
+    }
     if mutation == 1 { current.rows.clear() }
     if mutation == 2 { current.rows.insert([]) }
     if mutation == 3 { current.rows.remove([]) }

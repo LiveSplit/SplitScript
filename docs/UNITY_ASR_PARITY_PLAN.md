@@ -1485,6 +1485,42 @@ counts, and body sizes. Emission metadata is unchanged after normalizing
 source-position-derived expression names. Lunistice remains 58,178 bytes
 (explicit) and 125,920 bytes (automatic); its base and DLC fixtures pass.
 
+## Entry storage compatibility (2026-09-19)
+
+Map and Set entry layouts retain each selected member's remote type tag.
+The generated decoder supplies allowed storage kinds for its actual source
+type, recursively unwrapping nullable references without confusing the owned
+output with remote storage. Every read checks these kinds, including when two
+different schemas share a cached runtime layout. Primitive and reference tags
+also require their exact storage width; fitting inside the entry is no longer
+enough. Represented enums admit their declared scalar storage, while inline
+structures and generic instances still require further metadata validation.
+Checks run before scanning or materializing payloads and add no metadata reads
+to a cached shape.
+
+New regressions reject incompatible key/value kinds and wider reads of small
+primitive members before payload access. Public schema fixtures reuse a valid
+cached collection through incompatible String/array and integer/float schemas,
+while confirming successful integer and represented-enum reads. The existing
+nested Map/Set/List, class, nullable, inline-structure, snapshot, and comparison
+budget fixtures remain valid.
+
+Validation: the two private adapter tests pass (3,104 layout and 2,720 slot
+cases); 24 Debug/Release collection artifacts validate and all their runtime
+scenarios pass. Formatting and Clippy for the library, CLI, and xtask pass.
+The reviewed size gate and Lunistice base/DLC behavior pass. Only the four
+managed Map/Set baselines grow: IL2CPP Map +477, IL2CPP Set +479, Mono Map +481,
+and Mono Set +480 bytes. Each adds one storage-check function, two types, and
+127 bytes of static data; scratch and memory-page requirements are unchanged.
+The other 30 fixtures retain code/section sizes and normalized emission metrics
+(disregarding generated expression/type identifiers). Explicit Lunistice remains
+58,178 bytes; automatic selection remains 125,920 bytes.
+
+This covers entry-based storage tags and widths they prove. Parallel-array
+collection element metadata, exact value-type and generic-instance layout,
+generic argument identity, and recursive array/list element compatibility are
+still required by the full plan. These checks do not claim that work complete.
+
 ## Source map for implementation
 
 Upstream links below are pinned to the reviewed tip; the PR table provides the historical changes.

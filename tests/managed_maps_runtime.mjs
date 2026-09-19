@@ -3,7 +3,7 @@ import { SplitScriptHost } from './support/splitscript_host.mjs';
 import { createKeyedCollectionFixture } from './support/keyed_collection_fixture.mjs';
 
 const [wasm] = process.argv.slice(2);
-const modes = ['seed', 'mutate', 'empty', 'shared empty backing', 'all deleted', 'large capacity', 'duplicate keys',
+const modes = ['wrong value schema', 'wrong key schema', 'seed', 'mutate', 'empty', 'shared empty backing', 'all deleted', 'large capacity', 'duplicate keys',
     'unreadable value', 'unreadable key', 'null map', 'scan budget', 'shared scan budget',
     'shared element budget', 'comparison budget', 'byte budget', 'backing cycle', 'torn count', 'torn backing', 'cached layout',
     'retry', 'freeze clear', 'freeze insert', 'freeze remove', 'freeze index', 'freeze child',
@@ -17,12 +17,13 @@ const fieldLayouts = {
 let cases = 0;
 for (const family of Object.keys(fieldLayouts)) for (const width of [32, 64])
 for (const parallel of [false, true]) for (const mode of modes) {
+    if (parallel && mode.startsWith('wrong ')) continue;
     const f = createKeyedCollectionFixture({family, width, parallel});
     const {memory, number, ptr, object, bytes, outer, stride, hash, next, key, value} = f;
     const mono = family !== 'il2cpp', wide = width === 64;
     const [fieldsOffset, countOffset] = fieldLayouts[family][width];
     ptr(0x14000n + BigInt(fieldsOffset), 0x58000n);
-    const fields = [['rows', 0x10], ['maps', 0x18], ['instance', 0x20], ['values', 0x10], ['score', 0x18]];
+    const fields = [['rows', 0x10], ['maps', 0x18], ['instance', 0x20], ['values', 0x10], ['score', 0x18], ['wrongValues', 0x28], ['wrongKeys', 0x30]];
     number(0x14000n + BigInt(countOffset), mono ? 4 : 2, fields.length);
     fields.forEach(([name, offset], i) => {
         const field = 0x58000n + BigInt(i * (wide ? 32 : mono ? 16 : 20));
@@ -34,6 +35,8 @@ for (const parallel of [false, true]) for (const mode of modes) {
     });
     // Dictionary values are SZARRAY references, with nullable String elements.
     number(0x50400n + BigInt(bytes + 2), 1, 0x1d);
+    ptr((mono ? 0x18000n : 0x16000n) + 0x28n, object);
+    ptr((mono ? 0x18000n : 0x16000n) + 0x30n, object);
     const arrays = [0x80000n, 0x120000n, 0x180000n];
     const row = 0x220000n, tailRow = 0x221000n, text = 0x230000n, tail = 0x231000n;
     const vector = (at, values, capacity = values.length) => {
@@ -128,7 +131,9 @@ for (const parallel of [false, true]) for (const mode of modes) {
         number(0x6f000n, 4, ['freeze clear', 'freeze insert', 'freeze remove', 'freeze index', 'freeze child', 'freeze snapshot'].indexOf(mode) + 1);
         assert.throws(() => host.update(), WebAssembly.RuntimeError, label); cases++; continue;
     }
+    if (mode.startsWith('wrong ')) { number(0x6f000n, 4, mode === 'wrong value schema' ? 8 : 9); success = true; }
     host.update();
+    if (mode.startsWith('wrong ')) assert.match(host.variables.get('wrong'), /member type is incompatible with its schema/, label);
     assert.equal(normalize(host.variables.get('old')), before.rows, `${label}: immutable old snapshot`);
     for (const field of ['rows', 'maps', 'tree']) {
         let expected = before[field];

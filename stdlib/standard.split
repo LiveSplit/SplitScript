@@ -1962,8 +1962,10 @@ private struct UnityFields {
                         throw "Unity collection field does not use supported instance storage"
                     }
                     let typeAddress = types.fieldTypeAddress(field)?
+                    let kind = types.kind(typeAddress)?
                     found[slot] = Some(UnityCollectionMember {
-                        offset: (offset as u32) - header, typeAddress, minimumWidth: types.minimumWidth(typeAddress)? })
+                        offset: (offset as u32) - header, typeAddress,
+                        kind, minimumWidth: types.minimumWidth(kind)? })
                 }
                 slot += 1
             }
@@ -13913,8 +13915,8 @@ private struct UnityCollectionTypes {
 
     // Minimum storage justified by the type tag. Value types need their child
     // decoder's exact layout checked before payload materialization.
-    private fn minimumWidth(typeAddress: address) -> u32! {
-        return match self.kind(typeAddress)? {
+    private fn minimumWidth(kind: u8) -> u32! {
+        return match kind {
             0x02 | 0x04 | 0x05 => 1,
             0x03 | 0x06 | 0x07 => 2,
             0x08 | 0x09 | 0x0c => 4,
@@ -13943,8 +13945,22 @@ private struct UnityCollectionMember {
     private offset: u32,
     /// Remote metadata type address.
     private typeAddress: address,
+    /// Remote type tag retained with the discovered shape.
+    private kind: u8,
     /// Minimum remote width justified by the field type tag.
     private minimumWidth: u32,
+
+    // Value types and generic instances need further class/argument metadata
+    // to prove their exact layout. Primitive and reference tags have exact widths.
+    private fn validateStorage(bytes: u32, kinds: u32) -> bool! {
+        if self.kind >= 32 || (kinds & (1 << (self.kind as u32))) == 0 {
+            throw "Unity collection member type is incompatible with its schema"
+        }
+        if self.kind != 0x11 && self.kind != 0x15 && bytes != self.minimumWidth {
+            throw "Unity collection member width is incompatible with its runtime type"
+        }
+        return true
+    }
 }
 
 /// A dictionary or set shape, discovered without reading its payload.
@@ -14033,12 +14049,13 @@ private struct UnityKeyedLayout {
     }
 
     // Sizes come from child storage plans, never from owned Map/Set/GC sizes.
-    private fn validateElementSizes(keyBytes: u32, valueBytes: u32) -> bool! {
+    private fn validateElementSizes(keyBytes: u32, valueBytes: u32, keyKinds: u32, valueKinds: u32) -> bool! {
         let dictionary = self.dictionary()
         if valueBytes == 0 || (dictionary && keyBytes == 0) {
             throw "Unity collection element storage must have a positive width"
         }
         if !self.parallel {
+            self.members[self.members.length() - 1].validateStorage(valueBytes, valueKinds)?
             let value = self.members[self.members.length() - 1].offset
             if valueBytes < self.members[self.members.length() - 1].minimumWidth || !self.elementFits(value, valueBytes) {
                 throw "Unity collection value exceeds its entry stride"
@@ -14048,6 +14065,7 @@ private struct UnityKeyedLayout {
                 throw "Unity collection value overlaps a bookkeeping member"
             }
             if dictionary {
+                self.members[2].validateStorage(keyBytes, keyKinds)?
                 let key = self.members[2].offset
                 if keyBytes < self.members[2].minimumWidth || !self.elementFits(key, keyBytes) { throw "Unity collection key exceeds its entry stride" }
                 if self.overlaps(key, keyBytes, value, valueBytes)
@@ -14063,11 +14081,11 @@ private struct UnityKeyedLayout {
     // One finite synchronous scan. The caller supplies remaining root budgets
     // and deducts the returned work before invoking any recursive child reader.
     // This adapter never dereferences key/value slots or reads spare capacity.
-    private fn readSlots(object: address, keyBytes: u32, valueBytes: u32,
+    private fn readSlots(object: address, keyBytes: u32, valueBytes: u32, keyKinds: u32, valueKinds: u32,
         scanBudget: u32, elementBudget: u32, byteBudget: u64) -> UnityKeyedRead! {
         if object == 0 { throw "Unity collection object is null" }
         if byteBudget < 768 { throw "Unity collection exceeds the shared byte budget" }
-        self.validateElementSizes(keyBytes, valueBytes)?
+        self.validateElementSizes(keyBytes, valueBytes, keyKinds, valueKinds)?
         self.verifyClass(object)?
         let counts = self.counts(object)?
         let dictionary = self.dictionary()

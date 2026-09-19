@@ -816,6 +816,20 @@ const RUNTIME_FIXTURES: &[RuntimeFixture] = &[
         extra_arguments: &[],
     },
     RuntimeFixture {
+        source: "tests/managed_set_scalars.split",
+        output: "managed_set_scalars.wasm",
+        profile: "release",
+        harness: "tests/managed_set_scalars_runtime.mjs",
+        extra_arguments: &[],
+    },
+    RuntimeFixture {
+        source: "tests/managed_set_scalars.split",
+        output: "managed_set_scalars_debug.wasm",
+        profile: "debug",
+        harness: "tests/managed_set_scalars_runtime.mjs",
+        extra_arguments: &[],
+    },
+    RuntimeFixture {
         source: "tests/managed_set_inline_enum.split",
         output: "managed_set_inline_enum.wasm",
         profile: "release",
