@@ -40,6 +40,9 @@ pub(crate) enum ManagedDecoderKind {
     Array {
         element: TypeId,
     },
+    List {
+        element: TypeId,
+    },
     Class {
         class: ManagedClassId,
     },
@@ -52,7 +55,9 @@ pub(crate) enum ManagedDecoderKind {
 impl ManagedDecoderKind {
     pub(crate) fn child(self) -> Option<TypeId> {
         match self {
-            Self::Array { element } | Self::Optional { value: element } => Some(element),
+            Self::Array { element }
+            | Self::List { element }
+            | Self::Optional { value: element } => Some(element),
             _ => None,
         }
     }
@@ -78,26 +83,33 @@ impl ManagedReadTypes {
                     length: None,
                     ..
                 } => ManagedDecoderKind::Array { element: *element },
+                TypeKind::Application {
+                    constructor,
+                    arguments,
+                    ..
+                } if *constructor == crate::stdlib::StdlibTypeConstructorId::List => {
+                    ManagedDecoderKind::List {
+                        element: arguments[0],
+                    }
+                }
                 TypeKind::Option { value, .. }
                     if matches!(
                         semantics.types().kind(*value),
                         TypeKind::Standard(StdlibTypeId::String)
                             | TypeKind::ManagedClass(_)
                             | TypeKind::Array { length: None, .. }
-                    ) =>
+                    ) || matches!(semantics.types().kind(*value), TypeKind::Application { constructor, .. }
+                        if *constructor == crate::stdlib::StdlibTypeConstructorId::List) =>
                 {
                     ManagedDecoderKind::Optional { value: *value }
                 }
                 _ if memory.require_layout(ty, semantics).is_ok() => ManagedDecoderKind::Memory,
                 _ => continue,
             };
-            nodes.insert(
-                ty,
-                ManagedDecoder {
-                    output: ty,
-                    kind: node,
-                },
-            );
+            let Some(output) = semantics.try_managed_owned_type(ty) else {
+                continue;
+            };
+            nodes.insert(ty, ManagedDecoder { output, kind: node });
         }
         // Intern all class nodes before checking children. Recursive schemas
         // are finite graphs; object cycles are rejected by the runtime path.

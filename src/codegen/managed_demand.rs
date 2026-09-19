@@ -94,6 +94,15 @@ pub(super) fn prune(
         fields.extend(&shape.evidence_fields);
     }
     let mut remove = HashSet::new();
+    if !reachable.managed_decoders().any(|ty| {
+        matches!(
+            capabilities.managed_decoder(ty).unwrap().kind,
+            crate::managed_read::ManagedDecoderKind::List { .. }
+        )
+    }) {
+        remove.insert(crate::stdlib::MANAGED_LIST_LAYOUT_FIELD.to_owned());
+        remove.insert("__list_layout_cache".to_owned());
+    }
     let mut images = HashMap::new();
     let mut needed_images = HashSet::new();
     for class in &managed.classes {

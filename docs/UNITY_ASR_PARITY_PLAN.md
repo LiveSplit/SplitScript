@@ -377,10 +377,10 @@ Each step is a reviewable change with its own acceptance gate **and the mandator
 
 1. Resolve a genuine `System.Collections.Generic.List\`1` ancestor from the live object's runtime class; support derived lists and reject unrelated lookalikes.
 2. Cache `_items`/`_size` layout by attachment and actual concrete runtime class. Resolve lazily when a non-null object first appears; null/late-created collections must not force the entire schema to wait forever before unrelated fields can bind. Revalidate cache selection if a replacement object's runtime class changes.
-3. Read live size and backing array capacity separately. Capacity may exceed the declared output bound; live size may not. Reject negative size, missing backing storage where required, and size beyond backing length.
+3. Read live size and backing array capacity separately. Capacity may exceed the shared element budget; the materialized live prefix may not. Reject negative size, missing backing storage where required, and size beyond backing length.
 4. Add list nodes that invoke the same recursive child decoder as arrays. Preserve null slots where the element type is optional, with no compaction. Strings, nested arrays/lists/maps, and class values compose without per-combination code paths; unsupported collection nodes remain unavailable until their steps land.
 5. Materializing `List<C>` as `[C]` produces class snapshots; an explicit live view can produce `[C.Ref]`. Root class `.snapshot()` recursively uses value projections at every container/class level, without manual per-element conversions. Propagate failures to the root, preserve null positions, and prevent live refs escaping attachment scope. Follow only source-declared fields, with Step 8's cycle/depth rules.
-6. Apply both per-string and shared root byte/element/object/work limits to nested collections. Cache discovery by runtime shape, but never cache previously read payload as a new snapshot.
+6. Apply shared root byte/element/object/work limits to nested collections. Cache discovery by runtime shape, but never cache previously read payload as a new snapshot.
 
 **Gate:** derived/lookalike lists, inflated generic lists, oversized backing with small live count, torn resize, null elements, x86 stride, replacement objects/classes, nested list/array/string/class snapshots, and compiler rejection of retained live-reference collections. Confirm metadata reads stop after successful shape caching and inspecting a materialized snapshot performs no process reads.
 
@@ -1035,6 +1035,58 @@ all 31 managed compiler tests passed again. The nested-array, recursive-class,
 and freezing runtime fixtures pass 432 cases across Debug and Release. Clippy
 and formatting pass. All 28 optimized baselines are unchanged, including
 58,178-byte explicit-profile Lunistice; the base/DLC behavior gate passes.
+
+### Recursive list materialization
+
+`List<T>` now describes managed generic-list storage and projects recursively
+to an owned array. It composes with nullable elements, managed vectors, other
+lists, inline native values, and declared class snapshots. The schema keeps its
+remote storage identity even when its result has the same array type as a vector.
+The former special diagnostic for an unavailable C# List spelling was removed.
+
+The generated attachment binding retains a lazy list-layout callback only for
+reachable list reads. Its bounded cache uses actual runtime class identity and
+is recreated on attachment. A null object fails or produces `None` according to
+the schema; failed discovery remains retryable. A replacement runtime class
+selects a fresh layout. The cache stores metadata only, never list contents.
+
+Each read validates the signed live count against backing capacity and the
+complete target-width storage span before materializing the live prefix. Spare
+capacity can exceed the root element budget and is not read. List objects,
+backing arrays, and recursively decoded children share the root context. Empty
+unallocated backing is accepted only for zero live count. Before publication,
+the reader rechecks size and backing identity and rejects changes during the
+read. Results, including arrays inside inline value structs, are deeply frozen.
+
+The new fixture covers all four existing Mono layout families and IL2CPP 2022.3
+at both pointer widths, including recursive snapshots, nullable slots, native
+strides, malformed sizes/capacity, shared budgets, cycles, depth/object limits,
+partial-read rollback, concurrent resize, cached metadata, changed runtime
+classes, failed-discovery retry, and reattachment. Element-type metadata
+verification, richer error paths, raw UTF-16, and managed map/set decoding
+remain separate unfinished work.
+
+Adding the callback exposed a stale type-dependency edge: after generated
+binding fields were pruned, GC reachability still followed their pre-pruning
+capability graph. It now follows the emitted struct fields, removing unused
+list-layout and callback types. Existing scripts retain neither the list
+resolver nor its cache.
+
+Validation: 441 library tests (one ignored), 666 compiler tests, four baseline
+tests, and 106 syntax tests passed. All 33 managed compiler tests passed again
+after the final resize check. The runtime catalog validates 108 artifacts and
+138 scenarios, including 700 list cases across Debug and Release. Clippy,
+formatting, and all 558 generated documentation pages pass.
+
+The strict optimized baseline gate passes all 30 fixtures and Lunistice base/DLC
+behavior. All 28 pre-existing fixtures retain their module and section sizes,
+function/type counts, runtime helpers, scratch, storage bounds, and memory pages.
+The new IL2CPP and Mono list fixtures measure 54,644 and 45,508 bytes, respectively:
+4,930 and 4,952 bytes above their array fixtures for layout discovery, caching,
+live-count/backing validation, and resize checks. Explicit-profile Lunistice
+remains 58,178 bytes, with automatic selection at 125,920 bytes. Returning the
+explicit build below 30,000 bytes remains required before completing the Unity
+work. No live game launch was needed.
 
 ## Source map for implementation
 

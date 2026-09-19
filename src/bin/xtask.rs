@@ -704,6 +704,20 @@ const RUNTIME_FIXTURES: &[RuntimeFixture] = &[
         extra_arguments: &[],
     },
     RuntimeFixture {
+        source: "tests/managed_lists.split",
+        output: "managed_lists.wasm",
+        profile: "release",
+        harness: "tests/managed_lists_runtime.mjs",
+        extra_arguments: &[],
+    },
+    RuntimeFixture {
+        source: "tests/managed_lists.split",
+        output: "managed_lists_debug.wasm",
+        profile: "debug",
+        harness: "tests/managed_lists_runtime.mjs",
+        extra_arguments: &[],
+    },
+    RuntimeFixture {
         source: "tests/managed_array_tree.split",
         output: "managed_array_tree.wasm",
         profile: "release",

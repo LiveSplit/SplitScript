@@ -1081,7 +1081,7 @@ impl Checker {
         Some(result)
     }
 
-    fn prepare_managed_array_read(&mut self, value: Type) {
+    fn prepare_managed_collection_read(&mut self, value: Type) {
         let mut inner = self.inference.shallow(value);
         loop {
             match inner {
@@ -1091,9 +1091,20 @@ impl Checker {
                 Type::Known(id) => match self.inference.type_store().kind(id) {
                     TypeKind::Option { value, .. } => inner = Type::Known(*value),
                     TypeKind::Array { length: None, .. } => break,
+                    TypeKind::Application { constructor, .. }
+                        if *constructor == StdlibTypeConstructorId::List =>
+                    {
+                        break;
+                    }
                     _ => return,
                 },
                 Type::Array(array) if self.inference.array_length(array).is_none() => break,
+                Type::Application(application)
+                    if self.inference.application_constructor(application)
+                        == StdlibTypeConstructorId::List =>
+                {
+                    break;
+                }
                 _ => return,
             }
         }
@@ -1108,11 +1119,25 @@ impl Checker {
             if !visited.insert(value) {
                 continue;
             }
-            self.inference.result_type(value);
+            let owned = self.managed_owned_type(value);
+            self.inference.result_type(owned);
             match value {
+                Type::Application(application)
+                    if self.inference.application_constructor(application)
+                        == StdlibTypeConstructorId::List =>
+                {
+                    pending.push(self.inference.application_arguments(application)[0]);
+                }
                 Type::Array(array) => pending.push(self.inference.array_element(array)),
                 Type::Option(option) => pending.push(self.inference.option_value(option)),
                 Type::Known(id) => match self.inference.type_store().kind(id).clone() {
+                    TypeKind::Application {
+                        constructor,
+                        arguments,
+                        ..
+                    } if constructor == StdlibTypeConstructorId::List => {
+                        pending.push(Type::Known(arguments[0]))
+                    }
                     TypeKind::Array { element, .. } => pending.push(Type::Known(element)),
                     TypeKind::Option { value, .. } => pending.push(Type::Known(value)),
                     TypeKind::ManagedClass(class) => {
@@ -1179,9 +1204,10 @@ impl Checker {
             for field in declaration.all_fields().filter(|field| !field.is_static) {
                 let live = self.managed_read_value_type(field.ty);
                 self.inference.result_type(live);
-                let owned = self.syntax_type(field.ty);
+                let storage = self.syntax_type(field.ty);
+                let owned = self.managed_owned_type(storage);
                 self.inference.result_type(owned);
-                self.prepare_managed_array_read(owned);
+                self.prepare_managed_collection_read(storage);
                 let child = match self.inference.shallow(owned) {
                     Type::Option(option) => self.inference.option_value(option),
                     Type::Known(id) => match self.inference.type_store().kind(id) {
@@ -2187,7 +2213,8 @@ impl Checker {
                 return None;
             }
             let value = self.managed_read_value_type(field.ty);
-            self.prepare_managed_array_read(value);
+            let storage = self.syntax_type(field.ty);
+            self.prepare_managed_collection_read(storage);
             return Some(PathResolution {
                 ty: Type::Result(self.inference.result_type(value)),
                 value: Some(ResolvedValue::ManagedStatic {
@@ -2854,14 +2881,16 @@ impl Checker {
             && let Some(field) = self.visible_managed_field(*class_id, false, field)
         {
             let declared = self.syntax_type(field.ty);
-            return Some((declared, ResolvedMember::ManagedField(field.id)));
+            let owned = self.managed_owned_type(declared);
+            return Some((owned, ResolvedMember::ManagedField(field.id)));
         }
         if let Type::Known(id) = ty
             && let TypeKind::ManagedReference(class_id) = self.inference.type_store().kind(id)
             && let Some(field) = self.visible_managed_field(*class_id, false, field)
         {
             let value = self.managed_read_value_type(field.ty);
-            self.prepare_managed_array_read(value);
+            let storage = self.syntax_type(field.ty);
+            self.prepare_managed_collection_read(storage);
             return Some((
                 Type::Result(self.inference.result_type(value)),
                 ResolvedMember::ManagedField(field.id),
@@ -2912,7 +2941,68 @@ impl Checker {
                 };
                 Type::Known(self.inference.type_store().id_for_managed_reference(*class))
             }
-            _ => declared,
+            _ => self.managed_owned_type(declared),
+        }
+    }
+
+    pub(super) fn managed_owned_type(&mut self, storage: Type) -> Type {
+        let shape = match self.inference.shallow(storage) {
+            Type::Application(application)
+                if self.inference.application_constructor(application)
+                    == StdlibTypeConstructorId::List =>
+            {
+                Some((
+                    self.inference.application_arguments(application)[0],
+                    None,
+                    true,
+                ))
+            }
+            Type::Array(array) => Some((
+                self.inference.array_element(array),
+                self.inference.array_length(array),
+                false,
+            )),
+            Type::Option(option) => {
+                let value = self.inference.option_value(option);
+                let owned = self.managed_owned_type(value);
+                return if owned == value {
+                    storage
+                } else {
+                    Type::Option(self.inference.option_type(owned))
+                };
+            }
+            Type::Known(id) => match self.inference.type_store().kind(id).clone() {
+                TypeKind::Application {
+                    constructor,
+                    arguments,
+                    ..
+                } if constructor == StdlibTypeConstructorId::List => {
+                    Some((Type::Known(arguments[0]), None, true))
+                }
+                TypeKind::Array {
+                    element, length, ..
+                } => Some((Type::Known(element), length, false)),
+                TypeKind::Option { value, .. } => {
+                    let value = Type::Known(value);
+                    let owned = self.managed_owned_type(value);
+                    return if owned == value {
+                        storage
+                    } else {
+                        Type::Option(self.inference.option_type(owned))
+                    };
+                }
+                _ => None,
+            },
+            _ => None,
+        };
+        let Some((element, length, list)) = shape else {
+            return storage;
+        };
+        let owned = self.managed_owned_type(element);
+        if list || owned != element {
+            Type::Array(self.inference.array_type_with_length(owned, length))
+        } else {
+            storage
         }
     }
 

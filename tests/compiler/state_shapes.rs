@@ -815,6 +815,7 @@ fn managed_arrays_compose_strings_and_owned_classes() {
         include_str!("../managed_arrays.split"),
         include_str!("../managed_array_tree.split"),
         include_str!("../managed_array_freeze.split"),
+        include_str!("../managed_lists.split"),
     ] {
         for profile in [
             splitscript::BuildProfile::Debug,
@@ -833,6 +834,74 @@ fn managed_arrays_compose_strings_and_owned_classes() {
                 .unwrap();
         }
     }
+}
+
+#[test]
+fn managed_list_constructor_is_resolved_even_with_an_unused_source_name() {
+    let wasm = splitscript::compile(
+        r#"
+        struct List { value: i32, }
+        state "game.exe" {}
+        fn unusedStorage(value: List<i32>) {}
+    "#,
+    )
+    .unwrap();
+    Validator::new_with_features(WasmFeatures::all())
+        .validate_all(&wasm)
+        .unwrap();
+}
+
+#[test]
+fn managed_list_types_are_storage_schemas_with_owned_array_projections() {
+    use splitscript::compiler::stdlib::StdlibCapabilityId;
+    use splitscript::compiler::types::TypeKind;
+    let checked = splitscript::check(
+        splitscript::parse(
+            r#"
+        image "Assembly-CSharp" {
+            class Root { static Root instance; List<[List<String>?]> values; }
+        }
+        state Unity ["game.exe"] { values: [[[String]?]] = Root.instance?.values?; }
+        fn snapshotValues(root: Root) -> [[[String]?]] { return root.values }
+        fn unusedStorage(value: List<i32>) {}
+    "#,
+        )
+        .unwrap(),
+    )
+    .unwrap();
+    let semantics = checked.semantics();
+    let field = checked.syntax().managed_class_declarations()[0]
+        .fields
+        .iter()
+        .find(|field| field.name == "values")
+        .unwrap()
+        .id;
+    let storage = semantics.managed_field_type(field).unwrap();
+    let owned = semantics.managed_field_snapshot_type(field).unwrap();
+    assert_ne!(storage, owned);
+    assert!(matches!(
+        semantics.types().kind(storage),
+        TypeKind::Application { .. }
+    ));
+    assert!(matches!(
+        semantics.types().kind(owned),
+        TypeKind::Array { length: None, .. }
+    ));
+    assert_eq!(semantics.managed_field_value_type(field), Some(owned));
+    assert!(
+        checked
+            .capabilities()
+            .has(storage, StdlibCapabilityId::ManagedReadable, semantics)
+    );
+    assert!(
+        !checked
+            .capabilities()
+            .has(storage, StdlibCapabilityId::MemoryReadable, semantics)
+    );
+    let wasm = splitscript::codegen(&checked);
+    Validator::new_with_features(WasmFeatures::all())
+        .validate_all(&wasm)
+        .unwrap();
 }
 
 #[test]
@@ -881,17 +950,26 @@ fn collection_snapshots_preserve_direct_live_class_reads() {
 
 #[test]
 fn managed_array_elements_must_be_owned_managed_readable_values() {
-    let source = r#"image "Assembly-CSharp" {
-        class Player { [Player.Ref] children; }
+    for ty in [
+        "[Player.Ref]",
+        "List<Player.Ref>",
+        "[List<Player.Ref>]",
+        "List<[Player.Ref]>",
+    ] {
+        let source = format!(
+            r#"image "Assembly-CSharp" {{
+        class Player {{ {ty} children; }}
+    }}
+    state Unity ["game.exe"] {{}}"#
+        );
+        let diagnostics = splitscript::compile(&source)
+            .expect_err("live references cannot become owned array elements");
+        assert!(diagnostics.iter().any(|diagnostic| {
+            diagnostic
+                .message
+                .contains("has no supported managed decoder")
+        }));
     }
-    state Unity ["game.exe"] {}"#;
-    let diagnostics = splitscript::compile(source)
-        .expect_err("live references cannot become owned array elements");
-    assert!(diagnostics.iter().any(|diagnostic| {
-        diagnostic
-            .message
-            .contains("has no supported managed decoder")
-    }));
 }
 
 #[test]
@@ -974,7 +1052,7 @@ fn managed_inline_arrays_freeze_without_object_walk_helpers() {
 }
 
 #[test]
-fn unused_managed_arrays_retain_no_reader_or_budget() {
+fn unused_managed_collections_retain_no_reader_or_budget() {
     for selector in [
         "Unity.il2cpp(Il2CppProfile.unity2022_3_0f1X64())",
         "Unity.mono(MonoVersion.V2)",
@@ -997,38 +1075,50 @@ fn unused_managed_arrays_retain_no_reader_or_budget() {
             )
         };
         let (plain, plain_report) = compile("");
-        let (unused, unused_report) = compile("static [[String?]?] unused;");
-        // Declaring String? earlier can renumber an already-reachable option
-        // type. Check actual emitted features and section sizes, not type IDs.
-        assert_eq!(plain.len(), unused.len());
-        assert_eq!(plain_report.runtime_helpers, unused_report.runtime_helpers);
-        assert_eq!(plain_report.scratch_bytes, unused_report.scratch_bytes);
-        assert_eq!(
-            plain_report.abi_read_capacity,
-            unused_report.abi_read_capacity
-        );
-        assert_eq!(
-            plain_report.static_data_start,
-            unused_report.static_data_start
-        );
-        assert_eq!(plain_report.static_data_end, unused_report.static_data_end);
-        assert_eq!(
-            plain_report.minimum_memory_pages,
-            unused_report.minimum_memory_pages
-        );
-        assert_eq!(plain_report.functions.len(), unused_report.functions.len());
-        let sections = |wasm: &[u8]| {
-            wasmparser::Parser::new(0)
-                .parse_all(wasm)
-                .filter_map(|payload| {
-                    payload
-                        .unwrap()
-                        .as_section()
-                        .map(|(id, range)| (id, range.len()))
-                })
-                .collect::<Vec<_>>()
-        };
-        assert_eq!(sections(&plain), sections(&unused));
+        for declaration in [
+            "static [[String?]?] unused;",
+            "static List<[List<String?>?]> unused;",
+        ] {
+            let (unused, unused_report) = compile(declaration);
+            // Declaring String? earlier can renumber an already-reachable option
+            // type. Check actual emitted features and section sizes, not type IDs.
+            assert_eq!(plain.len(), unused.len());
+            assert_eq!(plain_report.runtime_helpers, unused_report.runtime_helpers);
+            assert_eq!(plain_report.scratch_bytes, unused_report.scratch_bytes);
+            assert_eq!(
+                plain_report.abi_read_capacity,
+                unused_report.abi_read_capacity
+            );
+            assert_eq!(
+                plain_report.static_data_start,
+                unused_report.static_data_start
+            );
+            assert_eq!(plain_report.static_data_end, unused_report.static_data_end);
+            assert_eq!(
+                plain_report.minimum_memory_pages,
+                unused_report.minimum_memory_pages
+            );
+            assert_eq!(plain_report.functions.len(), unused_report.functions.len());
+            let sections = |wasm: &[u8]| {
+                wasmparser::Parser::new(0)
+                    .parse_all(wasm)
+                    .filter_map(|payload| {
+                        payload
+                            .unwrap()
+                            .as_section()
+                            .map(|(id, range)| (id, range.len()))
+                    })
+                    .collect::<Vec<_>>()
+            };
+            assert_eq!(sections(&plain), sections(&unused));
+            assert!(
+                unused_report
+                    .functions
+                    .iter()
+                    .all(|(_, name)| !name.contains("ListLayout")
+                        && !name.contains("CollectionClass"))
+            );
+        }
     }
 }
 

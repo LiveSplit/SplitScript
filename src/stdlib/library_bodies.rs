@@ -22,6 +22,7 @@ pub(crate) const PROVIDER_PREPARATION_FUNCTION: &str =
     "__splitscript_stdlib_selected_provider_preparation";
 pub(crate) const PROVIDER_BINDINGS_TYPE: &str = "__splitscript_stdlib_provider_bindings";
 pub(crate) const MANAGED_POINTER_SIZE_FIELD: &str = "__pointer_size";
+pub(crate) const MANAGED_LIST_LAYOUT_FIELD: &str = "__list_layout";
 
 struct SelectedProviderContext {
     index: usize,
@@ -283,6 +284,9 @@ fn managed_preparation_source(
     let mut source = format!("struct {PROVIDER_BINDINGS_TYPE} {{\n");
     if !classes.is_empty() {
         source.push_str(&format!("    {MANAGED_POINTER_SIZE_FIELD}: u32,\n"));
+        source.push_str(&format!(
+            "    {MANAGED_LIST_LAYOUT_FIELD}: (address) -> UnityListLayout!,\n"
+        ));
     }
     for context in contexts {
         source.push_str(&format!(
@@ -400,6 +404,18 @@ fn managed_backend_binding_source(
     source.push_str(&format!(
         "            let {MANAGED_POINTER_SIZE_FIELD}: u32 = {pointer_size}\n"
     ));
+    source.push_str(&format!(
+        "            let __list_layout_cache: [UnityListLayout] = []\n\
+                     let {MANAGED_LIST_LAYOUT_FIELD}: (address) -> UnityListLayout! = object => {{\n\
+                         let class = {module}.collectionClass(object)?\n\
+                         for cached in __list_layout_cache {{ if cached.runtimeClass == class {{ return cached }} }}\n\
+                         let layout = {module}.listLayout(object)?\n\
+                         if layout.runtimeClass != class {{ throw \"managed list class changed during discovery\" }}\n\
+                         if __list_layout_cache.length() >= 1024 {{ __list_layout_cache.clear() }}\n\
+                         __list_layout_cache.push(layout)\n\
+                         return layout\n\
+                     }}\n"
+    ));
     let mut images = std::collections::HashMap::new();
     for class in classes {
         let image_index = if let Some(index) = images.get(class.image) {
@@ -464,6 +480,7 @@ fn managed_backend_binding_source(
     source.push_str(&format!("            {PROVIDER_BINDINGS_TYPE} {{\n"));
     push_provider_context_initializers(&mut source, contexts, "                ");
     source.push_str(&format!("                {MANAGED_POINTER_SIZE_FIELD},\n"));
+    source.push_str(&format!("                {MANAGED_LIST_LAYOUT_FIELD},\n"));
     for class in classes {
         if instance_classes.contains(&class.class.id) {
             let name = managed_instance_header_name(class.class.id.index());

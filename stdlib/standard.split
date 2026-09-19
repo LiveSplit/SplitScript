@@ -1622,6 +1622,32 @@ private struct UnityRuntime {
         }
     }
 
+    private fn collectionClass(object: address) -> address! {
+        return match self.backend {
+            UnityRuntimeBackend.Il2cpp => {
+                let runtime = self.il2cpp else return Err("missing IL2CPP runtime")
+                runtime.collectionClass(object)
+            },
+            UnityRuntimeBackend.Mono => {
+                let runtime = self.mono else return Err("missing Mono runtime")
+                runtime.collectionClass(object)
+            },
+        }
+    }
+
+    private fn listLayout(object: address) -> UnityListLayout! {
+        return match self.backend {
+            UnityRuntimeBackend.Il2cpp => {
+                let runtime = self.il2cpp else return Err("missing IL2CPP runtime")
+                runtime.listLayout(object)
+            },
+            UnityRuntimeBackend.Mono => {
+                let runtime = self.mono else return Err("missing Mono runtime")
+                runtime.listLayout(object)
+            },
+        }
+    }
+
     // Finds an image without exposing which managed backend owns it.
     private fn image(name: String) -> async UnityMetadataImage {
         return match self.backend {
@@ -4730,6 +4756,21 @@ typeConstructor Map<K: Equatable, V> {
 @mustUse("Optional values must be inspected or explicitly discarded.")
 @capabilities(Debug)
 typeConstructor T? {}
+
+/// Describes a managed generic list in a Unity class schema.
+///
+/// Reading it produces an owned array. Its elements are decoded recursively,
+/// so lists, managed vectors, strings, and class snapshots can be nested.
+///
+/// # Example
+///
+/// Read lists of strings as arrays
+///
+/// ```splitscript
+/// image "Assembly-CSharp" { class Routes { static List<String> names; } }
+/// state Unity ["game.exe"] { names: [String] = Routes.names?; }
+/// ```
+typeConstructor List<T> {}
 
 /// Represents a value or an error.
 ///
@@ -8165,10 +8206,7 @@ private struct UnityModule {
 
     // Resolve collection storage on demand. Failed metadata is an ordinary
     // read error; callers control retry and attachment-scoped caching.
-    private fn listLayout(
-        // Address of a non-null managed list object.
-        object: address,
-    ) -> UnityListLayout! {
+    private fn collectionClass(object: address) -> address! {
         let names = UnityClassNames { width: self.pointerSize as u64,
             name: self.profile.className, namespace: self.profile.classNamespace, declaring: None }
         if object == 0 { throw "Unity list object is null" }
@@ -8176,6 +8214,13 @@ private struct UnityModule {
         if header == 0 { throw "Unity object header is null" }
         let class = header
         if class == 0 { throw "Unity object class is null" }
+        return class
+    }
+
+    private fn listLayout(object: address) -> UnityListLayout! {
+        let names = UnityClassNames { width: self.pointerSize as u64,
+            name: self.profile.className, namespace: self.profile.classNamespace, declaring: None }
+        let class = self.collectionClass(object)?
         let fields = UnityFields { names, parent: self.profile.classParent,
             fields: self.profile.classFields, fieldName: self.profile.fieldName,
             fieldValue: self.profile.fieldValue, stride: self.profile.fieldStride }
@@ -11648,10 +11693,7 @@ private struct MonoModule {
 
     // Resolve collection storage on demand. Failed metadata is an ordinary
     // read error; callers control retry and attachment-scoped caching.
-    private fn listLayout(
-        // Address of a non-null managed list object.
-        object: address,
-    ) -> UnityListLayout! {
+    private fn collectionClass(object: address) -> address! {
         let names = UnityClassNames { width: self.pointerBytes(),
             name: self.layout.className, namespace: self.layout.classNamespace, declaring: None }
         if object == 0 { throw "Unity list object is null" }
@@ -11659,6 +11701,13 @@ private struct MonoModule {
         if header == 0 { throw "Unity object header is null" }
         let class = names.pointer(header, 0)?
         if class == 0 { throw "Unity object class is null" }
+        return class
+    }
+
+    private fn listLayout(object: address) -> UnityListLayout! {
+        let names = UnityClassNames { width: self.pointerBytes(),
+            name: self.layout.className, namespace: self.layout.classNamespace, declaring: None }
+        let class = self.collectionClass(object)?
         let fields = UnityFields { names, parent: self.layout.classParent,
             fields: self.layout.classFields, fieldName: self.layout.fieldName,
             fieldValue: self.layout.fieldValue, stride: self.layout.fieldStride }

@@ -1277,44 +1277,6 @@ fn legacy_settings_add_explains_static_declarations_and_families() {
 }
 
 #[test]
-fn legacy_list_types_point_to_variable_length_arrays() {
-    let source = r#"
-        state "game.exe" {}
-
-        fn remember(values: List<String>) {
-            print(values)
-        }
-    "#;
-    let diagnostics = splitscript::compile(source)
-        .expect_err("List should require an explicit collection migration");
-
-    assert_eq!(diagnostics.len(), 1, "unexpected cascade: {diagnostics:#?}");
-    let diagnostic = &diagnostics[0];
-    assert_eq!(
-        diagnostic.message,
-        "C# `List<T>` maps to SplitScript's `[T]` array type"
-    );
-    assert_eq!(&source[diagnostic.span.start..diagnostic.span.end], "List");
-    assert!(diagnostic.fixes.is_empty());
-    assert!(diagnostic.notes.iter().any(|note| {
-        note.contains("`[T]`") && note.contains("`[T; N]`") && note.contains("fixed-length")
-    }));
-    assert!(diagnostic.notes.iter().any(|note| {
-        note.contains("`indexOf`") && note.contains("`u32?`") && note.contains("C#'s `-1`")
-    }));
-    assert!(diagnostic.notes.iter().any(|note| {
-        note.contains("size-changing array operations")
-            && note.contains("will not add a separate `List<T>`")
-    }));
-    assert!(
-        diagnostic
-            .notes
-            .iter()
-            .any(|note| { note.contains("`Set<T>`") && note.contains("not a substitute") })
-    );
-}
-
-#[test]
 fn familiar_unique_and_key_value_collection_types_have_canonical_fixes() {
     use splitscript::FixApplicability;
 
@@ -1365,28 +1327,6 @@ fn familiar_unique_and_key_value_collection_types_have_canonical_fixes() {
         .replace("HashSet", "Set");
     splitscript::compile(&fixed)
         .expect("applying the canonical collection type replacements should compile");
-}
-
-#[test]
-fn a_source_type_named_list_is_not_mistaken_for_the_legacy_collection() {
-    let source = r#"
-        struct List {
-            value: i32,
-        }
-        state "game.exe" {}
-        fn invalid(value: List<i32>) {}
-    "#;
-    let diagnostics = splitscript::compile(source)
-        .expect_err("ordinary source structs are not generic constructors");
-
-    assert!(
-        diagnostics
-            .iter()
-            .any(|diagnostic| { diagnostic.message == "unknown generic type constructor `List`" })
-    );
-    assert!(!diagnostics.iter().any(|diagnostic| {
-        diagnostic.message == "C# `List<T>` maps to SplitScript's `[T]` array type"
-    }));
 }
 
 #[test]

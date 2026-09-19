@@ -174,6 +174,20 @@ impl FailurePayloadDemand {
 
         for ty in reachability.managed_decoders() {
             let plan = capabilities.managed_decoder(ty).unwrap();
+            if matches!(
+                plan.kind,
+                crate::managed_read::ManagedDecoderKind::List { .. }
+            ) {
+                let layout = semantics
+                    .types()
+                    .id_for_standard(crate::stdlib::StdlibTypeId::UnityListLayout);
+                for target in &results[&plan.output] {
+                    dependencies
+                        .entry(*target)
+                        .or_default()
+                        .extend(&results[&layout]);
+                }
+            }
             if let Some(child) = plan.kind.child() {
                 let child = capabilities.managed_decoder(child).unwrap().output;
                 for target in &results[&plan.output] {

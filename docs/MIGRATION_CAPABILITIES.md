@@ -83,7 +83,7 @@ Start with the [complete ASL porting guide](ASL_PORTING.md) for lifecycle and se
 
 - **Tuple-shaped collection entries** (*Use a typed pattern*): SplitScript does not use anonymous tuple element types. Give the entry shape a small named `struct`, store it in `[Entry]`, and destructure its fields in loops and patterns. Canonical: `struct`. [Porting recipe](ASL_PORTING.md#collection-search-and-run-scoped-sets).
 
-- **List<T> collections** (*Use a typed pattern*): Use `[T]` for C# ordered list semantics; size-changing operations belong on variable-length arrays, while `[T; N]` remains fixed and no separate List type is planned. Canonical: `[T].length`, `[T].contains`, `[T].indexOf`, `[T].set`, `[T].push`, `[T].extend`, `[T].remove`, `[T].removeAt`, `[T].pop`, `[T].clear`. [Porting recipe](ASL_PORTING.md#collection-search-and-run-scoped-sets).
+- **List<T> collections** (*Use a typed pattern*): Use `[T]` for C# ordered list semantics; size-changing operations belong on variable-length arrays, while `[T; N]` remains fixed. In Unity schemas, `List<T>` describes remote list storage and reads produce owned arrays. Canonical: `[T].length`, `[T].contains`, `[T].indexOf`, `[T].set`, `[T].push`, `[T].extend`, `[T].remove`, `[T].removeAt`, `[T].pop`, `[T].clear`. [Porting recipe](ASL_PORTING.md#collection-search-and-run-scoped-sets).
 
 ### Unity and emulators
 

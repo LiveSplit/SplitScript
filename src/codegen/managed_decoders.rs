@@ -37,6 +37,7 @@ pub(super) fn compile(
         lowering,
         capabilities,
         entered: None,
+        list: matches!(node, ManagedDecoderKind::List { .. }),
     };
     let mut locals = Vec::new();
     match node {
@@ -55,7 +56,7 @@ pub(super) fn compile(
                     .val_type(Type::Result(result_for(reader.output(value), lowering))),
             ),
         )),
-        ManagedDecoderKind::Array { element } => {
+        ManagedDecoderKind::Array { element } | ManagedDecoderKind::List { element } => {
             let TypeKind::Array { layout, .. } = lowering.semantics.types().kind(value) else {
                 unreachable!()
             };
@@ -75,6 +76,19 @@ pub(super) fn compile(
                 ),
             ));
             reader.entered = Some(8);
+            if reader.list {
+                let (_, _, callable) = list_binding(lowering);
+                locals.push((1, nullable(lowering.gc.val_type(Type::Callable(callable)))));
+                locals.push((
+                    1,
+                    nullable(
+                        lowering
+                            .gc
+                            .val_type(Type::Result(list_layout_result(lowering))),
+                    ),
+                ));
+                locals.push((3, ValType::I64));
+            }
         }
         _ => {}
     }
@@ -209,6 +223,10 @@ pub(super) fn compile(
             emit_result_success(&mut f, result, lowering.gc);
         }
         ManagedDecoderKind::Array { element } => reader.array(&mut f, element),
+        ManagedDecoderKind::List { element } => {
+            reader.list_header(&mut f);
+            reader.array(&mut f, element);
+        }
     }
     f.instruction(&I::End);
     f
@@ -220,6 +238,7 @@ struct Reader<'a, 'b> {
     lowering: &'a EmissionContext<'b>,
     capabilities: &'a CapabilityAnalysis,
     entered: Option<u32>,
+    list: bool,
 }
 
 impl Reader<'_, '_> {
@@ -239,9 +258,14 @@ impl Reader<'_, '_> {
                 .instruction(&I::I32Const(0))
                 .instruction(&I::LocalGet(CONTEXT))
                 .instruction(&I::I32Const(0))
-                .instruction(&I::ArrayGet(context))
-                .instruction(&I::I64Const(1))
-                .instruction(&I::I64Sub)
+                .instruction(&I::ArrayGet(context));
+            if self.list {
+                f.instruction(&I::LocalGet(entered))
+                    .instruction(&I::I64ExtendI32U);
+            } else {
+                f.instruction(&I::I64Const(1));
+            }
+            f.instruction(&I::I64Sub)
                 .instruction(&I::ArraySet(context))
                 .instruction(&I::End);
         }
@@ -262,20 +286,34 @@ impl Reader<'_, '_> {
     }
 
     fn child_field(&self, f: &mut Function, child: TypeId, local: u32, field: u32, ty: Type) {
-        f.instruction(&I::LocalGet(local))
-            .instruction(&I::RefAsNonNull);
-        emit_typed_struct_get(
+        self.result_field(
             f,
-            self.lowering
-                .gc
-                .index(Type::Result(result_for(self.output(child), self.lowering))),
+            result_for(self.output(child), self.lowering),
+            local,
             field,
             ty,
         );
     }
 
+    fn result_field(
+        &self,
+        f: &mut Function,
+        result: ResultTypeId,
+        local: u32,
+        field: u32,
+        ty: Type,
+    ) {
+        f.instruction(&I::LocalGet(local))
+            .instruction(&I::RefAsNonNull);
+        emit_typed_struct_get(f, self.lowering.gc.index(Type::Result(result)), field, ty);
+    }
+
     fn forward_failure(&self, f: &mut Function, child: TypeId, local: u32) {
-        self.child_field(f, child, local, 1, Type::I32);
+        self.forward_result_failure(f, result_for(self.output(child), self.lowering), local);
+    }
+
+    fn forward_result_failure(&self, f: &mut Function, result: ResultTypeId, local: u32) {
+        self.result_field(f, result, local, 1, Type::I32);
         f.instruction(&I::If(BlockType::Empty));
         self.leave(f);
         emit_default(
@@ -284,12 +322,129 @@ impl Reader<'_, '_> {
             self.lowering.gc,
         );
         f.instruction(&I::I32Const(1));
-        self.child_field(f, child, local, 2, Type::Standard(StdlibTypeId::String));
+        self.result_field(f, result, local, 2, Type::Standard(StdlibTypeId::String));
         f.instruction(&I::StructNew(
             self.lowering.gc.index(Type::Result(self.result)),
         ))
         .instruction(&I::Return)
         .instruction(&I::End);
+    }
+
+    fn list_header(&self, f: &mut Function) {
+        let l = self.lowering;
+        let (structure, field, callable) = list_binding(l);
+        let callable_type = l.gc.index(Type::Callable(callable));
+        let result = list_layout_result(l);
+        f.instruction(&I::LocalGet(1)).instruction(&I::LocalSet(15));
+        f.instruction(&I::LocalGet(CONTEXT))
+            .instruction(&I::LocalGet(1))
+            .instruction(&I::Call(l.runtime_helpers.function(H::EnterManagedObject)))
+            .instruction(&I::LocalTee(8))
+            .instruction(&I::I32Eqz);
+        self.fail_if(
+            f,
+            "managed list encountered a null object, cycle, or object/depth limit",
+        );
+        f.instruction(&I::GlobalGet(
+            l.runtime_globals.provider_preparation_value.unwrap(),
+        ))
+        .instruction(&I::RefAsNonNull)
+        .instruction(&I::StructGet {
+            struct_type_index: l.gc.index(Type::Struct(structure)),
+            field_index: field,
+        })
+        .instruction(&I::LocalTee(11))
+        .instruction(&I::StructGet {
+            struct_type_index: callable_type,
+            field_index: 1,
+        })
+        .instruction(&I::LocalGet(1))
+        .instruction(&I::LocalGet(11))
+        .instruction(&I::StructGet {
+            struct_type_index: callable_type,
+            field_index: 0,
+        })
+        .instruction(&I::CallRef(l.gc.callable_function_index(callable)))
+        .instruction(&I::LocalSet(12));
+        self.forward_result_failure(f, result, 12);
+        for (field, count) in [
+            (crate::stdlib::StdlibFieldId::UnityListLayoutSize, true),
+            (crate::stdlib::StdlibFieldId::UnityListLayoutItems, false),
+        ] {
+            self.list_field(f, field, count);
+            if count {
+                f.instruction(&I::LocalTee(13))
+                    .instruction(&I::I64Const(0))
+                    .instruction(&I::I64LtS);
+                self.fail_if(f, "managed list count is negative");
+            } else {
+                f.instruction(&I::LocalSet(1));
+            }
+        }
+    }
+
+    fn list_field(&self, f: &mut Function, field: crate::stdlib::StdlibFieldId, count: bool) {
+        let l = self.lowering;
+        self.result_field(
+            f,
+            list_layout_result(l),
+            12,
+            0,
+            Type::Standard(StdlibTypeId::UnityListLayout),
+        );
+        f.instruction(&I::RefAsNonNull)
+            .instruction(&I::StructGet {
+                struct_type_index: l.gc.standard_index(StdlibTypeId::UnityListLayout),
+                field_index: l.gc.standard_field_index(field),
+            })
+            .instruction(&I::I64ExtendI32U)
+            .instruction(&I::LocalSet(14));
+        super::runtime_helpers::process::emit_invalid_managed_span(f, 15, 2, |f| {
+            f.instruction(&I::LocalGet(14));
+            if count {
+                f.instruction(&I::I64Const(4));
+            } else {
+                f.instruction(&I::LocalGet(2))
+                    .instruction(&I::I64ExtendI32U);
+            }
+            f.instruction(&I::I64Add);
+        });
+        self.fail_if(f, "managed list field exceeds the target address space");
+        f.instruction(&I::LocalGet(0))
+            .instruction(&I::LocalGet(15))
+            .instruction(&I::LocalGet(14))
+            .instruction(&I::I64Add)
+            .instruction(&I::I32Const(l.abi_read.destination(8)));
+        if count {
+            f.instruction(&I::I32Const(4));
+        } else {
+            f.instruction(&I::LocalGet(2));
+        }
+        f.instruction(&I::LocalGet(2))
+            .instruction(&I::Call(l.runtime_helpers.function(H::ReadManagedMemory)))
+            .instruction(&I::I32Eqz);
+        self.fail_if(f, "managed list field could not be read");
+        if count {
+            f.instruction(&I::I32Const(l.abi_read.start()))
+                .instruction(&I::I32Load(memarg()))
+                .instruction(&I::I64ExtendI32S);
+        } else {
+            read_word(f, l, false);
+        }
+    }
+
+    fn verify_list_header(&self, f: &mut Function) {
+        for (field, count, original) in [
+            (crate::stdlib::StdlibFieldId::UnityListLayoutSize, true, 13),
+            (crate::stdlib::StdlibFieldId::UnityListLayoutItems, false, 1),
+        ] {
+            self.list_field(f, field, count);
+            f.instruction(&I::LocalGet(original)).instruction(&I::I64Ne);
+            self.fail_if(
+                f,
+                "managed list changed size or backing array during the read",
+            );
+        }
     }
 
     fn array(&self, f: &mut Function, element: TypeId) {
@@ -324,15 +479,39 @@ impl Reader<'_, '_> {
                     .instruction(&I::End);
             }
         };
+        if self.list {
+            // An empty list may have no allocated backing vector.
+            f.instruction(&I::LocalGet(1))
+                .instruction(&I::I64Eqz)
+                .instruction(&I::If(BlockType::Empty))
+                .instruction(&I::LocalGet(13))
+                .instruction(&I::I64Eqz)
+                .instruction(&I::I32Eqz);
+            self.fail_if(f, "managed list has live elements without a backing array");
+            self.verify_list_header(f);
+            self.leave(f);
+            f.instruction(&I::I32Const(0))
+                .instruction(&I::ArrayNewDefault(storage_type))
+                .instruction(&I::I32Const(0))
+                .instruction(&I::I32Const(super::array_value::FROZEN_VERSION))
+                .instruction(&I::StructNew(l.gc.index(Type::Array(*layout))));
+            emit_result_success(f, self.result, l.gc);
+            f.instruction(&I::Return).instruction(&I::End);
+        }
         f.instruction(&I::LocalGet(CONTEXT))
             .instruction(&I::LocalGet(1))
-            .instruction(&I::Call(l.runtime_helpers.function(H::EnterManagedObject)))
-            .instruction(&I::LocalTee(8))
-            .instruction(&I::I32Eqz);
+            .instruction(&I::Call(l.runtime_helpers.function(H::EnterManagedObject)));
+        if !self.list {
+            f.instruction(&I::LocalTee(8));
+        }
+        f.instruction(&I::I32Eqz);
         self.fail_if(
             f,
             "managed array encountered a null object, cycle, or object/depth limit",
         );
+        if self.list {
+            f.instruction(&I::I32Const(2)).instruction(&I::LocalSet(8));
+        }
         super::runtime_helpers::process::emit_invalid_managed_span(f, 1, 2, |f| {
             f.instruction(&I::LocalGet(2))
                 .instruction(&I::I64ExtendI32U)
@@ -362,9 +541,35 @@ impl Reader<'_, '_> {
             "managed array requires a zero-based vector representation",
         );
         read_word(f, l, true);
-        f.instruction(&I::LocalSet(5))
-            .instruction(&I::LocalGet(CONTEXT))
-            .instruction(&I::LocalGet(5))
+        f.instruction(&I::LocalSet(5));
+        if self.list {
+            f.instruction(&I::LocalGet(13))
+                .instruction(&I::LocalGet(5))
+                .instruction(&I::I64GtU);
+            self.fail_if(f, "managed list count exceeds its backing array capacity");
+            if strides != [0, 0] {
+                f.instruction(&I::LocalGet(5))
+                    .instruction(&I::I64Const(u32::MAX as i64))
+                    .instruction(&I::I64Const(-1))
+                    .instruction(&I::LocalGet(2))
+                    .instruction(&I::I32Const(4))
+                    .instruction(&I::I32Eq)
+                    .instruction(&I::Select)
+                    .instruction(&I::LocalGet(2))
+                    .instruction(&I::I64ExtendI32U)
+                    .instruction(&I::I64Const(4))
+                    .instruction(&I::I64Mul)
+                    .instruction(&I::I64Sub);
+                stride(f);
+                f.instruction(&I::I64DivU).instruction(&I::I64GtU);
+                self.fail_if(
+                    f,
+                    "managed list backing array capacity overflows its storage span",
+                );
+            }
+        }
+        f.instruction(&I::LocalGet(CONTEXT))
+            .instruction(&I::LocalGet(if self.list { 13 } else { 5 }))
             .instruction(&I::Call(
                 l.runtime_helpers.function(H::ChargeManagedElements),
             ))
@@ -380,6 +585,9 @@ impl Reader<'_, '_> {
             f.instruction(&I::I64Mul).instruction(&I::I64Add);
         });
         self.fail_if(f, "managed array payload exceeds the target address space");
+        if self.list {
+            f.instruction(&I::LocalGet(13)).instruction(&I::LocalSet(5));
+        }
         f.instruction(&I::LocalGet(CONTEXT))
             .instruction(&I::LocalGet(5));
         stride(f);
@@ -436,6 +644,9 @@ impl Reader<'_, '_> {
             .instruction(&I::Br(0))
             .instruction(&I::End)
             .instruction(&I::End);
+        if self.list {
+            self.verify_list_header(f);
+        }
         self.leave(f);
         f.instruction(&I::LocalGet(9)).instruction(&I::LocalGet(6));
         f.instruction(&I::I32Const(super::array_value::FROZEN_VERSION))
@@ -449,6 +660,39 @@ fn nullable(mut ty: ValType) -> ValType {
         reference.nullable = true;
     }
     ty
+}
+
+fn list_layout_result(l: &EmissionContext<'_>) -> ResultTypeId {
+    result_for(
+        l.semantics
+            .types()
+            .id_for_standard(StdlibTypeId::UnityListLayout),
+        l,
+    )
+}
+
+fn list_binding(
+    l: &EmissionContext<'_>,
+) -> (crate::ast::StructId, u32, crate::ast::CallableTypeId) {
+    let structure = l
+        .structs
+        .iter()
+        .find(|s| s.name == crate::stdlib::PROVIDER_BINDINGS_TYPE)
+        .unwrap();
+    let (index, field) = structure
+        .fields
+        .iter()
+        .enumerate()
+        .find(|(_, field)| field.name == crate::stdlib::MANAGED_LIST_LAYOUT_FIELD)
+        .unwrap();
+    let TypeKind::Callable { layout, .. } = l
+        .semantics
+        .types()
+        .kind(l.semantics.struct_field_type(field.id).unwrap())
+    else {
+        unreachable!()
+    };
+    (structure.id, index as u32, *layout)
 }
 
 fn arguments(f: &mut Function) {

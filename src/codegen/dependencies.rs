@@ -770,7 +770,7 @@ impl BackendDependencies {
         use crate::managed_read::ManagedDecoderKind;
         dependencies.require(RuntimeHelperId::ReadManagedMemory);
         match capabilities.managed_decoder(value).unwrap().kind {
-            ManagedDecoderKind::Array { .. } => {
+            ManagedDecoderKind::Array { .. } | ManagedDecoderKind::List { .. } => {
                 dependencies.require(RuntimeHelperId::EnterManagedObject);
                 dependencies.require(RuntimeHelperId::ChargeManagedBytes);
                 dependencies.require(RuntimeHelperId::ChargeManagedElements);

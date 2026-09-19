@@ -782,7 +782,8 @@ impl Reachability {
                         .then_some(id)
                 }));
                 match plan.kind {
-                    crate::managed_read::ManagedDecoderKind::Array { element } => {
+                    crate::managed_read::ManagedDecoderKind::Array { element }
+                    | crate::managed_read::ManagedDecoderKind::List { element } => {
                         pending_decoders.push(element)
                     }
                     crate::managed_read::ManagedDecoderKind::Optional { value } => {
@@ -1129,7 +1130,19 @@ impl Reachability {
                 }
                 TypeKind::Struct(structure) => {
                     self.gc_structs.insert(*structure);
-                    pending.extend(capabilities.structural_dependency_types(ty));
+                    // Generated attachment structs may have had unused
+                    // metadata fields removed after capability checking.
+                    // Follow the fields that will actually be emitted.
+                    let declaration = program
+                        .structs
+                        .iter()
+                        .find(|item| item.id == *structure)
+                        .expect("reachable source structs have declarations");
+                    pending.extend(declaration.fields.iter().map(|field| {
+                        semantics
+                            .struct_field_type(field.id)
+                            .expect("checked struct fields have semantic types")
+                    }));
                 }
                 TypeKind::Enum(enumeration) => {
                     self.gc_enums.insert(*enumeration);

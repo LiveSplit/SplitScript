@@ -1,0 +1,48 @@
+struct Record { pair: [i32; 2], }
+image "Assembly-CSharp" {
+    class ProfileProbe {
+        static List<[String?]> rows;
+        static [List<String>?] vectors;
+        static List<List<String>> nested;
+        static ProfileProbe instance;
+        static List<i32> numbers;
+        static List<address> pointers;
+        static List<Record> records;
+        List<ProfileProbe?> children;
+        List<String> tags;
+        i32 value;
+    }
+}
+state Unity ["game.exe"] {
+    rows: [[String?]] = ProfileProbe.rows?;
+    vectors: [[String]?] = ProfileProbe.vectors?;
+    nested: [[String]] = ProfileProbe.nested?;
+    tree = ProfileProbe.instance?.snapshot()?;
+    numbers = ProfileProbe.numbers?;
+    pointers = ProfileProbe.pointers?;
+    records = ProfileProbe.records?;
+}
+whileAttached {
+    setVariable("rows", current.rows)
+    setVariable("vectors", current.vectors)
+    setVariable("nested", current.nested)
+    setVariable("tree", current.tree)
+    setVariable("old", old.rows)
+    setVariable("numbers", current.numbers)
+    setVariable("pointers", current.pointers)
+    setVariable("records", current.records)
+    setVariable("result", match ProfileProbe.rows {
+        Ok(_) => "ok",
+        Err(error) => error,
+    })
+    let mutation = process.read<i32>(0x6f000) else return
+    if mutation == 1 { current.rows.clear() }
+    if mutation == 2 { current.nested[0].clear() }
+    if mutation == 3 { current.tree.tags.clear() }
+    if mutation == 5 { current.records[0].pair[0] = 99 }
+    if mutation == 4 {
+        let local = ["local"]
+        local.push("okay")
+        setVariable("local", local.length())
+    }
+}

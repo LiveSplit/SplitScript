@@ -53,6 +53,14 @@ fn fixtures() -> BTreeMap<String, String> {
     BTreeMap::from([
         ("native".into(), "state \"game.exe\" {}".into()),
         (
+            "il2cpp-list".into(),
+            schema(selector, "static List<String> value;"),
+        ),
+        (
+            "mono-list".into(),
+            schema("Unity.mono(MonoVersion.V2)", "static List<String> value;"),
+        ),
+        (
             "unity-nested-metadata".into(),
             include_str!("../tests/unity_nested_metadata.split").into(),
         ),

@@ -1555,8 +1555,8 @@ impl SemanticModel {
     /// Returns the source value produced by reading a managed field.
     ///
     /// A class name in a managed schema describes the metadata field's class,
-    /// while its runtime value is a live managed reference. Primitive and
-    /// aggregate value fields retain their declared type.
+    /// while its runtime value is a live managed reference. Other storage
+    /// schemas produce their recursively owned value, such as arrays for lists.
     pub fn managed_field_value_type(&self, field: ManagedFieldId) -> Option<TypeId> {
         let declared = self.managed_field_type(field)?;
         Some(match self.types.kind(declared) {
@@ -1578,7 +1578,7 @@ impl SemanticModel {
                         "nullable managed reference projections are materialized during checking",
                     )
             }
-            _ => declared,
+            _ => self.managed_owned_type(declared),
         })
     }
 
@@ -1592,6 +1592,53 @@ impl SemanticModel {
     /// remains a class value here; only live access projects it to `C.Ref`.
     pub fn managed_field_snapshot_type(&self, field: ManagedFieldId) -> Option<TypeId> {
         self.managed_field_type(field)
+            .map(|ty| self.managed_owned_type(ty))
+    }
+
+    /// Projects a remote storage schema to its recursively owned value type.
+    /// The corresponding layouts are materialized during type checking.
+    pub(crate) fn managed_owned_type(&self, ty: TypeId) -> TypeId {
+        self.try_managed_owned_type(ty)
+            .expect("managed field projections are materialized during checking")
+    }
+
+    pub(crate) fn try_managed_owned_type(&self, ty: TypeId) -> Option<TypeId> {
+        let shape = match self.types.kind(ty) {
+            TypeKind::Application {
+                constructor,
+                arguments,
+                ..
+            } if *constructor == crate::stdlib::StdlibTypeConstructorId::List => {
+                Some((self.try_managed_owned_type(arguments[0])?, None))
+            }
+            TypeKind::Array {
+                element, length, ..
+            } => {
+                let owned = self.try_managed_owned_type(*element)?;
+                if owned == *element {
+                    return Some(ty);
+                }
+                Some((owned, *length))
+            }
+            TypeKind::Option { value, .. } => {
+                let owned = self.try_managed_owned_type(*value)?;
+                if owned == *value {
+                    return Some(ty);
+                }
+                return self.types.iter().find_map(|(id, kind)| {
+                    matches!(kind, TypeKind::Option { value, .. } if *value == owned).then_some(id)
+                });
+            }
+            _ => None,
+        };
+        let Some((element, length)) = shape else {
+            return Some(ty);
+        };
+        self.types.iter().find_map(|(id, kind)| {
+            matches!(kind, TypeKind::Array { element: candidate, length: size, .. }
+                if *candidate == element && *size == length)
+            .then_some(id)
+        })
     }
 
     pub fn standard_field_type(&self, field: StdlibFieldId) -> Option<TypeId> {

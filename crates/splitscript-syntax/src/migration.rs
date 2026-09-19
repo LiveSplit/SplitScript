@@ -192,8 +192,7 @@ pub const ASL_TIMER_RUN_METADATA_DIAGNOSTIC: MigrationDiagnosticId =
     MigrationDiagnosticId::new("asl.timer.run-metadata-path");
 pub const ASL_TIMER_CONTROL_DIAGNOSTIC: MigrationDiagnosticId =
     MigrationDiagnosticId::new("asl.timer.control-path");
-pub const ASL_LIST_TYPE_DIAGNOSTIC: MigrationDiagnosticId =
-    MigrationDiagnosticId::new("asl.collection.list-type");
+
 pub const ASL_MEMORY_WATCHER_LIST_DIAGNOSTIC: MigrationDiagnosticId =
     MigrationDiagnosticId::new("asl.state.memory-watcher-list-type");
 pub const ASL_TASK_RUN_DIAGNOSTIC: MigrationDiagnosticId =
@@ -429,19 +428,6 @@ pub const DIAGNOSTICS: &[MigrationDiagnostic] = &[
             "the current host does not expose run-offset or timing-method reads or writes to WebAssembly autosplitters",
             "a future API must define ordering with timer decisions, reset and undo behavior, persistence, precision, and how concurrent UI changes are resolved",
             "do not silently drop this operation or replace it with `setVariable`; record the port as behavior-limited until the host contract exists",
-        ],
-    },
-    MigrationDiagnostic {
-        id: ASL_LIST_TYPE_DIAGNOSTIC,
-        concept: MigrationConceptId::new("asl.collection.list"),
-        message: "C# `List<T>` maps to SplitScript's `[T]` array type",
-        primary_label: "use array syntax and review size-changing operations",
-        notes: &[
-            "`[T]` is the variable-length ordered sequence type; `[T; N]` is the distinct fixed-length form used when the length is part of the type",
-            "arrays already provide `length`, `contains`, `indexOf`, indexing, and in-place element replacement; `indexOf` returns `u32?` with `None` instead of C#'s `-1` sentinel",
-            "size-changing array operations such as append, insert, remove, and clear are planned on `[T]`; SplitScript will not add a separate `List<T>` compatibility type",
-            "use `Set<T>` only when the source semantics genuinely require uniqueness rather than ordering and duplicates; it is not a substitute for a C# list",
-            "there is no automatic rewrite yet because the generic `List<T>` syntax and any size-changing calls must migrate together",
         ],
     },
     MigrationDiagnostic {
@@ -1106,7 +1092,6 @@ pub fn legacy_value_path_diagnostic(path: &str) -> Option<MigrationDiagnosticId>
 
 pub fn legacy_type_diagnostic(name: &str) -> Option<MigrationDiagnosticId> {
     match name {
-        "List" => Some(ASL_LIST_TYPE_DIAGNOSTIC),
         "MemoryWatcherList" => Some(ASL_MEMORY_WATCHER_LIST_DIAGNOSTIC),
         "TimerPhase" => Some(ASL_TIMER_PHASE_DIAGNOSTIC),
         "Stopwatch" => Some(ASL_MONOTONIC_TIME_DIAGNOSTIC),
@@ -2439,7 +2424,7 @@ pub const CONCEPTS: &[MigrationConcept] = &[
         name: "List<T> collections",
         sources: ASL_CSHARP,
         support: MigrationSupport::TypedPattern,
-        summary: "Use [`[T]`] for C# ordered list semantics; size-changing operations belong on variable-length arrays, while [`[T; N]`] remains fixed and no separate List type is planned.",
+        summary: "Use [`[T]`] for C# ordered list semantics; size-changing operations belong on variable-length arrays, while [`[T; N]`] remains fixed. In Unity schemas, [`List<T>`] describes remote list storage and reads produce owned arrays.",
         targets: &[
             MigrationTarget::StandardLibraryItem("Array.length"),
             MigrationTarget::StandardLibraryItem("Array.contains"),

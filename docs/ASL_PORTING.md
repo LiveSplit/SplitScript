@@ -1666,8 +1666,8 @@ After choosing a SplitScript collection shape, C# `.Count` also becomes
 `.length()`. For an array this is the element count; for [`Set<T>`] it is the
 number of unique stored values.
 
-C# `List<T>` maps to SplitScript's [`[T]`] array type. SplitScript will not add a
-separate compatibility-shaped `List<T>`. [`[T]`] is the variable-length ordered
+Use [`[T]`] for local ordered collections. In Unity schemas, [`List<T>`]
+describes remote list storage; reading it produces an owned array. [`[T]`] is the variable-length ordered
 sequence, while [`[T; N]`] carries an exact fixed length for layouts and other
 code where the size is part of the type. Use [`Set<T>`] only when the original
 data is genuinely an unordered collection of unique values, not merely because
@@ -1800,9 +1800,7 @@ handler without a separate event API. The generated update loop runs
 [`whileAttached`] before timer-decision actions.
 
 Growable ordered storage, insertion order, and repeated equal values all belong
-to [`[T]`]. They do not justify another collection type. Record any still-missing
-specific operation rather than describing `List<T>` itself as missing. Indexed
-insertion remains deferred until a maintained port demonstrates that it is
+to [`[T]`]. Indexed insertion remains deferred until a maintained port demonstrates that it is
 needed.
 
 ## Static settings declarations
