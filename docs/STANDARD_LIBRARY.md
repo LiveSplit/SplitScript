@@ -555,8 +555,9 @@ NUL-terminated UTF-16LE similarly uses
 units, malformed surrogate sequences become the Unicode replacement character,
 and successful values are still ordinary `String` values. Unity managed
 strings are declared directly in an [`image`] / [`class`] schema as
-`String field maxLength maxUtf16Units;`. The generated reader follows the
-managed object layout, rejects inaccessible or overlong payloads, and replaces
+`String field;`. The generated reader follows the
+managed object layout and stored length, rejects inaccessible payloads or
+exhausted materialization budgets, and replaces
 malformed surrogate sequences with the Unicode replacement character.
 
 Numeric conversions and integer formatting use `value as Type`. The [`Display`]

@@ -178,7 +178,6 @@ pub(crate) fn language_identifier_kind(
         LanguageItemKind::Syntax => match item.id {
             LanguageItemId::ManagedStaticField
             | LanguageItemId::ManagedMetadataNames
-            | LanguageItemId::ManagedStringMaxLength
             | LanguageItemId::StateProviderAlternative
             | LanguageItemId::StatePointerField
                 if fragment =>
@@ -1205,10 +1204,6 @@ impl<'ast> Visitor<'ast> for HighlightCollector<'_> {
         if let Some(span) = field.metadata_names.keyword_span {
             self.insert_language_token(span, "from", 0);
         }
-        if let Some(max_length) = field.max_length {
-            self.insert_language_token(max_length.keyword_span, "maxLength", 0);
-            self.insert(max_length.value_span, SemanticTokenKind::Number, 0);
-        }
         self.insert(
             field.name_span,
             SemanticTokenKind::Property,
@@ -1784,7 +1779,7 @@ image "Assembly-CSharp" {
     namespace Game {
         class Player from "RuntimePlayer" {
             static f32 health from "_health";
-            String name maxLength 64;
+            String name;
             if edition == Edition.Alternate {
                 f32 armor;
             }
@@ -1799,15 +1794,7 @@ let player: Player.Ref? = None
             .expect("managed schema highlighting fixture");
         let highlights = database.semantic_highlights().unwrap();
 
-        for keyword in [
-            "image",
-            "namespace",
-            "class",
-            "from",
-            "static",
-            "maxLength",
-            "if",
-        ] {
+        for keyword in ["image", "namespace", "class", "from", "static", "if"] {
             assert!(contains(
                 source,
                 &highlights,
@@ -1816,13 +1803,6 @@ let player: Player.Ref? = None
                 0,
             ));
         }
-        assert!(contains(
-            source,
-            &highlights,
-            "64",
-            SemanticTokenKind::Number,
-            0,
-        ));
         assert!(contains(
             source,
             &highlights,

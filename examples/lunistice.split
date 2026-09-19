@@ -44,7 +44,7 @@ image "Assembly-CSharp" {
             i32 level from "currentLevel";
         } else {
             /// The DLC demo's current managed scene name.
-            String scene from "_currentScene" maxLength 16;
+            String scene from "_currentScene";
         }
     }
 

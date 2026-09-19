@@ -216,10 +216,6 @@ impl<'ast> Visitor<'ast> for SpanCollector {
         if let Some(span) = field.metadata_names.span {
             self.push(span);
         }
-        if let Some(max_length) = field.max_length {
-            self.push(max_length.span);
-            self.push(max_length.value_span);
-        }
         self.visit_type_ref(&field.ty);
     }
 

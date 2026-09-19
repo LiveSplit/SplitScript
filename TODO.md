@@ -282,7 +282,7 @@ to inference or code generation.
 - [x] Port `examples/lunistice.split` from manual class/instance/offset globals
   and raw `process.read` calls to generated transactional `GameManager` and
   `Timer` snapshots. The DLC scene is now an ordinary schema-declared
-  `String scene maxLength 16` field read as part of the shared snapshot. Preserve
+  `String scene` field read as part of the shared snapshot. Preserve
   all existing autosplitter behavior and keep the user's current local example
   edits out of intermediate mechanical rewrites.
 - [x] Add synthetic runtime coverage for both base and DLC metadata shapes,
@@ -322,12 +322,9 @@ to inference or code generation.
   native discovery or bespoke compiler names. Until then, keep this deferred;
   the current ASR Unity support covers managed metadata and scenes but not the
   native time manager.
-- [x] Add bounded managed-string fields as `String field maxLength N` and
-  `String? field maxLength N`. The policy is binding-plan data shared by static,
-  live, and snapshot reads; nullability is typed, overlong payloads fail rather
-  than truncate, UTF-16 replacement decoding is consistent, the raw
-  `Process.readManagedString` surface is gone, and diagnostics, completion,
-  hover, highlighting, docs, and Lunistice use the schema form.
+- [x] Add managed-string fields as `String field` and `String? field`, with
+  shared decoding for static, live, and snapshot reads. Object headers supply
+  the length; nullability is typed and malformed UTF-16 uses replacement decoding.
 - [ ] After ASR has a tested managed-array and managed-list representation,
   align the schema syntax and runtime model with it rather than independently
   fixing target layouts in SplitScript. Both should materialize as `[T]`; do

@@ -92,7 +92,7 @@ host will ever discover the declared process.
 - Correction: declare both exact executable names in one state candidate array.
 - Source: UnityASL reads `LastEvent` as a managed string.
 - Candidate: hard-coded Mono object offsets followed by `readUtf16Le`.
-- Correction: declare the field as `String lastEvent maxLength N;` in the Unity schema and use its typed fallible field path.
+- Correction: declare the field as `String lastEvent;` in the Unity schema and use its typed fallible field path.
 - Remaining question: scene transitions arm starting and drive area splits, but
   the candidate removes scene state and starts on any timer-running edge. A
   Unity scene facility needs a separate design discussion.

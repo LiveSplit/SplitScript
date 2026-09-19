@@ -403,7 +403,7 @@ encoding. The UTF-16LE action is available only for an even ASL byte bound.
 
 The stricter UTF-8 malformed-input policy is equivalent for A Plague Tale's
 ASCII map identifiers. A Unity managed string is not a native buffer: declare
-it in the managed [`class`] schema with [`maxLength`](syntax@maxLength) instead
+it in the managed [`class`] schema instead
 of applying a native decoder to its object address.
 
 The maintained Arietta of Spirits port uses independent `utf8(128)` and
@@ -1487,7 +1487,7 @@ image "Assembly-CSharp" {
         static PlayerStats current from ["Instance", "_instance"];
         i32 district from "currDistrict";
         bool inRun;
-        String sceneName maxLength 64;
+        String sceneName;
     }
 }
 
@@ -1522,9 +1522,8 @@ Snapshots, arrays, strings, and completed instance searches materialize owned
 values; generated support is retained only when reachable.
 
 A managed string leaf is declared as an ordinary [`String`] or optional [`T?`]
-field with an explicit [`maxLength`](syntax@maxLength) read policy. The bound is
-the maximum UTF-16 code-unit length accepted from the target process; exceeding
-it rejects the read instead of truncating text. A required string rejects a
+field. Its stored UTF-16 length determines the complete read, with bounded
+scratch space and a shared materialization budget. A required string rejects a
 null managed reference, while an optional string maps that reference to
 [`None`]. Both still propagate memory failures normally. This keeps object
 headers and backend-specific decoding inside the generated Unity reader.

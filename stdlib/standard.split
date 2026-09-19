@@ -3549,8 +3549,8 @@ capability MemoryReadable: ManagedReadable {}
 ///
 /// Every [`MemoryReadable`] type satisfies this capability. [`String`] and
 /// nullable strings additionally decode managed object references and own their
-/// resulting text. String schema fields still require [`maxLength`] to bound the
-/// read. Declared class snapshots recursively materialize child classes and
+/// resulting text. String schema fields use their stored UTF-16 length and
+/// share a materialization budget. Class snapshots recursively read child classes and
 /// nullable child classes. Managed collection nodes are not yet implemented.
 /// [`ManagedReadable`] does not make a type usable with [`Process.read`], which
 /// still requires [`MemoryReadable`].
@@ -3561,7 +3561,7 @@ capability MemoryReadable: ManagedReadable {}
 ///
 /// ```splitscript
 /// image "Assembly-CSharp" {
-///     class Player { static String name maxLength 128; }
+///     class Player { static String name; }
 /// }
 /// state Unity ["game.exe"] { name = Player.name?; }
 /// whileAttached { print(current.name) }

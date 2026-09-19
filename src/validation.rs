@@ -486,7 +486,7 @@ fn syntactically_irrefutable_pattern(pattern: &ast::MatchPattern) -> bool {
 /// This is deliberately a post-inference semantic boundary shared by native
 /// state fields and managed terminal fields. Code generation may rely on the
 /// resulting invariant without rediscovering which source types are readable.
-/// Managed references and bounded managed strings have dedicated decoders and
+/// Managed references and managed strings have dedicated decoders and
 /// therefore do not participate in the ordinary `MemoryReadable` contract.
 fn validate_remote_memory_layouts(
     standard_library: &StandardLibrary,

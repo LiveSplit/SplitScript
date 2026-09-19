@@ -2903,33 +2903,6 @@ fn compiler_database_resolves_language_catalog_syntax() {
 }
 
 #[test]
-fn managed_string_policy_is_documented_at_its_keyword() {
-    use splitscript::tooling::{
-        database::{CompilerDatabase, DefinitionTarget},
-        language::LanguageItemId,
-    };
-
-    let source = r#"
-        image "Assembly-CSharp" {
-            class GameManager {
-                String scene maxLength 64;
-            }
-        }
-        state Unity ["game.exe"] {}
-    "#;
-    let mut database = CompilerDatabase::new(source);
-    let offset = source.find("maxLength").unwrap();
-    assert_eq!(
-        database.definition_at(offset).unwrap(),
-        Some(DefinitionTarget::Language(
-            LanguageItemId::ManagedStringMaxLength
-        ))
-    );
-    let hover = database.hover(offset).unwrap().expect("maxLength hover");
-    assert!(hover.markdown.contains("UTF-16"), "{}", hover.markdown);
-}
-
-#[test]
 fn checked_program_exposes_resolved_standard_library_calls_without_codegen() {
     let source = r#"
         state "game.exe" {}

@@ -3,7 +3,7 @@ image "Assembly-CSharp" {
         static ProfileProbe instance;
         ProfileProbe? left;
         ProfileProbe? right;
-        String text maxLength 8;
+        String text;
         u32 value0;
         u32 value1;
         u32 value2;

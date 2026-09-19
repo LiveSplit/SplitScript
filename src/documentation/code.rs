@@ -614,12 +614,12 @@ mod tests {
     fn fragment_highlighting_covers_contextual_syntax_and_wrapper_variants() {
         let library = StandardLibrary::new();
         let managed = signature(
-            "image \"Assembly-CSharp\" { namespace Game { class Player from \"RuntimePlayer\" { static String name maxLength 64; } } }",
+            "image \"Assembly-CSharp\" { namespace Game { class Player from \"RuntimePlayer\" { static String name; } } }",
             "/language/image.md",
             None,
             &library,
         );
-        for keyword in ["image", "namespace", "class", "from", "static", "maxLength"] {
+        for keyword in ["image", "namespace", "class", "from", "static"] {
             assert!(
                 managed.contains(&format!(
                     "data-splitscript-token=\"keyword\" class=\"hljs-keyword\">{keyword}</span>"

@@ -1,9 +1,9 @@
 image "Assembly-CSharp" {
     class ProfileProbe {
-        static String value maxLength 8;
+        static String value;
         static ProfileProbe instance;
-        String text maxLength 8;
-        String? optional maxLength 8;
+        String text;
+        String? optional;
     }
 }
 state Unity ["game.exe"] {

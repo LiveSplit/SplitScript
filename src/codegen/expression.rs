@@ -118,6 +118,7 @@ pub(super) struct ExprContext<'a> {
     /// Candidate snapshot parameter while evaluating a state field source or
     /// transform that depends on sibling fields.
     pub state_candidate: Option<u32>,
+    pub managed_read_context: Option<u32>,
     pub runtime_helpers: &'a RuntimeHelperPlan,
     pub functions: &'a HashMap<FunctionInstance, super::function_plan::UserFunctionPlan>,
     pub closures: &'a HashMap<crate::semantic::ClosureInstance, u32>,
@@ -211,6 +212,7 @@ impl<'a> ExprContext<'a> {
             provider_values: lowering.provider_values,
             process_names: lowering.process_names,
             state_candidate: None,
+            managed_read_context: None,
             runtime_helpers: lowering.runtime_helpers,
             functions: lowering.functions,
             closures: lowering.closures,
@@ -2987,6 +2989,21 @@ pub(super) fn emit_managed_field_read(
     emit_managed_read_at_address(function, managed_field_binding(field, context), context)
 }
 
+/// Reuses an enclosing snapshot budget or begins an independent root read.
+fn emit_managed_read_context(function: &mut Function, context: &ExprContext<'_>) {
+    if let Some(local) = context.managed_read_context {
+        function.instruction(&Instruction::LocalGet(local));
+    } else {
+        function
+            .instruction(&Instruction::I32Const(
+                crate::managed_read::SNAPSHOT_CONTEXT_SLOTS as i32,
+            ))
+            .instruction(&Instruction::ArrayNewDefault(
+                context.gc.standard_index(StdlibTypeId::ManagedReadContext),
+            ));
+    }
+}
+
 /// Consumes `(process, address)` and produces the ordinary `T!` representation
 /// for one remote managed field. Managed references honor the detected target
 /// pointer width; terminal values use their normal `MemoryReadable` layout.
@@ -3008,21 +3025,16 @@ fn emit_managed_read_at_address(
         .expect("a checked managed field access has a concrete Result layout");
     let value_type = semantic_type(field.value_type, context.semantics);
 
-    if let crate::managed::ManagedFieldRead::ManagedString {
-        max_utf16_units,
-        nullable,
-    } = field.read
-    {
+    if let crate::managed::ManagedFieldRead::ManagedString { nullable } = field.read {
         emit_managed_binding_field(function, MANAGED_POINTER_SIZE_FIELD, context);
-        function
-            .instruction(&Instruction::I32Const(max_utf16_units as i32))
-            .instruction(&Instruction::Call(context.runtime_helpers.function(
-                if nullable {
-                    RuntimeHelperId::ReadOptionalManagedStringField
-                } else {
-                    RuntimeHelperId::ReadManagedStringField
-                },
-            )));
+        emit_managed_read_context(function, context);
+        function.instruction(&Instruction::Call(context.runtime_helpers.function(
+            if nullable {
+                RuntimeHelperId::ReadOptionalManagedStringField
+            } else {
+                RuntimeHelperId::ReadManagedStringField
+            },
+        )));
         return Type::Result(result);
     }
 

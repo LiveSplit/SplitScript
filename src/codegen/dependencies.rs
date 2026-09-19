@@ -64,6 +64,14 @@ impl BackendDependencies {
                 .any(|field| {
                     semantics.managed_field_snapshot_type(field.id)
                         != semantics.managed_field_value_type(field.id)
+                        || semantics
+                            .managed_field_value_type(field.id)
+                            .is_some_and(|value| {
+                                matches!(
+                                    crate::managed::ManagedFieldRead::for_type(value, semantics),
+                                    crate::managed::ManagedFieldRead::ManagedString { .. }
+                                )
+                            })
                 })
                 || declaration
                     .all_fields()
@@ -540,7 +548,9 @@ impl BackendDependencies {
         {
             self.needs_native_pointer_size = true;
         }
-        if declaration.max_length.is_none() {
+        if crate::managed::ManagedFieldRead::for_type(value, semantics)
+            == crate::managed::ManagedFieldRead::Fixed
+        {
             self.require(RuntimeHelperId::ReadManagedMemory);
             self.require_memory_read(value, None, semantics, capabilities);
             return;

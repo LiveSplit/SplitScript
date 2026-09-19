@@ -2213,7 +2213,7 @@ selectProcess {
 let edition:Edition
 state"game.exe"{}
 onAttach{edition=Edition.Base}
-image"Assembly-CSharp"{namespace Game{class Player from"RuntimePlayer"{f32 health;}}class GameManager{static GameManager instance from["Instance","_instance",];i32 points from"_points";if edition==Edition.Base{i32 gameState;i32 currentLevel;}if edition==Edition.DlcDemo{i32 gameState from"GameState";String currentScene from"_currentScene" maxLength 64;}}}
+image"Assembly-CSharp"{namespace Game{class Player from"RuntimePlayer"{f32 health;}}class GameManager{static GameManager instance from["Instance","_instance",];i32 points from"_points";if edition==Edition.Base{i32 gameState;i32 currentLevel;}if edition==Edition.DlcDemo{i32 gameState from"GameState";String currentScene from"_currentScene";}}}
 fn identity(value:GameManager.Ref)->GameManager.Ref{return value}"#;
         let expected = r#"enum Edition {
     Base,
@@ -2239,7 +2239,7 @@ image "Assembly-CSharp" {
         }
         if edition == Edition.DlcDemo {
             i32 gameState from "GameState";
-            String currentScene from "_currentScene" maxLength 64;
+            String currentScene from "_currentScene";
         }
     }
 }

@@ -1077,17 +1077,20 @@ pub(super) fn compile_read_managed_string(
     abi_read: AbiReadScratch,
     utf16: ScratchRegion,
     utf8: ScratchRegion,
+    charge_bytes: u32,
 ) -> Function {
     let utf16_start = utf16.start();
     let utf8_start = utf8.start();
     let mut function = Function::new([
         (7, ValType::I32),
         (1, gc.val_type(Type::Standard(StdlibTypeId::String))),
+        (4, ValType::I32),
+        (1, gc.val_type(Type::Standard(StdlibTypeId::String))),
     ]);
     let process = 0;
     let address = 1;
     let pointer_size = 2;
-    let max_units = 3;
+    let context = 3;
     let units = 4;
     let input_index = 5;
     let byte_len = 6;
@@ -1096,22 +1099,14 @@ pub(super) fn compile_read_managed_string(
     let codepoint = 9;
     let output_index = 10;
     let output = 11;
+    let consumed = 12;
+    let chunk_units = 13;
+    let available_units = 14;
+    let total_bytes = 15;
+    let compact = 16;
+    // Reserve one UTF-16 unit for lookahead at each chunk boundary.
+    let chunk_capacity = crate::intrinsic_registry::MAX_NATIVE_UTF16_UNITS as i32 - 1;
 
-    function
-        // The schema path validates constants earlier. Keep the internal
-        // helper defensive so future compiler-owned callers cannot bypass
-        // the allocation bound.
-        .instruction(&Instruction::LocalGet(max_units))
-        .instruction(&Instruction::I32Eqz)
-        .instruction(&Instruction::LocalGet(max_units))
-        .instruction(&Instruction::I32Const(
-            crate::intrinsic_registry::MAX_NATIVE_UTF16_UNITS as i32,
-        ))
-        .instruction(&Instruction::I32GtU)
-        .instruction(&Instruction::I32Or)
-        .instruction(&Instruction::If(BlockType::Empty));
-    emit_failed_managed_string_return(&mut function, gc);
-    function.instruction(&Instruction::End);
     emit_invalid_managed_span(&mut function, address, pointer_size, |function| {
         function
             .instruction(&Instruction::LocalGet(pointer_size))
@@ -1145,10 +1140,6 @@ pub(super) fn compile_read_managed_string(
         .instruction(&Instruction::LocalTee(units))
         .instruction(&Instruction::I32Const(0))
         .instruction(&Instruction::I32LtS)
-        .instruction(&Instruction::LocalGet(units))
-        .instruction(&Instruction::LocalGet(max_units))
-        .instruction(&Instruction::I32GtU)
-        .instruction(&Instruction::I32Or)
         .instruction(&Instruction::If(BlockType::Empty));
     emit_failed_managed_string_return(&mut function, gc);
     function
@@ -1157,6 +1148,17 @@ pub(super) fn compile_read_managed_string(
         .instruction(&Instruction::I32Eqz)
         .instruction(&Instruction::If(BlockType::Empty));
     emit_successful_empty_managed_string_return(&mut function, gc);
+    function.instruction(&Instruction::End);
+    function
+        .instruction(&Instruction::LocalGet(context))
+        .instruction(&Instruction::LocalGet(units))
+        .instruction(&Instruction::I64ExtendI32U)
+        .instruction(&Instruction::I64Const(8))
+        .instruction(&Instruction::I64Mul)
+        .instruction(&Instruction::Call(charge_bytes))
+        .instruction(&Instruction::I32Eqz)
+        .instruction(&Instruction::If(BlockType::Empty));
+    emit_failed_managed_string_return(&mut function, gc);
     function.instruction(&Instruction::End);
     emit_invalid_managed_span(&mut function, address, pointer_size, |function| {
         function
@@ -1174,6 +1176,39 @@ pub(super) fn compile_read_managed_string(
     emit_failed_managed_string_return(&mut function, gc);
     function
         .instruction(&Instruction::End)
+        .instruction(&Instruction::LocalGet(units))
+        .instruction(&Instruction::I32Const(3))
+        .instruction(&Instruction::I32Mul)
+        .instruction(&Instruction::ArrayNewDefault(
+            gc.standard_index(StdlibTypeId::String),
+        ))
+        .instruction(&Instruction::LocalSet(output))
+        .instruction(&Instruction::Block(BlockType::Empty))
+        .instruction(&Instruction::Loop(BlockType::Empty))
+        .instruction(&Instruction::LocalGet(consumed))
+        .instruction(&Instruction::LocalGet(units))
+        .instruction(&Instruction::I32GeU)
+        .instruction(&Instruction::BrIf(1))
+        .instruction(&Instruction::LocalGet(units))
+        .instruction(&Instruction::LocalGet(consumed))
+        .instruction(&Instruction::I32Sub)
+        .instruction(&Instruction::LocalTee(available_units))
+        .instruction(&Instruction::I32Const(chunk_capacity))
+        .instruction(&Instruction::I32GtU)
+        .instruction(&Instruction::If(BlockType::Result(ValType::I32)))
+        .instruction(&Instruction::I32Const(chunk_capacity + 1))
+        .instruction(&Instruction::LocalSet(available_units))
+        .instruction(&Instruction::I32Const(chunk_capacity))
+        .instruction(&Instruction::Else)
+        .instruction(&Instruction::LocalGet(available_units))
+        .instruction(&Instruction::End)
+        .instruction(&Instruction::LocalSet(chunk_units))
+        .instruction(&Instruction::I32Const(0))
+        .instruction(&Instruction::LocalSet(input_index))
+        .instruction(&Instruction::I32Const(0))
+        .instruction(&Instruction::LocalSet(byte_len))
+        .instruction(&Instruction::I32Const(0))
+        .instruction(&Instruction::LocalSet(output_index))
         .instruction(&Instruction::LocalGet(process))
         .instruction(&Instruction::LocalGet(address))
         .instruction(&Instruction::LocalGet(pointer_size))
@@ -1183,8 +1218,13 @@ pub(super) fn compile_read_managed_string(
         .instruction(&Instruction::I64Const(4))
         .instruction(&Instruction::I64Add)
         .instruction(&Instruction::I64Add)
+        .instruction(&Instruction::LocalGet(consumed))
+        .instruction(&Instruction::I64ExtendI32U)
+        .instruction(&Instruction::I64Const(2))
+        .instruction(&Instruction::I64Mul)
+        .instruction(&Instruction::I64Add)
         .instruction(&Instruction::I32Const(utf16_start))
-        .instruction(&Instruction::LocalGet(units))
+        .instruction(&Instruction::LocalGet(available_units))
         .instruction(&Instruction::I32Const(1))
         .instruction(&Instruction::I32Shl)
         .instruction(&Instruction::Call(abi.function(AbiImportId::ProcessRead)))
@@ -1196,7 +1236,7 @@ pub(super) fn compile_read_managed_string(
         .instruction(&Instruction::Block(BlockType::Empty))
         .instruction(&Instruction::Loop(BlockType::Empty))
         .instruction(&Instruction::LocalGet(input_index))
-        .instruction(&Instruction::LocalGet(units))
+        .instruction(&Instruction::LocalGet(chunk_units))
         .instruction(&Instruction::I32GeU)
         .instruction(&Instruction::BrIf(1));
     emit_utf16_load(&mut function, input_index, utf16_start);
@@ -1212,7 +1252,7 @@ pub(super) fn compile_read_managed_string(
         .instruction(&Instruction::LocalGet(input_index))
         .instruction(&Instruction::I32Const(1))
         .instruction(&Instruction::I32Add)
-        .instruction(&Instruction::LocalGet(units))
+        .instruction(&Instruction::LocalGet(available_units))
         .instruction(&Instruction::I32LtU)
         .instruction(&Instruction::If(BlockType::Result(ValType::I32)));
     function
@@ -1275,11 +1315,6 @@ pub(super) fn compile_read_managed_string(
         .instruction(&Instruction::Br(0))
         .instruction(&Instruction::End)
         .instruction(&Instruction::End)
-        .instruction(&Instruction::LocalGet(byte_len))
-        .instruction(&Instruction::ArrayNewDefault(
-            gc.standard_index(StdlibTypeId::String),
-        ))
-        .instruction(&Instruction::LocalSet(output))
         .instruction(&Instruction::Block(BlockType::Empty))
         .instruction(&Instruction::Loop(BlockType::Empty))
         .instruction(&Instruction::LocalGet(output_index))
@@ -1288,7 +1323,9 @@ pub(super) fn compile_read_managed_string(
         .instruction(&Instruction::BrIf(1))
         .instruction(&Instruction::LocalGet(output))
         .instruction(&Instruction::RefAsNonNull)
+        .instruction(&Instruction::LocalGet(total_bytes))
         .instruction(&Instruction::LocalGet(output_index))
+        .instruction(&Instruction::I32Add)
         .instruction(&Instruction::I32Const(utf8_start))
         .instruction(&Instruction::LocalGet(output_index))
         .instruction(&Instruction::I32Add)
@@ -1303,15 +1340,38 @@ pub(super) fn compile_read_managed_string(
         .instruction(&Instruction::Br(0))
         .instruction(&Instruction::End)
         .instruction(&Instruction::End)
-        .instruction(&Instruction::I32Const(1))
+        .instruction(&Instruction::LocalGet(consumed))
+        .instruction(&Instruction::LocalGet(input_index))
+        .instruction(&Instruction::I32Add)
+        .instruction(&Instruction::LocalSet(consumed))
+        .instruction(&Instruction::LocalGet(total_bytes))
+        .instruction(&Instruction::LocalGet(byte_len))
+        .instruction(&Instruction::I32Add)
+        .instruction(&Instruction::LocalSet(total_bytes))
+        .instruction(&Instruction::Br(0))
+        .instruction(&Instruction::End)
+        .instruction(&Instruction::End)
+        .instruction(&Instruction::LocalGet(total_bytes))
+        .instruction(&Instruction::ArrayNewDefault(
+            gc.standard_index(StdlibTypeId::String),
+        ))
+        .instruction(&Instruction::LocalTee(compact))
+        .instruction(&Instruction::I32Const(0))
         .instruction(&Instruction::LocalGet(output))
+        .instruction(&Instruction::I32Const(0))
+        .instruction(&Instruction::LocalGet(total_bytes))
+        .instruction(&Instruction::ArrayCopy {
+            array_type_index_dst: gc.standard_index(StdlibTypeId::String),
+            array_type_index_src: gc.standard_index(StdlibTypeId::String),
+        })
+        .instruction(&Instruction::I32Const(1))
+        .instruction(&Instruction::LocalGet(compact))
         .instruction(&Instruction::End);
     function
 }
 
-/// Reads the pointer stored in a managed field and decodes its bounded string
-/// payload as one typed Result. Centralizing both steps keeps every live,
-/// static, and snapshot access on the same failure and nullability policy.
+/// Reads a managed field pointer and materializes its string payload as one
+/// typed Result, sharing the caller's materialization budget.
 pub(super) fn compile_read_managed_string_field(
     abi: &Abi,
     read_string: u32,
@@ -1330,7 +1390,7 @@ pub(super) fn compile_read_managed_string_field(
     let process = 0;
     let field_address = 1;
     let pointer_size = 2;
-    let max_units = 3;
+    let context = 3;
     let pointer = 4;
     let string = 5;
     let value_type = option.map_or(Type::Standard(StdlibTypeId::String), Type::Option);
@@ -1397,7 +1457,7 @@ pub(super) fn compile_read_managed_string_field(
         .instruction(&Instruction::LocalGet(process))
         .instruction(&Instruction::LocalGet(pointer))
         .instruction(&Instruction::LocalGet(pointer_size))
-        .instruction(&Instruction::LocalGet(max_units))
+        .instruction(&Instruction::LocalGet(context))
         .instruction(&Instruction::Call(read_string))
         .instruction(&Instruction::LocalSet(string))
         .instruction(&Instruction::If(BlockType::Result(
@@ -1414,7 +1474,7 @@ pub(super) fn compile_read_managed_string_field(
         &mut function,
         result,
         value_type,
-        "managed string could not be read within its declared maximum length",
+        "managed string payload is invalid, unreadable, or exceeds the read budget",
         gc,
         failure_payloads,
     );

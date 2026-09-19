@@ -57,7 +57,7 @@ retry a synchronous transaction if the resulting reads can still fail.
 - Native state-field [`utf8`] bounds bytes and rejects invalid UTF-8.
 - Native state-field [`utf16le`] bounds two-byte UTF-16 code units and replaces
   unpaired surrogates while decoding.
-- Managed [`String`] fields use [`maxLength`] measured in UTF-16 code units.
+- Managed [`String`] fields use the UTF-16 length stored in the object header.
   This is an allocation/read bound, not a distinct string type.
 
 When porting C# index arithmetic, first decide whether the source position is a

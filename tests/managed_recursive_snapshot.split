@@ -3,7 +3,7 @@ image "Assembly-CSharp" {
         static ProfileProbe instance;
         ProfileProbe? left;
         ProfileProbe? right;
-        String text maxLength 8;
+        String text;
     }
 }
 fn count(value: ProfileProbe) -> u32 {

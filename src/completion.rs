@@ -146,8 +146,6 @@ pub(crate) fn complete(
         Ok(completions)
     } else if let Some(completions) = complete_state_decoder(source, offset) {
         Ok(completions)
-    } else if let Some(completions) = complete_managed_field_modifier(&request) {
-        Ok(completions)
     } else if let Some(completions) =
         complete_explicit_type_argument(source, syntax, offset, &standard_library)
     {
@@ -225,55 +223,6 @@ pub(crate) fn complete(
             top_level,
         ))
     }
-}
-
-fn complete_managed_field_modifier(request: &CompletionRequest<'_>) -> Option<CompletionList> {
-    let source = request.source;
-    let syntax = request.syntax;
-    let offset = request.offset;
-    let replacement = request.replacement;
-    if !syntax
-        .managed_class_declarations()
-        .into_iter()
-        .any(|class| class.span.start < offset && offset < class.span.end)
-    {
-        return None;
-    }
-
-    let segment_start = source[..replacement.start]
-        .rfind(['{', '}', ';'])
-        .map_or(0, |index| index + 1);
-    let tokens = request
-        .tokens
-        .iter()
-        .copied()
-        .filter(|token| segment_start <= token.span.start && token.span.end <= replacement.start)
-        .collect::<Vec<_>>();
-    let mut identifiers = tokens.iter().filter_map(|token| match &token.kind {
-        TokenKind::Ident(name) => Some(name.as_str()),
-        _ => None,
-    });
-    if identifiers.next()? != "String" || identifiers.next().is_none() {
-        return None;
-    }
-    if tokens
-        .iter()
-        .any(|token| matches!(&token.kind, TokenKind::Ident(name) if name == "maxLength"))
-    {
-        return None;
-    }
-
-    let item = LanguageCatalog::new().item(LanguageItemId::ManagedStringMaxLength);
-    let prefix = source[replacement.start..offset].to_owned();
-    let mut builder = CompletionBuilder::new(prefix, replacement);
-    builder.add(catalog_language_completion(
-        item.name,
-        CompletionKind::Keyword,
-        item,
-        "maxLength ${1:64};".to_owned(),
-        true,
-    ));
-    Some(builder.finish())
 }
 
 fn complete_setting_key(request: &CompletionRequest<'_>) -> Option<CompletionList> {
@@ -3529,22 +3478,6 @@ fn safe() { print("safe") }
         assert_eq!(completion.items[0].label, "detached");
         assert_eq!(completion.items[0].insert_text, "detached: ${1:1},");
         assert!(completion.items[0].is_snippet);
-    }
-
-    #[test]
-    fn completes_bounded_managed_string_policy_after_a_field_name() {
-        for declaration in ["String scene ma", "String? subtitle from \"Caption\" ma"] {
-            let source = format!(
-                "image \"Assembly-CSharp\" {{\n    class Game {{\n        {declaration}\n    }}\n}}\nstate Unity [\"game.exe\"] {{}}"
-            );
-            let mut database = CompilerDatabase::new(source);
-            let completion = database
-                .completions(database.source().find("ma\n").unwrap() + 2)
-                .expect("managed-field completion should recover incomplete syntax");
-            assert_eq!(completion.items.len(), 1, "{completion:#?}");
-            assert_eq!(completion.items[0].label, "maxLength");
-            assert_eq!(completion.items[0].insert_text, "maxLength ${1:64};");
-        }
     }
 
     #[test]

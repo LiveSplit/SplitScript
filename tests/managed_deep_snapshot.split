@@ -5,7 +5,7 @@ image "Assembly-CSharp" {
         Leaf right;
     }
     class Leaf {
-        String text maxLength 8;
+        String text;
     }
 }
 state Unity ["game.exe"] {

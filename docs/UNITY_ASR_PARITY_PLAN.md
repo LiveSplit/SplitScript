@@ -139,7 +139,7 @@ Mono remains different: exact PE/ELF/Mach-O identity selection followed by forma
 | Area | Current evidence | Required action |
 | --- | --- | --- |
 | Schema-based Unity workflow | `image`/`namespace`/`class`, `from` alternatives, conditional shapes, `UnityRuntime`/`UnityMetadataClass` adapters in `stdlib/standard.split`; binding plan in `src/managed.rs` | Keep this as the public workflow. ASR's low-level Rust objects are implementation references, not an API to reproduce verbatim. |
-| Managed strings | `ManagedFieldRead::ManagedString`; required `maxLength` of 1–2048 UTF-16 units; nullable strings, failed-read propagation, replacement decoding, embedded NUL, static/live/snapshot readers | Extend rather than recreate. The object decoder hardcodes length at `0x10` and characters at `0x14`; make these `2 * pointerBytes` and `2 * pointerBytes + 4`. Its field-pointer reader already branches on width, which does **not** make the payload decoder 32-bit-capable. |
+| Managed strings | `ManagedFieldRead::ManagedString`; stored UTF-16 lengths; nullable strings, failed-read propagation, replacement decoding, embedded NUL, static/live/snapshot readers | Extend rather than recreate. The object decoder hardcodes length at `0x10` and characters at `0x14`; make these `2 * pointerBytes` and `2 * pointerBytes + 4`. Its field-pointer reader already branches on width, which does **not** make the payload decoder 32-bit-capable. |
 | Inherited static ownership | `UnityField.owner`; Mono `fieldAddress`/static paths and IL2CPP helpers; SplitScript commit `a7a9c58`; `tests/managed_inherited_static_runtime.*` | Preserve and extend regression coverage. This is already a real implementation, not missing #146 work. The existing fixture's generic-looking class name does not test an inflated generic definition/count route. |
 | Class/field names | Both backends handle namespace-qualified names, aliases, backing fields, and ambiguity diagnostics | Add nested declaring chains and generic count/type information. Preserve ambiguity detection; ASR's first matching name is not a replacement for SplitScript's explicit binding rules. |
 | IL2CPP layouts | `src/codegen/unity_layout.rs`: four year buckets, a single `OBJECT_LAYOUT`, `POINTER_SIZE = 8`; helpers in `src/codegen/runtime_helpers/unity.rs` | Replace with complete profiles. Field-count/static-table offsets are only part of the needed data. |
@@ -203,7 +203,7 @@ The implication is **`MemoryReadable` implies `ManagedReadable`**, not the rever
 
 Represent the decoder as a graph of interned plan IDs, with nodes such as fixed value, string, nullable reference, vector, list, dictionary, set, and class snapshot. Each node has a local result type and a distinct remote representation. A remote slot describes inline storage versus a reference slot versus an already-resolved object address, target width, extent/stride, and metadata type when available. This prevents double dereferences and mistakes such as using `sizeof(local Map)` as dictionary entry width. Primitive/value-struct children are inline; strings, containers, and managed classes normally occupy reference slots. Explicit boxed-value support, if needed, must remove the object header exactly once.
 
-Use one `ManagedReadContext` per root read/snapshot: runtime/attachment identity, limits, remaining bytes, decoded elements/objects, scanned slots, maximum depth, and an active-address path for cycle detection. All recursive children consume the **same** counters. Limits reset only at a new root operation, never per dictionary value or per nested array. Per-field limits can tighten the root policy; they cannot replenish it. This bounds a small outer map containing many large inner arrays/strings. Resolve layout caches by attachment + actual runtime class + decoder shape, and revalidate shape when the object class changes.
+Use one `ManagedReadContext` per root read/snapshot: runtime/attachment identity, limits, remaining bytes, decoded elements/objects, scanned slots, maximum depth, and an active-address path for cycle detection. All recursive children consume the **same** counters. Limits reset only at a new root operation, never per dictionary value or per nested array. Each object supplies its own stored length; schema fields carry no size policy. This bounds a small outer map containing many large inner arrays/strings. Resolve layout caches by attachment + actual runtime class + decoder shape, and revalidate shape when the object class changes.
 
 Recursive **types** must not cause infinite compiler expansion: intern placeholders before descending, then finish the plan graph and generate mutually recursive helpers/GC types as needed. Recursive **remote object graphs** are a separate issue: permit finite acyclic traversals and repeated shared children, reject an actual cycle on the active decode path or exhausted depth with a structured failure. Do not treat any repeated address as a cycle if its previous traversal already completed. A later alias-preserving graph snapshot API can be separate; the initial value snapshot contract does not expose partly initialized cyclic objects.
 
@@ -221,7 +221,7 @@ image "Assembly-CSharp" {
         [[Item?]] groups;
     }
     class Item {
-        String name maxLength 64;
+        String name;
         Map<String, [String]> attributes;
     }
 }
@@ -276,7 +276,7 @@ Each step is a reviewable change with its own acceptance gate **and the mandator
 ### 1. Lock down the new contract and baseline fixtures
 
 1. Record the pinned upstream revision and a per-PR checklist in the implementation issue/PR. Preserve measurement provenance for imported layouts and fixtures; no additional ASR license annotations are needed for this work by the same authors.
-2. Specify the profile selector, `ManagedReadable` rules, remote storage hints, live/snapshot type projections, nested nullability, root budgets, per-field limits, and process-lifetime constraints. Include raw UTF-16 as a separate opt-in decoder and nested map/array/class examples as acceptance targets.
+2. Specify the profile selector, `ManagedReadable` rules, remote storage hints, live/snapshot type projections, nested nullability, root budgets and process-lifetime constraints. Include raw UTF-16 as a separate opt-in decoder and nested map/array/class examples as acceptance targets.
 3. Specify finite metadata/collection work limits and typed error versus pending behavior. Unloaded modules/uninitialized metadata may retry; unavailable profile capabilities or malformed layout descriptions need a useful diagnostic, not indefinite retries.
 4. Extend `tests/support/splitscript_host.mjs` only where needed for read accounting, module identities, mapped ranges, and failures. Generalize `tests/support/mono_v2_fixture.mjs` and factor reusable IL2CPP fixtures from `tests/lunistice_runtime.mjs`.
 5. Capture existing Lunistice base/DLC, Mono, inherited-static, strings, instances, and scene behavior before refactoring. Build fixtures from independently specified memory layouts, not directly from the descriptor under test. Capture the reproducible Wasm size/dependency baseline and wire up the per-step reporting gate before adding features.
@@ -356,12 +356,12 @@ Each step is a reviewable change with its own acceptance gate **and the mandator
 3. Integrate the plan with existing class snapshot generation now: snapshot field types and decoders materialize child class values, honor active conditional fields, and do not leave hidden live refs. Support finite recursive schemas without infinitely expanding compiler plans or helper emission.
 4. Add pointer width to the managed string object decoder; compute length/characters from the two-word object header. Update helper signatures, registry entries, scratch planning, dependency retention, and all field/snapshot callers.
 5. Reuse one object-address decoder from both field-reference reads and nested elements. Avoid double-dereferencing a string object's address.
-6. Keep bounded normal `String` and `String?` decoding, with current invalid-UTF-16 replacement semantics. Add the bounded raw UTF-16 storage projection returning `[u16]` for unit-preserving access.
-7. Retain declared bounds and scratch-size validation under the root policy. A count above the bound is an error; a failed payload read is not an empty or null string. Add explicit demand edges for each generated decoder and the discovery operations it needs; capability checking alone emits nothing.
+6. Decode ordinary `String` and `String?` from their stored lengths using fixed scratch chunks and invalid-UTF-16 replacement semantics. Add raw UTF-16 storage projection returning `[u16]` for unit-preserving access.
+7. Validate stored lengths, scratch sizes, target spans, and shared root budgets. Budget exhaustion is an error; a failed payload read is not an empty or null string. Add explicit demand edges for each generated decoder and the discovery operations it needs; capability checking alone emits nothing.
 
-**Files:** `src/capabilities.rs`, `src/semantic.rs`, `src/structural.rs`, `src/managed.rs`, capability inference/catalog definitions, `src/codegen/managed_snapshots.rs`, `src/codegen/gc_types.rs`, `src/codegen.rs` snapshot field projection, `src/codegen/runtime_helpers/process.rs`, `src/codegen/runtime_helper_registry.rs`, `src/codegen/runtime_helpers.rs`, `src/codegen/expression.rs`, scratch/dependency planning, syntax/type validation for read policies and storage hints.
+**Files:** `src/capabilities.rs`, `src/semantic.rs`, `src/structural.rs`, `src/managed.rs`, capability inference/catalog definitions, `src/codegen/managed_snapshots.rs`, `src/codegen/gc_types.rs`, `src/codegen.rs` snapshot field projection, `src/codegen/runtime_helpers/process.rs`, `src/codegen/runtime_helper_registry.rs`, `src/codegen/runtime_helpers.rs`, `src/codegen/expression.rs`, scratch/dependency planning, type validation and storage hints.
 
-**Gate:** capability implication and generic constraints; rejection of unsupported managed representations; recursive class plans and acyclic/cyclic object fixtures; strings on both backends and widths; empty, embedded NUL, surrogate pairs, lone high/low surrogate, negative length, exact bound, over-bound, null versus unreadable pointer; static/live/snapshot/object-address paths; unused string/class readers remain unretained.
+**Gate:** capability implication and generic constraints; rejection of unsupported managed representations; recursive class plans and acyclic/cyclic object fixtures; strings on both backends and widths; empty, embedded NUL, surrogate pairs, lone high/low surrogate, negative length, chunk boundaries, shared-budget exhaustion, null versus unreadable pointer; static/live/snapshot/object-address paths; unused string/class readers remain unretained.
 
 ### 9. Add managed value arrays and schema decoder integration
 
@@ -371,7 +371,7 @@ Each step is a reviewable change with its own acceptance gate **and the mandator
 4. Decode inline fixed-layout primitives/enums/structs with existing checked memory-layout machinery; reference elements call their child managed decoder. Managed `char` is `u16`, managed bool occupies one byte, and target references are pointer-width slots; do not infer these from host/Wasm type sizes. Distinguish unboxed managed value layout from arbitrary local struct layout and require an explicit layout where it cannot be proven.
 5. Charge outer and inner arrays, strings, class objects, and scanned slots to the same root budget. Publish a freshly allocated result only on complete success. Preserve previous accepted state on failure using existing state semantics; ensure snapshot-owned nested containers cannot be mutated through an alias.
 
-**Gate:** `[String]`, `[[String?]?]`, and arrays of class snapshots; zero/exact/over-bound arrays, full-width high length bits, arithmetic overflow, invalid element representations, nontrivial inline/pointer stride, failed nested payload read, null at each level, shared-budget exhaustion, and `old` stability after remote mutation or attempted local alias mutation. Replace the existing blanket `[String] coinFlags` rejection fixture with positive bounded managed decoding and focused unsupported-shape/budget diagnostics; `process.read<[String]>` must still fail its `MemoryReadable` constraint.
+**Gate:** `[String]`, `[[String?]?]`, and arrays of class snapshots; empty arrays and stored lengths at either side of the shared budget, full-width high length bits, arithmetic overflow, invalid element representations, nontrivial inline/pointer stride, failed nested payload read, null at each level, shared-budget exhaustion, and `old` stability after remote mutation or attempted local alias mutation. Replace the existing blanket `[String] coinFlags` rejection fixture with positive managed decoding and focused unsupported-shape/budget diagnostics; `process.read<[String]>` must still fail its `MemoryReadable` constraint.
 
 ### 10. Add lists and complete live/snapshot container projections
 
@@ -421,7 +421,7 @@ Each step is a reviewable change with its own acceptance gate **and the mandator
 ### 14. Validate complete behavior, size, tooling, and documentation
 
 1. Register new `.split`/Node fixtures in `src/bin/xtask.rs` and test relevant Debug and Release output. Run `cargo xtask conformance`; use `cargo xtask check` for the full repository gate, including formatting, clippy, docs, and extension validation.
-2. Check `ManagedReadable` implication and generic constraints, recursive storage/result projections, nested bound diagnostics, recursive schema planning, process-reference escape rules, conditional fields, metadata ambiguity, and transitive helper reachability in `tests/compiler/`.
+2. Check `ManagedReadable` implication and generic constraints, recursive storage/result projections, shared nested read budgets, recursive schema planning, process-reference escape rules, conditional fields, metadata ambiguity, and transitive helper reachability in `tests/compiler/`.
 3. Check generated Wasm validation plus observable host behavior: metadata-read counts, scan/read budgets, cancellation, process replacement, all-or-error collection publication, state failure retention, stable `old`, and no new timer actions caused by initialization failures.
 4. Keep existing Lunistice base/DLC, inherited-static, Mono instances, IL2CPP instances, scene, and typed-component fixtures passing after API updates. Update `examples/lunistice.split`, other explicit Unity scripts, and their documentation to measured profile selectors or automatic detection based on verified targets, not a blind year-to-profile mapping.
 5. Review the accumulated **per-step** Lunistice and feature-isolation size reports, not just a final total. Verify every positive delta is attributed to reachable work and that unused resolvers/readers/data never appeared along the way. An explicit single profile must not pull all profiles/readers into the final Wasm; a string-only script must not contain dictionary offset discovery; ordinary field reads must not trigger repeated metadata discovery.
@@ -816,6 +816,49 @@ live-tested artifact; evidence is in `target/managed-slot-live.json`. The
 below-30,000-byte completion requirement remains open, as do recursive
 collections, shared byte/element budgets, structured error paths, and the
 remaining metadata/platform work.
+
+### Length-driven managed strings and shared payload budgets — implemented
+
+Managed fields select their decoder from their type. String declarations use
+ordinary `String` and `String?` syntax throughout parsing, editor support,
+examples, tests, and documentation. Native NUL-terminated readers retain their
+explicit bounds.
+
+The managed reader validates the stored signed UTF-16 length and full target
+span, then decodes the complete payload in fixed scratch chunks. A lookahead
+unit preserves surrogate pairs across chunk boundaries. The returned GC string
+has its exact UTF-8 length; embedded NUL and replacement decoding are preserved.
+Scratch capacity no longer restricts total string length.
+
+Each root has a 1 MiB payload/allocation budget, charged before allocating or
+reading a payload. Strings conservatively charge eight bytes per UTF-16 unit
+for the remote payload and both worst-case UTF-8 allocations. Child class
+snapshots and sibling strings consume the same counter. A later failed chunk
+or exhausted child budget rejects the entire snapshot and preserves `old` and
+accepted `current` values. The context adds one counter after the active object
+path. Demand for string readers alone does not retain class traversal helpers.
+
+Validation passed: 660 compiler, 440 library, 106 syntax, and 29 loader tests;
+100 Wasm artifacts and 130 runtime scenarios; Clippy, formatting, and 557
+rendered documentation pages. Expanded string fixtures exercise 384 cases over
+both backends, pointer widths, Debug/Release, and observable error handling.
+They include 5,000-unit strings, boundary surrogates, failed later chunks,
+65,536-unit strings at the shared sibling budget, and budget exhaustion before
+payload reads. The deep/optional class harness additionally passes 144 cases,
+including byte-budget exhaustion across separate child snapshots.
+
+All 18 fixtures without managed-string reads retain their previous sizes.
+The two string-only fixtures grow by 169 bytes, explicit Lunistice by 656 bytes
+to 58,178, and automatic Lunistice by 1,003 to 125,920. All 22 scratch capacities,
+static data bounds, and initial page counts are unchanged. The reviewed
+baseline was recorded and its strict behavior/size gate passed.
+
+The explicit artifact was tested against the demo for 569 accelerated updates
+and 32,408 process reads, with zero failures and Title/Hana/zero counters. The
+game was immediately closed and process exit verified. Evidence is in
+`target/managed-length-live.json`. Recursive containers, raw UTF-16 projection,
+collection element budgets, remaining metadata/platform work, and the
+below-30,000-byte Lunistice completion requirement remain open.
 
 ## Source map for implementation
 

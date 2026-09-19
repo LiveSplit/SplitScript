@@ -257,7 +257,7 @@ image "Assembly-CSharp" {
         if edition == Edition.BaseGame {
             u32 level;
         } else {
-            String scene maxLength 64;
+            String scene;
         }
     }
 }
@@ -2307,7 +2307,7 @@ UTF-8 is an ordinary error. `process.readUtf16Le(address, maxUtf16Units)` reads
 at most 2048 little-endian UTF-16 code units, also stops at NUL or the bound,
 and replaces malformed surrogate sequences with the Unicode replacement
 character. Unity managed strings instead use schema fields such as
-`String scene maxLength 64;`; their generated readers understand the managed
+`String scene;`; their generated readers understand the managed
 object layout and expose an ordinary `String!` field hop.
 
 Pointer-backed state fields have compact sugar for the same operation. The
@@ -2458,12 +2458,12 @@ overflow remains an error. Whitespace, digit separators, and trailing text are
 rejected, so malformed game-memory input uses ordinary `T!` handling
 rather than silently producing a partial value.
 
-A managed class may declare `String field maxLength N;` or
-`String? field maxLength N;`. The bound is a positive compile-time number of
-UTF-16 code units and controls the read rather than changing the resulting
-type. Required null references, failed memory access, and overlong payloads are
-ordinary errors; optional null references become `None`. Malformed surrogate
-sequences become the Unicode replacement character.
+A managed class may declare `String field;` or `String? field;`. The reader
+uses the object's stored UTF-16 length and decodes the complete payload in
+chunks. Required null references and failed memory access are ordinary errors;
+optional null references become `None`. Malformed surrogate sequences become
+the Unicode replacement character. Nested reads share the materialization
+budget, and a failed child rejects its containing snapshot.
 
 JavaScript-inspired template strings use backticks and `{expression}`, without
 JavaScript's `$` marker. Existing strings are inserted directly. Every other

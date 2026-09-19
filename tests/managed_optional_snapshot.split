@@ -4,7 +4,7 @@ image "Assembly-CSharp" {
         Leaf? left;
         Leaf right;
     }
-    class Leaf { String text maxLength 8; }
+    class Leaf { String text; }
 }
 state Unity ["game.exe"] { tree = ProfileProbe.instance?.snapshot()?; }
 whileAttached {

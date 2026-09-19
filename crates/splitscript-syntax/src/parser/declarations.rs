@@ -14,7 +14,6 @@ use super::{
     TickRateDecl, TickRateValue, TokenKind, TypeRef,
 };
 use crate::{
-    ast::ManagedFieldMaxLength,
     diagnostic::{DiagnosticFix, FixApplicability, TextEdit},
     migration::{ASL_STRING_N_FIELD_DIAGNOSTIC, legacy_lifecycle_diagnostic},
     parser::parse_integer,
@@ -246,25 +245,6 @@ impl Parser<'_> {
         let (ty, type_span) = self.parse_type("expected a managed field type")?;
         let (name, name_span) = self.expect_declared_ident("expected a managed field name")?;
         let metadata_names = self.managed_metadata_names()?;
-        let max_length = if self.at_ident("maxLength") {
-            let keyword_span = self.bump().span;
-            let value_span = self.current().span;
-            let value = self.expect_u64("expected a maximum UTF-16 length")?;
-            let value = u32::try_from(value).map_err(|_| {
-                Diagnostic::new(
-                    "a managed string maximum length must fit in `u32`",
-                    value_span,
-                )
-            })?;
-            Some(ManagedFieldMaxLength {
-                keyword_span,
-                value,
-                value_span,
-                span: keyword_span.join(value_span),
-            })
-        } else {
-            None
-        };
         let closing = self.expect(
             TokenKind::Semicolon,
             "expected `;` after the managed field declaration",
@@ -281,7 +261,6 @@ impl Parser<'_> {
             name_span,
             documentation: None,
             metadata_names,
-            max_length,
             span: Span {
                 start,
                 end: closing.end,

@@ -331,6 +331,10 @@ pub(super) fn build_read_managed_memory(inputs: &RuntimeHelperInputs<'_>) -> Fun
     process::compile_read_managed_memory(inputs.abi)
 }
 
+pub(super) fn build_charge_managed_bytes(inputs: &RuntimeHelperInputs<'_>) -> Function {
+    managed_context::charge_bytes(inputs.gc)
+}
+
 pub(super) fn build_read_managed_string(inputs: &RuntimeHelperInputs<'_>) -> Function {
     let scratch = inputs.memory.scratch();
     process::compile_read_managed_string(
@@ -339,6 +343,7 @@ pub(super) fn build_read_managed_string(inputs: &RuntimeHelperInputs<'_>) -> Fun
         scratch.abi_read,
         scratch.utf16_input,
         scratch.utf16_output,
+        inputs.plan.function(RuntimeHelperId::ChargeManagedBytes),
     )
 }
 

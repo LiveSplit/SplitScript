@@ -843,48 +843,6 @@ fn collect_managed_field(
     // Materialize nullable live-reference projections even for declarations
     // that are not read, so semantic binding plans remain read-only queries.
     checker.managed_read_value_type(field.ty);
-    let managed_string = managed_string_kind(checker, field_ty);
-    match (managed_string, field.max_length) {
-        (Some(_), None) => {
-            let insertion = Span {
-                start: field.span.end.saturating_sub(1),
-                end: field.span.end.saturating_sub(1),
-            };
-            checker.errors.push(
-                crate::Diagnostic::type_error(
-                    "a managed `String` field needs an explicit maximum length",
-                    field.name_span,
-                )
-                .with_primary_label("the compiler must bound the remote UTF-16 read")
-                .with_fix(crate::DiagnosticFix {
-                    title: "add an example maximum length".into(),
-                    applicability: crate::FixApplicability::MaybeIncorrect,
-                    edits: vec![crate::TextEdit {
-                        span: insertion,
-                        replacement: " maxLength 64".into(),
-                    }],
-                })
-                .with_note(
-                    "choose a bound that is valid for this field in every supported game version",
-                ),
-            );
-        }
-        (None, Some(max_length)) => checker.error(
-            "`maxLength` is only valid on managed `String` or `String?` fields",
-            max_length.span,
-        ),
-        (Some(_), Some(max_length)) if max_length.value == 0 => checker.error(
-            "a managed string maximum length must be greater than zero",
-            max_length.value_span,
-        ),
-        (Some(_), Some(max_length)) if max_length.value > MAX_NATIVE_UTF16_UNITS => checker.error(
-            format!(
-                "a managed string read is limited to {MAX_NATIVE_UTF16_UNITS} UTF-16 code units"
-            ),
-            max_length.value_span,
-        ),
-        _ => {}
-    }
     checker
         .semantics
         .resolve_managed_field_type(field.id, field_ty);
@@ -930,23 +888,6 @@ fn collect_managed_field(
             std::collections::hash_map::Entry::Occupied(_) => {}
         }
     }
-}
-
-fn managed_string_kind(checker: &mut Checker, ty: Type) -> Option<bool> {
-    let ty = checker.inference.shallow(ty);
-    if checker.standard_type_id(ty) == Some(StdlibTypeId::String) {
-        return Some(false);
-    }
-    let value = match ty {
-        Type::Option(option) => checker.inference.option_value(option),
-        Type::Known(id) => match checker.inference.type_store().kind(id) {
-            crate::types::TypeKind::Option { value, .. } => Type::Known(*value),
-            _ => return None,
-        },
-        _ => return None,
-    };
-    let value = checker.inference.shallow(value);
-    (checker.standard_type_id(value) == Some(StdlibTypeId::String)).then_some(true)
 }
 
 fn collect_function_signatures(checker: &mut Checker, program: &Program) {

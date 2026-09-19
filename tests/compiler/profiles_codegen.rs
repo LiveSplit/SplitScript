@@ -149,7 +149,7 @@ fn managed_metadata_demand_ignores_dead_and_debug_reads() {
         let source = format!(
             r#"
             image "Assembly-CSharp" {{
-                class Probe {{ static String unobservedText maxLength 64; static i32 value; }}
+                class Probe {{ static String unobservedText; static i32 value; }}
                 class UnobservedClass {{ static i32 absent; }}
             }}
             image "UnobservedImage" {{ class AnotherAbsentClass {{ static i32 absent; }} }}
@@ -207,7 +207,7 @@ fn managed_metadata_demand_ignores_dead_and_debug_reads() {
 fn managed_snapshot_demand_keeps_unprojected_instance_fields() {
     let source = r#"
         image "Assembly-CSharp" {
-            class Probe { static Probe instance; i32 value; String snapshotText maxLength 64; }
+            class Probe { static Probe instance; i32 value; String snapshotText; }
         }
         state Unity.il2cpp(Il2CppProfile.unity2021_3_11f1X64()) ["game.exe"] { probe = Probe.instance?.snapshot()?; }
         whileAttached { print(current.probe.value) }
@@ -283,7 +283,7 @@ fn scratch_reservations_follow_reachable_operations() {
         4120
     );
     assert_eq!(
-        release_emission(&managed("static String value maxLength 64;"))
+        release_emission(&managed("static String value;"))
             .1
             .scratch_bytes,
         4120 + 6144
@@ -426,7 +426,7 @@ fn release_managed_report_excludes_unused_strings_and_opposite_backend() {
         ("Unity.mono(MonoVersion.V2)", "Il2Cpp"),
     ] {
         let ordinary = compile(provider, "", "value");
-        let unused = compile(provider, "static String text maxLength 64;", "value");
+        let unused = compile(provider, "static String text;", "value");
         assert!(
             ordinary.0 == unused.0,
             "unused managed metadata changed Release Wasm for {provider}"
@@ -455,7 +455,7 @@ fn release_managed_report_excludes_unused_strings_and_opposite_backend() {
                 .iter()
                 .all(|(_, name)| !name.contains("ReadManagedString"))
         );
-        let used = compile(provider, "static String text maxLength 64;", "text");
+        let used = compile(provider, "static String text;", "text");
         assert!(
             used.1
                 .functions
@@ -866,7 +866,7 @@ fn recursive_managed_classes_have_distinct_live_and_owned_projections() {
         splitscript::parse(
             r#"
         image "Assembly-CSharp" {
-            class Node { Node? next; String text maxLength 8; }
+            class Node { Node? next; String text; }
         }
         state Unity ["game.exe"] {}
         fn live(node: Node.Ref) -> Node.Ref?! { return node.next }
@@ -954,7 +954,7 @@ fn managed_string_decoders_are_retained_only_for_reachable_reads() {
             r#"
                 image "Assembly-CSharp" {{
                     class GameManager {{
-                        static String scene maxLength 64;
+                        static String scene;
                     }}
                 }}
 
@@ -1057,7 +1057,7 @@ fn managed_schema_declarations_retain_their_logical_hierarchy() {
                 class GameManager {
                     i32 points;
                     if edition == Edition.Demo {
-                        String scene maxLength 64;
+                        String scene;
                     }
                 }
             }

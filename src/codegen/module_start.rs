@@ -143,6 +143,7 @@ fn emit_runtime_global_initializers(
         provider_values: lowering.provider_values,
         process_names: lowering.process_names,
         state_candidate: None,
+        managed_read_context: None,
         runtime_helpers: lowering.runtime_helpers,
         functions: lowering.functions,
         closures: lowering.closures,

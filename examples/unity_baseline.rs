@@ -90,14 +90,11 @@ fn fixtures() -> BTreeMap<String, String> {
         ),
         (
             "il2cpp-string".into(),
-            schema(selector, "static String value maxLength 64;"),
+            schema(selector, "static String value;"),
         ),
         (
             "il2cpp-unused-string".into(),
-            schema(
-                selector,
-                "static i32 value; static String unused maxLength 64;",
-            ),
+            schema(selector, "static i32 value; static String unused;"),
         ),
         (
             "mono-scalar".into(),
@@ -113,16 +110,13 @@ fn fixtures() -> BTreeMap<String, String> {
         ),
         (
             "mono-string".into(),
-            schema(
-                "Unity.mono(MonoVersion.V2)",
-                "static String value maxLength 64;",
-            ),
+            schema("Unity.mono(MonoVersion.V2)", "static String value;"),
         ),
         (
             "mono-unused-string".into(),
             schema(
                 "Unity.mono(MonoVersion.V2)",
-                "static i32 value; static String unused maxLength 64;",
+                "static i32 value; static String unused;",
             ),
         ),
         ("lunistice".into(), lunistice.clone()),

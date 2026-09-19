@@ -302,29 +302,17 @@
   implementation into `COMPILER.md`; existing async and ABI architecture pages
   already own the remaining physical details.
 
-## 2026-08-29: managed-string bound ergonomics resolved by schema syntax
+## 2026-08-29: managed strings become schema values
 
-- The earlier porting question about accepting arbitrary integer types for a
-  managed-string length no longer applies. Managed strings are declared as
-  `String field maxLength N`; `N` is a positive, unsuffixed compile-time
-  numeric literal checked against the implementation bound rather than a
-  typed `u32` function argument. Removing the raw managed-string read API also
-  removed the suffix-discovery footgun without introducing a general implicit
-  integer conversion rule.
-
-## 2026-08-29: bounded managed strings become schema values
-
-- Added `String field maxLength N` and `String? field maxLength N` to managed
-  class declarations. The bound is one field read policy rather than a new
-  string type, and the binding plan carries it consistently through static
-  reads, live references, and transactional snapshots.
+- Added ordinary `String` and `String?` fields to managed class declarations,
+  with shared readers for static fields, live references, and transactional
+  snapshots.
 - Made nullability and failure explicit: required null strings fail, optional
-  null strings become `None`, memory failures remain errors, overlong payloads
-  are rejected rather than truncated, and invalid UTF-16 uses replacement
+  null strings become `None`, memory failures remain errors, and invalid UTF-16 uses replacement
   decoding.
 - Removed the raw public `Process.readManagedString` route, moved Lunistice's
   DLC scene into its `GameManager` snapshot, and updated completion, hover,
-  semantic highlighting, formatting, diagnostics, migration guidance, and the
+  semantic highlighting, formatting, diagnostics, and the
   reference journey around the schema-first spelling.
 - Recorded struct-initializer shorthand and adjacent shared-prefix state reads
   as separate follow-up work so neither is smuggled into this storage-policy

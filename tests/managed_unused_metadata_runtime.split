@@ -4,7 +4,7 @@ image "Assembly-CSharp" {
     class LevelFlowService {
         static LevelFlowService instance from "_instance";
         i32 state from "_state";
-        String missingText maxLength 64;
+        String missingText;
         static i32 missingStatic;
     }
     class MissingClass { static i32 missing; }

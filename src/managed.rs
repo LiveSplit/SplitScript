@@ -77,10 +77,25 @@ pub(crate) struct ManagedFieldBinding {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum ManagedFieldRead {
     Fixed,
-    ManagedString {
-        max_utf16_units: u32,
-        nullable: bool,
-    },
+    ManagedString { nullable: bool },
+}
+
+impl ManagedFieldRead {
+    pub fn for_type(value: TypeId, semantics: &SemanticModel) -> Self {
+        use crate::{stdlib::StdlibTypeId, types::TypeKind};
+        let (value, nullable) = match semantics.types().kind(value) {
+            TypeKind::Option { value, .. } => (*value, true),
+            _ => (value, false),
+        };
+        if matches!(
+            semantics.types().kind(value),
+            TypeKind::Standard(StdlibTypeId::String)
+        ) {
+            Self::ManagedString { nullable }
+        } else {
+            Self::Fixed
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -214,15 +229,7 @@ fn field_binding(field: &ManagedFieldDecl, semantics: &SemanticModel) -> Managed
     let value_type = semantics
         .managed_field_value_type(field.id)
         .expect("checked managed fields have value semantic types");
-    let read = field.max_length.map_or(ManagedFieldRead::Fixed, |limit| {
-        ManagedFieldRead::ManagedString {
-            max_utf16_units: limit.value,
-            nullable: matches!(
-                semantics.types().kind(value_type),
-                crate::types::TypeKind::Option { .. }
-            ),
-        }
-    });
+    let read = ManagedFieldRead::for_type(value_type, semantics);
     ManagedFieldBinding {
         id: field.id,
         kind: if field.is_static {

@@ -240,16 +240,6 @@ const MANAGED_FROM_SOURCE: &str = r#"image "Assembly-CSharp" {
 
 state Unity ["game.exe"] {}"#;
 
-const MANAGED_STRING_SOURCE: &str = r#"image "Assembly-CSharp" {
-    class Player {
-        String name maxLength 64;
-        String? subtitle from "currentSubtitle" maxLength 256;
-    }
-}
-
-state Unity ["game.exe"] {
-}"#;
-
 const GBA_STATE_SOURCE: &str = r#"state GBA {
     room: u8 at 0x03000010;
 }"#;
@@ -1532,19 +1522,6 @@ define_language_catalog! {
             "Try alternate managed field names",
             "u32 score from [\"_score\", \"<Score>k__BackingField\"];",
             MANAGED_FROM_SOURCE,
-        )]
-    ),
-    language_item!(
-        ManagedStringMaxLength,
-        "maxLength",
-        LanguageItemKind::Syntax,
-        "String field maxLength maxUtf16Units;",
-        "Bounds a managed string field read.",
-        "A managed [`String`] or optional [`T?`] field must declare [`maxLength`] so malformed or version-mismatched process memory cannot cause an unbounded allocation. The value is a positive compile-time count of UTF-16 code units. The field still has the ordinary [`String`] type. A non-optional null reference rejects the read; `String?` maps a null reference to [`None`]. Process-read failures and payloads longer than the bound remain errors rather than becoming [`None`] or silently truncated text. Invalid UTF-16 is decoded with replacement characters. The same policy applies to [`static`] fields, live instance paths, and class snapshots.",
-        &[Example::checked(
-            "Declare required and optional managed strings",
-            "String name maxLength 64;\nString? subtitle from \"currentSubtitle\" maxLength 256;",
-            MANAGED_STRING_SOURCE,
         )]
     ),
     language_item!(

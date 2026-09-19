@@ -4,7 +4,7 @@ image "Assembly-CSharp" {
         static u64 counter;
         u64 value;
         ProfileProbe? next;
-        String text maxLength 8;
+        String text;
     }
 }
 state Unity ["game.exe"] {

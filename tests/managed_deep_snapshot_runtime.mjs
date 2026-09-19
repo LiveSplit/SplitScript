@@ -8,7 +8,7 @@ const [wasm, optionalLeft] = process.argv.slice(2);
 const profiles = JSON.parse(await readFile(new URL('./fixtures/mono-pe-profiles.json', import.meta.url)));
 let cases = 0;
 for (const mono of [true, false]) for (const width of [32, 64]) {
-    for (const mode of ['shared', 'mutate', 'replace', 'null child', 'unreadable child', 'unreadable string', 'cycle', 'failed sibling']) {
+    for (const mode of ['shared', 'mutate', 'replace', 'null child', 'unreadable child', 'unreadable string', 'cycle', 'failed sibling', 'shared byte budget']) {
         const wide = width === 64, bytes = width / 8;
         const fixture = mono ? createMonoPeFixture(profiles.builds.find(p => p.width === width && p.version === 'V2'))
             : createIl2cppPeFixture({width, version:[2022, 3, 0, 37029]});
@@ -68,6 +68,7 @@ for (const mono of [true, false]) for (const width of [32, 64]) {
         if (mode === 'unreadable child') memory.delete(root + 0x10n);
         if (mode === 'unreadable string') memory.delete(string + BigInt(bytes * 2 + 4));
         if (mode === 'cycle') ptr(root + 0x10n, root);
+        if (mode === 'shared byte budget') text(string, 'A'.repeat(65537));
         if (mode === 'failed sibling') { text(string, 'new'); memory.delete(root + 0x18n); }
         host.update();
         const label = `${mono ? 'mono' : 'il2cpp'}/${width}/${mode}`;
@@ -78,6 +79,7 @@ for (const mono of [true, false]) for (const width of [32, 64]) {
         if (['shared', 'mutate', 'replace'].includes(mode) || (optionalLeft && mode === 'null child')) assert.equal(result, 'ok', label);
         else assert.match(result, /managed/, `${label}: failure message missing`);
         if (mode === 'cycle') assert.match(result, /cycle/, label);
+        if (mode === 'shared byte budget') assert.match(result, /budget/, label);
         assert(reads.length < 100, `${label}: unbounded traversal`);
         assert(reads.every(address => address === staticSlot || address >= root), `${label}: repeated metadata discovery`);
         cases++;

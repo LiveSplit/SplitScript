@@ -18,7 +18,7 @@ The authoritative source for this port is
 | Derived IL2CPP class field bindings | Generated live references consumed by expression-backed state fields |
 | `Watcher<GameManager>`, `Watcher<Timer>` | GC `current`/`old` snapshots; failed fields retain their last accepted values |
 | Adjacent minutes, seconds, and hundredths reads | One naturally laid-out `LevelTimeParts` struct read and local GC deserialization |
-| DLC managed scene name | Schema-declared `String scene maxLength 16` with bounded surrogate-aware decoding |
+| DLC managed scene name | Schema-declared `String scene` with bounded surrogate-aware decoding |
 | Points, resets, level time, level/scene, character runtime variables | GC string formatting plus `setVariable` |
 | 1 Hz detached polling and 120 Hz attached polling | Language defaults apply 120 Hz before cooperative `onAttach` discovery and restore 1 Hz on process close |
 | Auto-start when the in-game timer begins in the first level | `timerStopped` transition plus base level / DLC Shrine checks |

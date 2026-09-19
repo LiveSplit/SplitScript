@@ -3362,7 +3362,7 @@ image "Assembly-CSharp" {
     namespace Game {
         class Player from ["Game.Player", "Player"] {
             static Player instance from "Instance";
-            String name maxLength 64;
+            String name;
         }
     }
 }
@@ -3401,12 +3401,6 @@ state Unity ["game.exe"] {}
                 "class Name from",
                 "runtime metadata names",
                 "/language/from.md",
-            ),
-            (
-                "maxLength ",
-                "String field maxLength",
-                "managed string field read",
-                "/language/max-length.md",
             ),
         ] {
             let hover = database

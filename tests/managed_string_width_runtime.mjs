@@ -7,9 +7,10 @@ import { createIl2cppPeFixture } from "./support/il2cpp_pe_fixture.mjs";
 const [wasmPath, observeErrors] = process.argv.slice(2);
 const profiles = JSON.parse(await readFile(new URL("./fixtures/mono-pe-profiles.json", import.meta.url)));
 let cases = 0;
-const modes = ["empty", "ascii", "embedded NUL", "pair", "high surrogate", "low surrogate", "exact bound",
-    "over bound", "negative length", "unreadable length", "unreadable payload", "null string", "null optional",
-    "unreadable optional", "header overflow", "payload overflow", "last address"];
+const modes = ["empty", "ascii", "embedded NUL", "pair", "high surrogate", "low surrogate", "short text",
+    "read budget", "negative length", "unreadable length", "unreadable payload", "null string", "null optional",
+    "unreadable optional", "header overflow", "payload overflow", "last address", "long text", "chunk pair", "chunk high surrogate", "chunk low surrogate",
+    "later chunk unreadable", "shared budget exact", "shared budget exhausted"];
 for (const backend of ["mono", "il2cpp"]) for (const width of [32, 64]) for (const mode of modes) {
     const wide = width === 64, bytes = width / 8, mono = backend === "mono";
     const profile = profiles.builds.find(p => p.width === width && p.version === "V2");
@@ -63,12 +64,22 @@ for (const backend of ["mono", "il2cpp"]) for (const width of [32, 64]) for (con
     const success = new Map([
         ["empty", [[], ""]], ["ascii", [[65, 66], "AB"]], ["embedded NUL", [[65, 0, 66], "A\0B"]],
         ["pair", [[0xd83d, 0xde00], "😀"]], ["high surrogate", [[0xd800, 65], "�A"]],
-        ["low surrogate", [[0xdc00], "�"]], ["exact bound", [Array(8).fill(65), "AAAAAAAA"]],
+        ["low surrogate", [[0xdc00], "�"]], ["short text", [Array(8).fill(65), "AAAAAAAA"]],
+        ["long text", [Array(5000).fill(65), "A".repeat(5000)]],
+        ["chunk pair", [[...Array(2046).fill(65), 0xd83d, 0xde00, 66], "A".repeat(2046) + "😀B"]],
+        ["chunk high surrogate", [[...Array(2046).fill(65), 0xd800, 66], "A".repeat(2046) + "�B"]],
+        ["chunk low surrogate", [[...Array(2047).fill(65), 0xdc00, 66], "A".repeat(2047) + "�B"]],
+        ["shared budget exact", [Array(65536).fill(65), "A".repeat(65536)]],
     ]);
     if (success.has(mode)) {
         const [units, value] = success.get(mode); utf16(string, units); expected = value; optional = `some:${value}`;
     }
-    if (mode === "over bound") utf16(string, Array(9).fill(65));
+    if (mode === "read budget") write(string + BigInt(2 * bytes), 4, 131073);
+    if (mode === "shared budget exhausted") utf16(string, Array(65537).fill(65));
+    if (mode === "later chunk unreadable") {
+        utf16(string, Array(5000).fill(65));
+        memory.delete(string + payloadOffset + 2n * 4096n);
+    }
     if (mode === "negative length") write(string + BigInt(2 * bytes), 4, -1);
     if (mode === "unreadable length") memory.delete(string + BigInt(2 * bytes));
     if (mode === "unreadable payload") memory.delete(string + payloadOffset + 2n);
@@ -88,16 +99,18 @@ for (const backend of ["mono", "il2cpp"]) for (const width of [32, 64]) for (con
     assert.equal(host.variables.get("snapshot"), expected, `${backend}/${width}/${mode}: snapshot`);
     assert.equal(host.variables.get("optional"), optional, `${backend}/${width}/${mode}: nullability/transaction`);
     assert.equal(host.variables.get("old"), "seed", `${backend}/${width}/${mode}: old snapshot mutated`);
-    for (const field of ["static", "live"]) assert.equal(host.variables.get(field), mode === "unreadable optional" ? "new" : expected, `${backend}/${width}/${mode}/${field}`);
+    for (const field of ["static", "live"]) assert.equal(host.variables.get(field), mode === "unreadable optional" ? "new" : mode === "shared budget exhausted" ? "A".repeat(65537) : expected, `${backend}/${width}/${mode}/${field}`);
     if (observeErrors) {
         const error = success.has(mode) || mode === "null optional" || mode === "last address" ? "ok"
             : mode === "null string" ? "managed field contained a null string"
             : mode === "unreadable optional" ? "managed string field pointer could not be read"
-            : "managed string could not be read within its declared maximum length";
+            : "managed string payload is invalid, unreadable, or exceeds the read budget";
         assert.equal(host.variables.get("result"), error, `${backend}/${width}/${mode}: snapshot error payload`);
     }
     for (const [address, length] of reads) assert(address + BigInt(length - 1) <= limit, `${mode}: read beyond target width`);
-    if (mode === "over bound" || mode === "negative length") assert(!reads.some(([address]) => address === string + payloadOffset), "invalid string read its payload");
+    if (mode === "read budget" || mode === "negative length") assert(!reads.some(([address]) => address === string + payloadOffset), "invalid string read its payload");
+    const payloadReads = reads.filter(([address]) => address >= string + payloadOffset && address < string + payloadOffset + 131074n);
+    for (const [, length] of payloadReads) assert(length <= 4096, `${mode}: scratch chunk overflow`);
     cases++;
 }
 console.log(JSON.stringify({ managedStringCases: cases }));

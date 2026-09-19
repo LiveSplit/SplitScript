@@ -487,17 +487,6 @@ pub struct ManagedFieldDecl {
     pub name_span: Span,
     pub documentation: Option<String>,
     pub metadata_names: ManagedMetadataNames,
-    /// Bounded UTF-16 payload policy for a managed `String` field.
-    pub max_length: Option<ManagedFieldMaxLength>,
-    pub span: Span,
-}
-
-/// The maximum number of UTF-16 code units accepted from one managed string.
-#[derive(Debug, Clone, Copy)]
-pub struct ManagedFieldMaxLength {
-    pub keyword_span: Span,
-    pub value: u32,
-    pub value_span: Span,
     pub span: Span,
 }
 

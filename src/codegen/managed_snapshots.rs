@@ -94,7 +94,8 @@ pub(super) fn compile(
     let values = HashMap::new();
     let temporaries = HashMap::new();
     let matches = MatchLayout::default();
-    let context = ExprContext::compiler_generated(lowering, &values, &temporaries, &matches);
+    let mut context = ExprContext::compiler_generated(lowering, &values, &temporaries, &matches);
+    context.managed_read_context = enter.map(|_| 1);
 
     if let Some(enter) = enter {
         function
