@@ -676,6 +676,13 @@ const RUNTIME_FIXTURES: &[RuntimeFixture] = &[
         extra_arguments: &[],
     },
     RuntimeFixture {
+        source: "tests/unity_nested_metadata.split",
+        output: "unity_nested_metadata.wasm",
+        profile: "release",
+        harness: "tests/unity_nested_metadata_runtime.mjs",
+        extra_arguments: &[],
+    },
+    RuntimeFixture {
         source: "tests/il2cpp_profiles.split",
         output: "il2cpp_profiles.wasm",
         profile: "release",
@@ -709,6 +716,20 @@ const RUNTIME_FIXTURES: &[RuntimeFixture] = &[
         profile: "release",
         harness: "tests/il2cpp_profiles_runtime.mjs",
         extra_arguments: &["invalid"],
+    },
+    RuntimeFixture {
+        source: "tests/mono_profiles.split",
+        output: "mono_profiles.wasm",
+        profile: "release",
+        harness: "tests/mono_generic_metadata_runtime.mjs",
+        extra_arguments: &[],
+    },
+    RuntimeFixture {
+        source: "tests/mono_profiles.split",
+        output: "mono_profiles.wasm",
+        profile: "release",
+        harness: "tests/mono_metadata_cursor_runtime.mjs",
+        extra_arguments: &[],
     },
     RuntimeFixture {
         source: "tests/mono_profiles.split",

@@ -1,6 +1,6 @@
 # Unity support: ASR research and SplitScript implementation plan
 
-Status: researched on 2026-09-18; the measurement gate, reachable binding/scratch allocation, binary identities, Windows Mono profiles, and measured IL2CPP profiles/discovery are implemented. Shared nested/generic metadata and recursive managed readers remain in progress/planned. See [implementation progress](#implementation-progress).
+Status: researched on 2026-09-18; the measurement gate, reachable binding/scratch allocation, binary identities, Windows Mono profiles, and measured IL2CPP profiles/discovery are implemented. Shared nested-name matching and Mono generic field counts are implemented; remaining shared metadata operations and recursive managed readers are in progress/planned. See [implementation progress](#implementation-progress).
 
 ## Objective and baseline
 
@@ -67,16 +67,16 @@ The fifth slice implements Windows Mono profile selection and attachment (Steps 
 - Final size review: native/local-collection/identity fixtures are unchanged. Explicit IL2CPP Lunistice shrinks from **27,204 to 23,141 bytes**, and IL2CPP scalar/string fixtures shrink by 894 bytes. Mono scalar/string fixtures grow by **4,057 bytes** for the additional fallback descriptors, x86/old-runtime discovery, image-name routing, and static-storage variants. Automatic Lunistice grows from **50,575 to 72,974 bytes**, including exact identity reading and all measured profile factories. Scratch reservations and initial pages are unchanged. The gate now covers 19 artifacts.
 - Validation on 2026-09-19: **443 library tests**, **654 compiler integration tests**, and **106 runtime scenarios** pass, including **70 Mono profile cases**, inherited statics, instances, and Lunistice base/DLC. Clippy, formatting, 510-page documentation validation, importer reproducibility, and the reviewed size gate pass. Automatic Lunistice remains size-only; no live-game validation was performed.
 
-Step 1 is **in progress**, not complete: executable contracts for new profile/read APIs and recursive acceptance examples still need implementation. No new managed collection or recursive snapshot support is claimed by these slices. Live game validation has not been performed.
+Step 1 is **in progress**, not complete: executable contracts for recursive read APIs and recursive acceptance examples still need implementation. No new managed collection or recursive snapshot support is claimed by these slices. Live demo profile validation is recorded below.
 
-IL2CPP profile migration is underway. The demo at `C:\Games\Lunistice-Demo`
+IL2CPP profile migration is implemented. The demo at `C:\Games\Lunistice-Demo`
 contains x64 UnityPlayer/GameAssembly binaries. On 2026-09-19, its UnityPlayer
 product version was **2022.3.13f1 (5f90a5ebde0f)** and its four binary file-version
 components were **2022.3.13.37029**. The textual FileVersion string ends in
 `6262949`; automatic selection must use the binary components, not that string.
 The final ASR nearest-profile rule selects **2022.3.0f1 x64** for this demo.
-The example's old `2020` bucket therefore needs correction during migration.
-This records file inspection, not a successful live attachment or gameplay test.
+The example now selects that complete measured profile. Successful title-screen
+attachment is recorded below; live gameplay transitions have not been tested.
 
 ## What changed upstream
 
@@ -500,6 +500,65 @@ the reachable IL2CPP growth above, its strict comparison and Lunistice base/DLC
 behavior checks passed. Both pinned-source profile importers reproduce the
 checked-in catalogs. These checks complete this profile slice, not the remaining
 metadata and recursive-reader work.
+
+## Nested-name and Mono generic metadata integration (2026-09-19)
+
+Both backend class enumerators now use one source-owned name matcher. It
+validates all parts of `Game.Outer+Middle+Leaf`, requires a null declaring parent
+beyond the outermost class, and reads that class's namespace. The matcher keeps
+flat unqualified lookup unchanged; unqualified nested lookup requires an empty
+outer namespace. A profile without declaring metadata rejects nested lookup
+explicitly. Chains are bounded to 128 names, and checked pointer reads reject
+target-width address overflow.
+
+Mono inflated generic instances obtain the field count through their generic
+descriptor and definition while retaining the instance's field array and owner.
+Unreadable kind bytes and null/unreadable generic links retry; they never fall
+back to the instance's count. This is deliberately stricter than upstream's
+fallback on failed generic metadata reads. Field counts are bounded to 65,535
+and inheritance to 128 classes. Mono class caches validate bucket counts, cap
+the traversal at 1,048,576 classes, detect bucket-chain cycles, and yield every
+64 entries. Assembly-list traversal is bounded and yields as well.
+
+Independent fixtures cover 34 nested-name cases, 32 generic-count/static-owner
+cases, and 10 class-cursor cases across both pointer widths. They include late
+metadata, rejected enclosure chains, duplicate leaves, missing profile facts,
+inherited generic statics with deliberately different derived storage, invalid
+counts, cycles, bounded polls, cancellation, and process replacement.
+
+This advances Steps 6/7 without completing them: field matching, engine boundary
+policy, and backend-independent field cursors still need consolidation. IL2CPP
+type-to-class/generic-argument routes and recursive managed decoding remain
+unfinished. The new nested-name artifact joins the rolling size gate.
+The current shared matcher is general-purpose: flat schema bindings also retain
+its nested-name branch, although they do not read declaring metadata. When
+consolidating the class cursors, separate the statically known flat/nested
+matching policies so flat bindings can omit that branch. The final unused-feature
+criterion remains unchecked; a smaller total module would not prove this pruning.
+
+Validation passed all 656 compiler integration tests, 114 runtime scenarios,
+84 distinct Wasm artifact validations, and the library/CLI/syntax/loader/example
+suites. Clippy, formatting, 557 generated documentation pages, and both profile
+importer checks passed. Lunistice base/DLC and the other registered variants were
+tested with memory fixtures; the demo stayed closed throughout this slice.
+
+Optimized size review against `52f5b65`: explicit Lunistice decreases from 76,166
+to 74,926 bytes. Mono scalar grows from 23,966 to 42,000 bytes; its class-cache
+poll adds 7,836 bytes, field poll adds 5,930, and assembly poll adds 1,361 for the
+bounded traversal, cancellation points, and rejection paths. The generic count
+reader adds 439 bytes. The shared name matcher and checked name/pointer readers
+add 1,543 bytes. Automatic Lunistice grows from 131,836 to 148,062 bytes because
+it retains both backends. Native, local map/set, and all three identity fixtures
+remain byte-identical. Unused string fields still produce the scalar module's
+size on both backends. Scratch reservations and initial page counts do not grow.
+The rolling report now covers 22 fixtures, including the 133,486-byte automatic
+nested-metadata fixture. Shared resumable cursors remain the next functional
+step; this slice does not claim to have finished metadata cost isolation.
+The reviewed baseline was recorded and its strict comparison passed. One
+earlier recording attempt reported a nonzero Node exit after the DLC fixture
+printed its completed success summary; direct replay and both subsequent
+record/strict runs exited successfully. No fixture assertion was removed or
+relaxed in response.
 
 ## Source map for implementation
 

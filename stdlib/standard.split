@@ -1640,6 +1640,96 @@ private struct UnityRuntime {
     }
 }
 
+/// Shared metadata-name policy for complete .NET declaring chains.
+///
+/// # Example
+///
+/// Bind a class inside a managed namespace
+///
+/// ```splitscript
+/// image "Assembly-CSharp" { class Manager from "Game.Manager" {} }
+/// state Unity ["game.exe"] {}
+/// ```
+@representation(gcStruct, nullable)
+@valueUsage(localVariable)
+private struct UnityClassNames {
+    /// Target pointer width in bytes.
+    private width: u64,
+    /// Offset of the class name pointer.
+    private name: u64,
+    /// Offset of the class namespace pointer.
+    private namespace: u64,
+    /// Offset of the enclosing class pointer, when measured.
+    private declaring: u64?,
+
+    private fn pointer(base: address, offset: u64) -> address! {
+        let limit: u64 = if self.width == 4 { 0xffffffff } else { !0 }
+        if (base as u64) > limit || offset > limit - (base as u64)
+            || self.width - 1 > limit - (base as u64) - offset {
+            throw "Unity metadata address overflows the target pointer width"
+        }
+        return Ok(if self.width == 4 {
+            process.read<u32>(base.add(offset))? as address
+        } else { process.read<u64>(base.add(offset))? as address })
+    }
+
+    private fn text(base: address, offset: u64) -> String! {
+        let pointer = self.pointer(base, offset)?
+        if pointer == 0 { throw "Unity metadata name pointer is null" }
+        return process.readUtf8(pointer, 256)
+    }
+
+    private fn matches(class: address, candidate: String, requested: String) -> bool! {
+        let firstPlus = requested.indexOf("+")
+        let prefix = match firstPlus {
+            Some(plus) => requested.slice(0, plus) else requested,
+            None => requested,
+        }
+        let dot = prefix.lastIndexOf(".")
+        let namespace = match dot {
+            Some(index) => prefix.slice(0, index) else "",
+            None => "",
+        }
+        let nested = match dot {
+            Some(index) => requested.slice(index + 1, requested.byteLength()) else requested,
+            None => requested,
+        }
+        let remaining = nested
+        let actual = candidate
+        let current = class
+        let depth: u32 = 0
+        loop {
+            let plus = remaining.lastIndexOf("+")
+            let expected = match plus {
+                Some(index) => remaining.slice(index + 1, remaining.byteLength()) else "",
+                None => remaining,
+            }
+            if expected == "" || actual != expected { return Ok(false) }
+            match plus {
+                Some(index) => {
+                    let declaring = self.declaring else throw "Unity profile lacks nested class metadata"
+                    current = self.pointer(current, declaring)?
+                    if current == 0 || depth >= 127 { return Ok(false) }
+                    actual = self.text(current, self.name)?
+                    remaining = remaining.slice(0, index) else ""
+                    depth += 1
+                },
+                None => {
+                    if firstPlus != None {
+                        let declaring = self.declaring else throw "Unity profile lacks nested class metadata"
+                        if self.pointer(current, declaring)? != 0 { return Ok(false) }
+                    }
+                    // Preserve unqualified flat-name lookup, but an unqualified
+                    // nested name denotes an outer class in the empty namespace.
+                    if dot == None && firstPlus == None { return Ok(true) }
+                    return Ok(self.text(current, self.namespace)? == namespace)
+                },
+            }
+        }
+        return Ok(false)
+    }
+}
+
 /// Backend-neutral image used only by generated Unity schema binding.
 ///
 /// # Example
@@ -7854,6 +7944,18 @@ private struct UnityModule {
     // A readable complete table distinguishes absence from pending metadata.
     // Null entries are sparse slots and do not end the table.
     private fn probeClasses(image: address, names: [String]) -> async UnityClass? {
+        let matcher = UnityClassNames {
+            width: self.pointerSize as u64,
+            name: self.profile.className,
+            namespace: self.profile.classNamespace,
+            declaring: self.profile.classDeclaring,
+        }
+        for name in names {
+            if name.indexOf("+") != None && self.profile.classDeclaring == None {
+                print("Unity profile lacks nested class metadata")
+                await process.closed()
+            }
+        }
         let count = retry self.readU32Member(image, self.profile.imageTypeCount)
         if count > 1048576 {
             print("IL2CPP type table exceeds the metadata work limit")
@@ -7877,25 +7979,11 @@ private struct UnityModule {
             if class != 0 {
                 let candidate = retry self.readName(class, self.profile.className)
                 for name in names {
-                    let separator = name.lastIndexOf(".")
-                    let expected = match separator {
-                        Some(dot) => name.slice(dot + 1, name.byteLength()) else name,
-                        None => name,
-                    }
-                    if candidate == expected {
-                        let namespaceMatches = match separator {
-                            Some(dot) => {
-                                let actual = retry self.readName(class, self.profile.classNamespace)
-                                actual == (name.slice(0, dot) else name)
-                            },
-                            None => true,
+                    if retry matcher.matches(class, candidate, name) {
+                        if selected != 0 && selected != class {
+                            return Some(UnityClass { address: 0, module: self })
                         }
-                        if namespaceMatches {
-                            if selected != 0 && selected != class {
-                                return Some(UnityClass { address: 0, module: self })
-                            }
-                            selected = class
-                        }
+                        selected = class
                     }
                 }
             }
@@ -11258,7 +11346,12 @@ private struct MonoModule {
                 Ok(address) => address,
                 Err(_) => 0 as address,
             }
+            let visited: u32 = 0
             while link != 0 {
+                if visited >= 65536 {
+                    print("Mono assembly list is cyclic or exceeds the metadata work limit")
+                    await process.closed()
+                }
                 let assembly = retry self.readPointer(link)
                 let next = retry self.readNullablePointer(link.add(self.pointerBytes()))
                 let namePointer = retry {
@@ -11284,6 +11377,8 @@ private struct MonoModule {
                     }
                 }
                 link = next
+                visited += 1
+                if visited % 64 == 0 { await nextTick() }
             }
             await nextTick()
         }
@@ -11295,19 +11390,42 @@ private struct MonoModule {
 
     // Owns the raw-address traversal exposed through MonoImage.class().
     private fn classAnyInImage(image: address, names: [String]) -> async MonoClass {
+        let matcher = UnityClassNames {
+            width: self.pointerBytes(),
+            name: self.layout.className,
+            namespace: self.layout.classNamespace,
+            declaring: self.layout.classDeclaring,
+        }
+        for name in names {
+            if name.indexOf("+") != None && self.layout.classDeclaring == None {
+                print("Unity profile lacks nested class metadata")
+                await process.closed()
+            }
+        }
         while true {
             let selectedClass: address = 0
             let ambiguous = false
             let cache = image.add(self.layout.imageClassCache)
             let bucketCount = retry process.read<i32>(cache.add(self.layout.hashSize))
+            if bucketCount < 0 || bucketCount > 1048576 {
+                print("Mono class cache count is invalid or exceeds the metadata work limit")
+                await process.closed()
+            }
             if bucketCount > 0 {
                 let table = retry self.readPointer(cache.add(self.layout.hashTable))
                 let bucket: i32 = 0
+                let visited: u32 = 0
                 while bucket < bucketCount {
                     let classAddress = retry self.readNullablePointer(
                         table.add((bucket as u64) * self.pointerBytes()),
                     )
+                    let slow = classAddress
+                    let steps: u32 = 0
                     while classAddress != 0 {
+                        if visited >= 1048576 {
+                            print("Mono class cache exceeds the metadata work limit")
+                            await process.closed()
+                        }
                         let namePointer = retry self.readPointer(
                             classAddress.add(self.layout.className),
                         )
@@ -11315,40 +11433,30 @@ private struct MonoModule {
                         let candidateIndex: u32 = 0
                         while candidateIndex < names.length() {
                             let name = names[candidateIndex]
-                            let separator = name.lastIndexOf(".")
-                            let expectedName = match separator {
-                                Some(index) => name.slice(index + 1, name.byteLength()) else name,
-                                None => name,
-                            }
-                            if candidateName == expectedName {
-                                let namespacePointer = retry self.readPointer(
-                                    classAddress.add(self.layout.classNamespace),
-                                )
-                                let candidateNamespace = retry process.readUtf8(
-                                    namespacePointer,
-                                    256,
-                                )
-                                let namespaceMatches = match separator {
-                                    Some(index) => {
-                                        let expectedNamespace = name.slice(0, index) else continue
-                                        candidateNamespace == expectedNamespace
-                                    },
-                                    None => true,
+                            if retry matcher.matches(classAddress, candidateName, name) {
+                                if selectedClass != 0 && selectedClass != classAddress {
+                                    ambiguous = true
                                 }
-                                if namespaceMatches {
-                                    if selectedClass != 0 && selectedClass != classAddress {
-                                        ambiguous = true
-                                    }
-                                    selectedClass = classAddress
-                                }
+                                selectedClass = classAddress
                             }
                             candidateIndex += 1
                         }
                         classAddress = retry self.readNullablePointer(
                             classAddress.add(self.layout.classNextCache),
                         )
+                        steps += 1
+                        if steps % 2 == 0 {
+                            slow = retry self.readNullablePointer(slow.add(self.layout.classNextCache))
+                        }
+                        if classAddress != 0 && classAddress == slow {
+                            print("Mono class cache contains a cycle")
+                            await process.closed()
+                        }
+                        visited += 1
+                        if visited % 64 == 0 { await nextTick() }
                     }
                     bucket += 1
+                    if bucket % 64 == 0 { await nextTick() }
                 }
                 if ambiguous {
                     print(`multiple Unity classes match metadata names {names}`)
@@ -11371,6 +11479,26 @@ private struct MonoModule {
         }
     }
 
+    // Inflated classes own their field array, but the generic definition owns
+    // its count. An unreadable/null descriptor must retry rather than silently
+    // falling back to the instance's unrelated count word.
+    private fn fieldCount(class: address) -> i32! {
+        let counted = class
+        match self.layout.classKind {
+            Some(kindOffset) => {
+                let kind = process.read<u8>(class.add(kindOffset))?
+                if kind & 7 == 3 {
+                    let genericOffset = self.layout.genericClass else throw "Mono profile lacks generic class metadata"
+                    let containerOffset = self.layout.genericContainer else throw "Mono profile lacks generic definition metadata"
+                    let generic = self.readPointer(class.add(genericOffset))?
+                    counted = self.readPointer(generic.add(containerOffset))?
+                }
+            },
+            None => {},
+        }
+        return process.read<i32>(counted.add(self.layout.classFieldCount))
+    }
+
     // Completes after one fully readable traversal, preserving absence.
     private fn probeFieldAnyInClass(
         classAddress: address,
@@ -11381,10 +11509,17 @@ private struct MonoModule {
         let selectedIndex: u32 = 0
         let selectedOwner: address = 0
         let ambiguous = false
+        let depth: u32 = 0
         while current != 0 {
-            let count = retry process.read<i32>(
-                current.add(self.layout.classFieldCount),
-            )
+            if depth >= 128 {
+                print("Mono inheritance is cyclic or exceeds the metadata work limit")
+                await process.closed()
+            }
+            let count = retry self.fieldCount(current)
+            if count < 0 || count > 65535 {
+                print("Mono field count is invalid or exceeds the metadata work limit")
+                await process.closed()
+            }
             if count > 0 {
                 let fields = retry self.readPointer(
                     current.add(self.layout.classFields),
@@ -11426,9 +11561,12 @@ private struct MonoModule {
                         None => {},
                     }
                     index += 1
+                    if index % 64 == 0 { await nextTick() }
                 }
             }
             current = retry self.readNullablePointer(current.add(self.layout.classParent))
+            depth += 1
+            if depth % 8 == 0 { await nextTick() }
         }
         if ambiguous {
             print(`multiple Unity fields match metadata names {names}`)

@@ -97,6 +97,7 @@ export function createMonoPeFixture({ version, width, guid, age = 1, exact = tru
     int(managedImage + BigInt(classCache + (wide ? 0x18 : 0xc)), 1);
     ptr(managedImage + BigInt(classCache + (wide ? 0x20 : 0x14)), table);
     ptr(table, klass); ptr(klass + BigInt(parent), 0); ptr(klass + BigInt(next), 0);
+    if (!old) write(klass + BigInt(version === "V2" ? (wide ? 0x2a : 0x1e) : (wide ? 0x1b : 0xf)), Uint8Array.of(1));
     ptr(klass + BigInt(name), 0x22000n); ptr(klass + BigInt(namespace), 0x23000n);
     if (version === "V1Cattrs") ptr(klass + BigInt(wide ? 0x48 : 0x30), managedImage);
     string(0x22000n, "ProfileProbe"); string(0x23000n, "");

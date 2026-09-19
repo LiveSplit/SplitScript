@@ -53,6 +53,10 @@ fn fixtures() -> BTreeMap<String, String> {
     BTreeMap::from([
         ("native".into(), "state \"game.exe\" {}".into()),
         (
+            "unity-nested-metadata".into(),
+            include_str!("../tests/unity_nested_metadata.split").into(),
+        ),
+        (
             "il2cpp-auto-profile".into(),
             include_str!("../tests/il2cpp_profiles.split").into(),
         ),

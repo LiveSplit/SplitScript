@@ -1,0 +1,5 @@
+image "Assembly-CSharp" {
+    class Nested from "Game.Outer+Middle+Leaf" { static i32 value; }
+}
+state Unity ["game.exe"] { value = Nested.value?; }
+whileAttached { print(current.value) }

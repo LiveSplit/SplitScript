@@ -389,7 +389,22 @@ metadata discovery unless a managed schema is reachable.
 
 `from "name"` supplies an exact metadata name and `from ["first", "second"]`
 supplies ordered alternatives. Instance fields without `from` also recognize
-the conventional C# automatic-property backing-field spelling. Class-typed
+the conventional C# automatic-property backing-field spelling. Nested classes
+use .NET names such as `class Leaf from "Game.Outer+Middle+Leaf"`. Both backends
+check every enclosing class, require the outermost class to have no further
+declaring parent, and read the namespace from that outermost class. Unqualified
+nested names require an empty outer namespace; unqualified flat names still
+match any namespace. Profiles without a measured declaring-class offset reject
+nested lookup explicitly. Unreadable metadata retries and cancels on process exit.
+
+Mono inflated generic classes read their field count from the generic definition
+while retaining the inflated class's field array, offsets, and static owner.
+Null or unreadable generic metadata remains pending instead of falling back to
+an unrelated count slot. Mono class-cache traversal yields every 64 entries,
+detects linked-list cycles, and limits a search to 1,048,576 classes; field walks
+limit each class to 65,535 fields and inheritance to 128 classes.
+
+Class-typed
 static and instance fields are live references: every state poll rereads the
 current singleton and following object pointers instead of caching a transient
 object address during attachment. Scalar leaves use their declared fixed-width

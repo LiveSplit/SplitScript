@@ -95,6 +95,7 @@ export function createMonoV2Fixture({ className, fields, parent }) {
     writeI32(classCache + 0x18n, 1);
     writeU64(classCache + 0x20n, classTable);
     writeU64(classTable, classAddress);
+    writeBytes(classAddress + 0x2an, Uint8Array.of(1));
     writeU64(classAddress + 0x30n, 0n);
     writeU64(classAddress + 0x48n, classNameAddress);
     writeU64(classAddress + 0x50n, classNamespace);
@@ -132,6 +133,7 @@ export function createMonoV2Fixture({ className, fields, parent }) {
         parentFieldOffsets = new Map();
 
         writeU64(classAddress + 0x30n, parentClass);
+        writeBytes(parentClass + 0x2an, Uint8Array.of(1));
         writeU64(parentClass + 0x30n, 0n);
         writeU64(parentClass + 0x48n, parentClassName);
         writeU64(parentClass + 0x50n, parentNamespace);
