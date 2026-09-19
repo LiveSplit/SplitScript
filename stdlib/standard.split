@@ -7527,6 +7527,188 @@ struct Module {
         throw `module does not export {name}`
     }
 
+    // Dynamic pointers may already be relocated by the ELF loader.
+    private fn elfDynamicAddress(value: u64, headerVirtual: u64, length: u64) -> address! {
+        let base = self.address as u64
+        if value >= base && value - base < self.size {
+            return self.boundedAddress(value - base, length)
+        }
+        if value < headerVirtual { throw "ELF dynamic pointer precedes the mapped image" }
+        return self.boundedAddress(value - headerVirtual, length)
+    }
+
+    /// Resolves a defined function in a mapped little-endian ELF64 image.
+    ///
+    /// Supports SysV and GNU symbol hashes and relocated dynamic pointers.
+    /// Undefined, hidden, and indirect functions are not returned. Header and
+    /// table reads stay within the mapped module. Large walks yield regularly;
+    /// malformed tables and exhausted lookup limits return an error.
+    ///
+    /// # Example
+    ///
+    /// Resolve the Linux Mono assembly enumerator
+    ///
+    /// ```splitscript
+    /// let mono = await process.module("libmonobdwgc-2.0.so")
+    /// let enumerator = await mono.elfExport("mono_assembly_foreach") else return
+    /// ```
+    @mustUse("use the resolved export address")
+    fn elfExport(
+        /// Exact case-sensitive function name, at most 4096 UTF-8 bytes.
+        name: String,
+    ) -> async address! {
+        if name.byteLength() == 0 || name.byteLength() > 4096 { throw "ELF symbol name length is invalid" }
+        let header = self.boundedAddress(0, 64)?
+        if process.read<u32>(header)? != 0x464c457f
+            || process.read<u32>(header.add(4))? & 0xffffff != 0x010102 {
+            throw "ELF symbols require a little-endian ELF64 image"
+        }
+        let imageType = process.read<u16>(header.add(16))?
+        if (imageType != 2 && imageType != 3) || process.read<u32>(header.add(20))? != 1 {
+            throw "unsupported ELF image type or version"
+        }
+        let sizes = process.read<[u16; 3]>(header.add(52))?
+        let stride = sizes[1] as u64
+        let count = sizes[2] as u64
+        if sizes[0] < 64 || stride < 56 || count == 0 || count > 1024 {
+            throw "ELF program-header layout is invalid"
+        }
+        self.boundedAddress(0, sizes[0] as u64)?
+        let table = process.read<u64>(header.add(32))?
+        self.boundedAddress(table, count * stride)?
+        let headerVirtual: u64? = None
+        let dynamicVirtual: u64? = None
+        let dynamicSize: u64 = 0
+        let index: u64 = 0
+        while index < count {
+            let segment = self.elfIdentitySegment(table + index * stride, true)?
+            if segment.kind == 1 && segment.fileOffset == 0 {
+                if headerVirtual != None || segment.fileSize < 64 { throw "ELF header load segment is invalid" }
+                headerVirtual = Some(segment.virtualAddress)
+            }
+            if segment.kind == 2 {
+                if dynamicVirtual != None { throw "ELF has multiple dynamic segments" }
+                dynamicVirtual = Some(segment.virtualAddress)
+                dynamicSize = segment.fileSize
+            }
+            index += 1
+            if index % 64 == 0 { await nextTick() }
+        }
+        let origin = headerVirtual else throw "ELF image lacks a header load segment"
+        let dynamicValue = dynamicVirtual else throw "ELF image lacks a dynamic segment"
+        if dynamicValue < origin || dynamicSize == 0 || dynamicSize % 16 != 0 || dynamicSize > 65536 {
+            throw "ELF dynamic segment size or address is invalid"
+        }
+        let dynamic = self.boundedAddress(dynamicValue - origin, dynamicSize)?
+        let tables: [u64; 6] = [0, 0, 0, 0, 0, 0]
+        let seen: u32 = 0
+        let terminated = false
+        index = 0
+        while index < dynamicSize / 16 {
+            let entry = process.read<[u64; 2]>(dynamic.add(index * 16))?
+            if entry[0] == 0 { terminated = true; break }
+            let slot: u32? = match entry[0] {
+                4 => Some(0), 5 => Some(1), 6 => Some(2),
+                10 => Some(3), 11 => Some(4), 0x6ffffef5 => Some(5), _ => None,
+            }
+            match slot {
+                Some(slot) => {
+                    if (seen & (1 << slot)) != 0 && tables[slot] != entry[1] {
+                        throw "ELF dynamic tags conflict"
+                    }
+                    seen = seen | (1 << slot)
+                    tables[slot] = entry[1]
+                },
+                None => {},
+            }
+            index += 1
+            if index % 64 == 0 { await nextTick() }
+        }
+        if !terminated || tables[1] == 0 || tables[2] == 0 || tables[3] == 0 || tables[4] != 24 {
+            throw "ELF dynamic symbol tables are incomplete"
+        }
+        let strings = self.elfDynamicAddress(tables[1], origin, tables[3])?
+        let symbols = self.elfDynamicAddress(tables[2], origin, 24)?
+        let sysvHash: u32 = 0
+        let gnuHash: u32 = 5381
+        let byteIndex: u32 = 0
+        while byteIndex < name.byteLength() {
+            let byte = name.byteAt(byteIndex)? as u32
+            if byte == 0 { throw "ELF symbol name contains NUL" }
+            sysvHash = (sysvHash << 4) + byte
+            let high = sysvHash & 0xf0000000
+            sysvHash = (sysvHash ^ (high >> 24)) & !high
+            gnuHash = gnuHash * 33 + byte
+            byteIndex += 1
+        }
+        let sysv = tables[0] != 0
+        let chain: address = 0
+        let symbol: u32 = 0
+        let symbolLimit: u32 = 1048576
+        let firstSymbol: u32 = 0
+        if sysv {
+            let hash = self.elfDynamicAddress(tables[0], origin, 8)?
+            let counts = process.read<[u32; 2]>(hash)?
+            if counts[0] == 0 || counts[0] > 1048576 || counts[1] == 0 || counts[1] > 1048576 {
+                throw "ELF SysV hash counts are invalid"
+            }
+            self.boundedAddress((hash as u64) - (self.address as u64), 8 + 4 * ((counts[0] as u64) + (counts[1] as u64)))?
+            symbolLimit = counts[1]
+            symbol = process.read<u32>(hash.add(8 + 4 * ((sysvHash % counts[0]) as u64)))?
+            chain = hash.add(8 + 4 * (counts[0] as u64))
+        } else {
+            if tables[5] == 0 { throw "ELF image has no supported symbol hash" }
+            let hash = self.elfDynamicAddress(tables[5], origin, 16)?
+            let counts = process.read<[u32; 4]>(hash)?
+            if counts[0] == 0 || counts[0] > 1048576 || counts[1] >= symbolLimit
+                || counts[2] == 0 || counts[2] > 1048576 {
+                throw "ELF GNU hash counts are invalid"
+            }
+            let buckets = 16 + 8 * (counts[2] as u64)
+            self.boundedAddress((hash as u64) - (self.address as u64), buckets + 4 * (counts[0] as u64))?
+            firstSymbol = counts[1]
+            symbol = process.read<u32>(hash.add(buckets + 4 * ((gnuHash % counts[0]) as u64)))?
+            chain = hash.add(buckets + 4 * (counts[0] as u64))
+        }
+        let work: u32 = 0
+        while symbol != 0 {
+            if symbol >= symbolLimit || symbol < firstSymbol || work >= 16384 {
+                throw "ELF symbol chain is invalid or exceeds the lookup limit"
+            }
+            let chainOffset = (chain as u64) - (self.address as u64) + 4 * ((symbol - firstSymbol) as u64)
+            let next = process.read<u32>(self.boundedAddress(chainOffset, 4)?)?
+            if sysv || (next & 0xfffffffe) == (gnuHash & 0xfffffffe) {
+                let symbolOffset = (symbols as u64) - (self.address as u64) + 24 * (symbol as u64)
+                let entry = process.read<[u64; 3]>(self.boundedAddress(symbolOffset, 24)?)?
+                let nameOffset = entry[0] & 0xffffffff
+                if nameOffset >= tables[3] { throw "ELF symbol name is outside its string table" }
+                let available = tables[3] - nameOffset
+                let requested = (name.byteLength() as u64) + 1
+                let length = if available < requested { available } else { requested }
+                let candidate = process.readUtf8(strings.add(nameOffset), length as u32)?
+                if candidate == name && available > (name.byteLength() as u64) && entry[0] >> 48 != 0
+                    && (entry[0] >> 48 < 0xff00 || entry[0] >> 48 == 0xfff1)
+                    && ((entry[0] >> 32) & 0xf) == 2
+                    && (((entry[0] >> 36) & 0xf) == 1 || ((entry[0] >> 36) & 0xf) == 2)
+                    && (((entry[0] >> 40) & 3) == 0 || ((entry[0] >> 40) & 3) == 3) {
+                    let address = if entry[0] >> 48 == 0xfff1 {
+                        if entry[1] < (self.address as u64) { throw "ELF absolute symbol precedes its module" }
+                        self.boundedAddress(entry[1] - (self.address as u64), 1)?
+                    } else {
+                        if entry[1] < origin { throw "ELF symbol precedes its module" }
+                        self.boundedAddress(entry[1] - origin, 1)?
+                    }
+                    return address
+                }
+            }
+            if !sysv && (next & 1) != 0 { break }
+            symbol = if sysv { next } else { symbol + 1 }
+            work += 1
+            if work % 64 == 0 { await nextTick() }
+        }
+        throw `module does not export {name}`
+    }
+
     /// Determines the pointer width of a Windows PE module.
     ///
     /// The DOS, PE, and optional-header signatures are validated before the

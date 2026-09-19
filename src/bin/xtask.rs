@@ -403,6 +403,20 @@ const RUNTIME_FIXTURES: &[RuntimeFixture] = &[
         extra_arguments: &[],
     },
     RuntimeFixture {
+        source: "tests/elf_export.split",
+        output: "elf_export-debug.wasm",
+        profile: "debug",
+        harness: "tests/elf_export_runtime.mjs",
+        extra_arguments: &[],
+    },
+    RuntimeFixture {
+        source: "tests/elf_export.split",
+        output: "elf_export-release.wasm",
+        profile: "release",
+        harness: "tests/elf_export_runtime.mjs",
+        extra_arguments: &[],
+    },
+    RuntimeFixture {
         source: "tests/elf_build_id.split",
         output: "elf_build_id.wasm",
         profile: "release",

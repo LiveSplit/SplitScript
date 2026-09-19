@@ -1552,6 +1552,31 @@ separate members. The existing generic-definition route must not be reused as
 proof of an instantiated value's size or arguments; additional profile facts
 need validation before that route is implemented.
 
+## ELF function lookup and asynchronous failure completion (2026-09-19)
+
+`Module.elfExport` now resolves defined function symbols in mapped little-endian
+ELF64 images through SysV or GNU hashes. It handles relocated dynamic pointers,
+nonzero preferred virtual addresses, and fixed-address executables. Header,
+dynamic, hash, symbol, and string reads are checked against the module span;
+undefined, hidden, local, indirect, and unsupported-section symbols are rejected.
+Walks have finite limits and yield every 64 entries, allowing process-close
+cancellation during malformed or lengthy metadata traversal.
+
+The new reader exposed a compiler bug in source-defined async fallible functions:
+`throw` and propagated errors returned a Result from a poll function whose return
+type is a completion flag. These paths now store the Result in the future frame,
+mark the future complete, and return the poll flag. Focused runtime coverage
+checks immediate/resumed throws, expression throws, propagation across async
+calls and differing result types, successful returns, and effects of discarded
+error payloads. All 50 failure-semantics compiler tests pass.
+
+Both Debug and Release ELF fixtures pass 368 cases each, including cooperative
+yielding, cyclic chains, malformed tables, cancellation, and successful
+reattachment. The standalone Release ELF fixture is 14,867 bytes. Explicit-profile
+Lunistice remains 58,178 bytes after adding the unused ELF reader. Linux Mono
+attachment/profile selection is not yet connected to this reader; macOS support,
+the remaining metadata work, and the final Lunistice size target remain open.
+
 ## Source map for implementation
 
 Upstream links below are pinned to the reviewed tip; the PR table provides the historical changes.

@@ -1,0 +1,8 @@
+state "game.exe" {}
+onAttach {
+    let runtime = await process.module("runtime")
+    match await runtime.elfExport("mono_assembly_foreach") {
+        Ok(value) => setVariable("address", value),
+        Err(error) => setVariable("error", error),
+    }
+}
