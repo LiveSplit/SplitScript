@@ -1,6 +1,6 @@
 # Unity support: ASR research and SplitScript implementation plan
 
-Status: researched on 2026-09-18; the measurement gate, reachable binding/scratch allocation, binary identities, Windows Mono profiles, and measured IL2CPP profiles/discovery are implemented. Shared nested-name matching and Mono generic field counts are implemented; remaining shared metadata operations and recursive managed readers are in progress/planned. See [implementation progress](#implementation-progress).
+Status: core recursive managed values and snapshots, measured IL2CPP profiles, and Windows/Linux/macOS Mono automatic attachment are implemented. Remaining work includes runtime type/generic validation, shared metadata/error handling, explicit platform selection, native platform validation, and final size acceptance. See [implementation progress](#implementation-progress).
 
 ## Objective and baseline
 
@@ -1688,6 +1688,29 @@ the async attachment body reduced that body's initial 62,880-byte emission to
 21,057 bytes without changing its behavior. Shared async continuation emission
 remains relevant to the eventual size work, but no unrelated compiler
 optimization was added in this milestone.
+
+## Inherited static pointer paths and scope correction (2026-09-19)
+
+`MonoClass.staticFieldPath` now builds its path from the owner-aware static-field
+address instead of combining an inherited offset with the derived class's static
+table. The compiler-owned probe gives derived and parent classes distinct tables
+and values. It covers ordinary/backing-field names, delayed parent initialization,
+replacement singleton pointers, null failures and recovery, and cancellation/
+reattachment in both Debug and Release. The focused library test passes; ordinary
+schema-based static reads already used the owner-aware route.
+
+A current-state review also confirms that the IL2CPP numeric-version transition
+and removal of `VERSION_LAYOUTS`/`OBJECT_LAYOUT` are already implemented. Mono's
+V1/V1Cattrs/V2/V3 distinctions remain intentional ASR fallback families, as noted
+in the original research. Earlier progress summaries that grouped them with
+unfinished IL2CPP cleanup were inaccurate. Explicit platform selection and the
+other open acceptance requirements remain separate work; this correction does
+not mark the overall goal complete.
+
+All 36 existing size fixtures retain module/section sizes, function/type counts,
+and function-body size multisets after this fix. The baseline refresh changes
+generated expression identifiers rather than retained functionality. Explicit
+Lunistice remains 58,178 bytes; its base/DLC fixtures pass.
 
 ## Source map for implementation
 

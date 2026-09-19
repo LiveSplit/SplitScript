@@ -13517,9 +13517,8 @@ private struct MonoClass {
         /// Managed static-field name or C# auto-property name.
         name: String,
     ) -> async MemoryPath {
-        let table = await self.staticTable()
-        let offset = await self.field(name)
-        return table.memoryPath([], offset as i64)
+        let slot = await self.staticField(name)
+        return slot.memoryPath([], 0)
     }
 }
 

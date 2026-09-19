@@ -1,0 +1,24 @@
+// Compiler-owned adapter probe; no public access to private runtime handles.
+state "game.exe" {}
+onAttach { await __splitscript_stdlib_static_path_probe() }
+fn __splitscript_stdlib_static_path_probe() {
+    let runtime = await Unity.mono(MonoVersion.V2)
+    let image = await runtime.image("Assembly-CSharp")
+    let derived = await image.class("LevelFlowService")
+    let root = await derived.staticFieldPath("Instance")
+    let path = root.dereference(0x20)
+    setVariable("slot", root.resolve() else 0)
+    loop {
+        let address = path.resolve()
+        match address {
+            Ok(at) => {
+                match process.read<i32>(at) {
+                    Ok(value) => { setVariable("value", value); setVariable("status", "ok") },
+                    Err(_) => setVariable("status", "error"),
+                }
+            },
+            Err(_) => setVariable("status", "error"),
+        }
+        await nextTick()
+    }
+}

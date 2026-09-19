@@ -39,7 +39,16 @@ fn managed_keyed_collection_slots_runtime() {
     );
 }
 
-fn run_layout_fixtures(kind: &str, harness: &str, fixtures: [(&str, &str); 2]) {
+#[test]
+fn mono_static_field_paths_preserve_declaring_owners() {
+    run_layout_fixtures(
+        "static-path",
+        "tests/mono_static_path_runtime.mjs",
+        [("mono", include_str!("../tests/mono_static_path.split"))],
+    );
+}
+
+fn run_layout_fixtures<const N: usize>(kind: &str, harness: &str, fixtures: [(&str, &str); N]) {
     for (backend, source) in fixtures {
         let mut parsed = parse(source).unwrap();
         // This fixture deliberately occupies the same reserved namespace as
