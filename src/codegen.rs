@@ -2073,12 +2073,11 @@ fn emit_result_error(
     function.instruction(&Instruction::StructNew(gc.index(Type::Result(result))));
 }
 
-/// Transfers an error to the nearest compiled failure boundary.
+/// Constructs an error for the nearest compiled failure boundary.
 ///
-/// Both an explicit `throw` and the failure arm of postfix `?` lower through
-/// this operation. A future nested `catch` can replace the final return with a
-/// branch to the selected handler without changing either source construct.
-fn emit_failure_transfer(
+/// Both explicit `throw` and postfix `?` use this Result construction. The
+/// caller transfers it to a direct return or an asynchronous completion slot.
+fn emit_failure_value(
     function: &mut Function,
     target: ResultTypeId,
     target_value: Type,
@@ -2100,9 +2099,7 @@ fn emit_failure_transfer(
             gc.standard_index(StdlibTypeId::String),
         )));
     }
-    function
-        .instruction(&Instruction::StructNew(gc.index(Type::Result(target))))
-        .instruction(&Instruction::Return);
+    function.instruction(&Instruction::StructNew(gc.index(Type::Result(target))));
 }
 
 fn emit_int(function: &mut Function, value: u64, ty: Type) {

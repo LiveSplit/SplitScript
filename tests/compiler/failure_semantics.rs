@@ -2453,3 +2453,12 @@ fn timer_lifecycle_actions_cannot_depend_on_an_attachment() {
         }
     }
 }
+
+#[test]
+fn async_failures_store_results_before_completing_the_poll() {
+    let wasm = splitscript::compile(include_str!("../async_failure.split"))
+        .expect("async throwing and propagating functions compile");
+    Validator::new_with_features(WasmFeatures::all())
+        .validate_all(&wasm)
+        .expect("async errors must return poll flags, not Result references");
+}

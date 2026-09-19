@@ -389,6 +389,20 @@ const RUNTIME_FIXTURES: &[RuntimeFixture] = &[
         extra_arguments: &[],
     },
     RuntimeFixture {
+        source: "tests/async_failure.split",
+        output: "async_failure-debug.wasm",
+        profile: "debug",
+        harness: "tests/async_failure_runtime.mjs",
+        extra_arguments: &[],
+    },
+    RuntimeFixture {
+        source: "tests/async_failure.split",
+        output: "async_failure-release.wasm",
+        profile: "release",
+        harness: "tests/async_failure_runtime.mjs",
+        extra_arguments: &[],
+    },
+    RuntimeFixture {
         source: "tests/elf_build_id.split",
         output: "elf_build_id.wasm",
         profile: "release",

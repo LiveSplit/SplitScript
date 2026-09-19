@@ -28,7 +28,7 @@ use super::{
     DisplayFunctions, EqualityFunctions, GcLayout, MemoryByteOrder, RuntimeHelperPlan, STATE_TYPE,
     SetFunctions, SettingStorage, Type, application_type_argument, array_element_type, array_value,
     async_frame::{AsyncFrameRef, CONTINUATION_TAG_FIELD, LeafFutureInstance, LeafFutureLayout},
-    emit_array_get, emit_default, emit_failure_transfer, emit_frame_typed_struct_get, emit_int,
+    emit_array_get, emit_default, emit_failure_value, emit_frame_typed_struct_get, emit_int,
     emit_integer_literal, emit_memory_value_result, emit_monotonic_nanoseconds,
     emit_native_memory_read_destination_and_size, emit_native_memory_value_result,
     emit_result_error, emit_result_success, emit_string_literal, emit_struct_get,
@@ -5250,7 +5250,10 @@ pub(super) fn emit_failure_return(
             .instruction(&Instruction::Return);
         return;
     }
-    emit_failure_transfer(
+    if let BareReturn::AsyncFuture { frame, .. } = context.bare_return {
+        frame.emit(function);
+    }
+    emit_failure_value(
         function,
         target_result,
         result_value_type(target_result, context.semantics),
@@ -5259,6 +5262,22 @@ pub(super) fn emit_failure_return(
         preserve_discarded_payload,
         emit_error,
     );
+    if let BareReturn::AsyncFuture { frame, completion } = context.bare_return {
+        let (field, _) = completion.expect("fallible futures store their Result completion");
+        function.instruction(&Instruction::StructSet {
+            struct_type_index: frame.struct_type,
+            field_index: field,
+        });
+        frame.emit(function);
+        function
+            .instruction(&Instruction::I32Const(-1))
+            .instruction(&Instruction::StructSet {
+                struct_type_index: frame.struct_type,
+                field_index: 0,
+            })
+            .instruction(&Instruction::I32Const(1));
+    }
+    function.instruction(&Instruction::Return);
 }
 
 pub(super) fn error_may_have_effects(error: ExprId, context: &ExprContext<'_>) -> bool {

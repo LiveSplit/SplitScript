@@ -1,0 +1,39 @@
+state "game.exe" {}
+let effects: u32 = 0
+fn fail() -> u32! { throw "propagated" }
+fn message() -> String { effects += 1; return "discarded" }
+fn discard() -> async bool! {
+    await nextTick()
+    throw message()
+}
+fn result(mode: u32) -> async u32! {
+    if mode == 0 { throw "immediate" }
+    await nextTick()
+    if mode == 1 { throw "resumed" }
+    if mode == 2 { return fail()? }
+    if mode == 3 {
+        let value: u32? = None
+        return value else throw "expression"
+    }
+    return 42
+}
+fn outer() -> async u64! {
+    let value = await result(2)
+    return value? as u64
+}
+onAttach {
+    for mode in 0..<5 {
+        match await result(mode) {
+            Ok(value) => setVariable(`case{mode}`, value),
+            Err(error) => setVariable(`case{mode}`, error),
+        }
+    }
+    match await outer() {
+        Ok(value) => setVariable("outer", value),
+        Err(error) => setVariable("outer", error),
+    }
+    let fallback = await discard() else false
+    setVariable("fallback", fallback)
+    setVariable("effects", effects)
+    setVariable("done", true)
+}
