@@ -1616,6 +1616,38 @@ is 163,919 bytes; explicit Lunistice remains 58,178 bytes. Both Lunistice editio
 fixtures pass. The Windows scanner remains unchanged to avoid retaining extra
 frames or arguments in scripts that do not use Linux discovery.
 
+## Mach-O function lookup (2026-09-19)
+
+`Module.machExport` now resolves exact external function names through the
+active mapped Mach-O64 slice's `LC_SYMTAB`. File offsets for symbol/string tables
+are translated through complete, unambiguous file-backed segment ranges; symbol
+values are treated as virtual addresses and adjusted by the header segment's
+load bias. These separate interpretations follow Apple's
+[load-command definitions](https://raw.githubusercontent.com/apple-oss-distributions/xnu/main/EXTERNAL_HEADERS/mach-o/loader.h)
+and [symbol definitions](https://raw.githubusercontent.com/apple-oss-distributions/xnu/main/EXTERNAL_HEADERS/mach-o/nlist.h).
+Only defined external symbols inside file-backed executable instruction sections
+are returned. Private, indirect, undefined, absolute, and debug symbols are
+skipped. The reader supports mapped executables, dylibs, and bundles; it does not
+parse universal containers or replace symbol tables with dyld export-trie lookup.
+
+The reader validates complete command/segment/section/table extents, rejects
+ambiguous file mappings and overflow, and handles header virtual addresses and
+both positive and negative slides. Work is bounded by 4,096 load commands,
+1,024 file-backed segments, the format's 255 section ordinals, and 1,048,576
+symbol entries. Long command, section, and symbol walks yield cooperatively.
+
+Both Debug and Release pass 268 synthetic cases covering Intel/ARM64 headers,
+relocation, file/virtual address differences, late entries, malformed tables,
+non-code exports, read failures, cancellation, and reattachment. The Release
+fixture is 13,510 bytes. All 35 pre-existing baseline fixtures retain module and
+section sizes, function/type counts, and function-body size multisets; none
+retains this unused reader. Explicit Lunistice remains 58,178 bytes and automatic
+Lunistice 163,919 bytes, with base/DLC fixtures passing. The reviewed baseline
+adds only this new demanded fixture and refreshes generated expression names.
+
+macOS Mono UUID profile selection, Intel/ARM64 assembly-list instructions,
+attachment integration, and native game validation remain unfinished.
+
 ## Source map for implementation
 
 Upstream links below are pinned to the reviewed tip; the PR table provides the historical changes.

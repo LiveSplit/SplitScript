@@ -7247,6 +7247,157 @@ struct Module {
         return Ok(None)
     }
 
+    // Convert a complete file-backed table through one unambiguous segment.
+    // Symbol values already contain virtual addresses and must not use this.
+    private fn machFileAddress(segments: [[u64; 4]], origin: u64, offset: u64, length: u64) -> address! {
+        let found = false
+        let result: address = 0
+        for segment in segments {
+            if offset >= segment[2] && offset - segment[2] <= segment[3]
+                && length <= segment[3] - (offset - segment[2]) {
+                if found { throw "Mach-O file mapping is ambiguous" }
+                let virtual = segment[0] + (offset - segment[2])
+                if virtual < origin { throw "Mach-O table precedes the mapped header" }
+                result = self.boundedAddress(virtual - origin, length)?
+                found = true
+            }
+        }
+        if !found { throw "Mach-O table has no complete file-backed mapping" }
+        return result
+    }
+
+    /// Resolves an external function in a mapped little-endian Mach-O64 image.
+    ///
+    /// Searches `LC_SYMTAB`, translating file-backed tables through segment
+    /// commands and applying the loaded image's relocation to symbol values.
+    /// Names use their exact stored spelling, including a leading underscore.
+    /// Only defined external symbols in executable instruction sections are
+    /// returned. Indirect, private, absolute, and undefined symbols are skipped.
+    /// Command and symbol walks yield regularly and reject malformed bounds.
+    /// This reads the active mapped slice, not a universal file on disk.
+    ///
+    /// # Example
+    ///
+    /// Resolve the macOS Mono assembly enumerator
+    ///
+    /// ```splitscript
+    /// let mono = await process.module("libmonobdwgc-2.0.dylib")
+    /// let enumerator = await mono.machExport("_mono_assembly_foreach") else return
+    /// ```
+    @mustUse("use the resolved export address")
+    fn machExport(
+        /// Exact function name, at most 4096 UTF-8 bytes.
+        name: String,
+    ) -> async address! {
+        if name.byteLength() == 0 || name.byteLength() > 4096 { throw "Mach-O symbol name length is invalid" }
+        let byteIndex: u32 = 0
+        while byteIndex < name.byteLength() {
+            if name.byteAt(byteIndex)? == 0 { throw "Mach-O symbol name contains NUL" }
+            byteIndex += 1
+        }
+        let header = process.read<[u32; 8]>(self.boundedAddress(0, 32)?)?
+        if header[0] != 0xfeedfacf || (header[3] != 2 && header[3] != 6 && header[3] != 8) {
+            throw "Mach-O symbols require a mapped little-endian Mach-O64 executable, library, or bundle"
+        }
+        let count = header[4]
+        let tableSize = header[5] as u64
+        if count > 4096 { throw "Mach-O load-command count exceeds the limit" }
+        let commands = self.boundedAddress(32, tableSize)?
+        let segments: [[u64; 4]] = []
+        let sections: [[u64; 3]] = []
+        let origin: u64? = None
+        let symbols: [u32; 4] = [0, 0, 0, 0]
+        let hasSymbols = false
+        let offset: u64 = 0
+        let index: u32 = 0
+        while index < count {
+            if tableSize - offset < 8 { throw "Mach-O load command is truncated" }
+            let command = process.read<[u32; 2]>(commands.add(offset))?
+            let size = command[1] as u64
+            if size < 8 || size % 8 != 0 || size > tableSize - offset {
+                throw "Mach-O load-command size is invalid"
+            }
+            if command[0] == 2 {
+                if hasSymbols || size != 24 { throw "Mach-O symbol-table command is invalid or repeated" }
+                symbols = process.read<[u32; 4]>(commands.add(offset + 8))?
+                hasSymbols = true
+            }
+            if command[0] == 0x19 {
+                if size < 72 { throw "Mach-O segment command is truncated" }
+                let segment = process.read<[u64; 4]>(commands.add(offset + 24))?
+                let properties = process.read<[u32; 4]>(commands.add(offset + 56))?
+                if segment[3] > segment[1] || segment[1] > 0xffffffffffffffff - segment[0]
+                    || segment[3] > 0xffffffffffffffff - segment[2] || (properties[3] & 1) != 0 {
+                    throw "Mach-O segment extent or mapping is unsupported"
+                }
+                if properties[2] > 255 - sections.length() || size != 72 + 80 * (properties[2] as u64) {
+                    throw "Mach-O section table is invalid"
+                }
+                if segment[3] != 0 {
+                    if segments.length() >= 1024 { throw "Mach-O segment count exceeds the limit" }
+                    segments.push(segment)
+                    if segment[2] == 0 {
+                        if origin != None || segment[3] < 32 + tableSize {
+                            throw "Mach-O header mapping is invalid or repeated"
+                        }
+                        origin = Some(segment[0])
+                    }
+                }
+                let sectionIndex: u32 = 0
+                while sectionIndex < properties[2] {
+                    let section = commands.add(offset + 72 + 80 * (sectionIndex as u64))
+                    let range = process.read<[u64; 2]>(section.add(32))?
+                    let flags = process.read<u32>(section.add(64))?
+                    if range[0] < segment[0] || range[0] - segment[0] > segment[1]
+                        || range[1] > segment[1] - (range[0] - segment[0]) {
+                        throw "Mach-O section lies outside its segment"
+                    }
+                    let executable: u64 = if (properties[1] & 4) != 0 && (flags & 0x80000400) != 0
+                        && range[0] - segment[0] <= segment[3]
+                        && range[1] <= segment[3] - (range[0] - segment[0]) { 1 } else { 0 }
+                    sections.push([range[0], range[1], executable])
+                    sectionIndex += 1
+                    if sectionIndex % 64 == 0 { await nextTick() }
+                }
+            }
+            offset += size
+            index += 1
+            if index % 64 == 0 { await nextTick() }
+        }
+        if offset != tableSize { throw "Mach-O command count does not cover the table" }
+        let headerVirtual = origin else throw "Mach-O image lacks a header mapping"
+        if !hasSymbols || symbols[1] == 0 || symbols[1] > 1048576 || symbols[3] == 0 {
+            throw "Mach-O symbol-table counts are invalid or absent"
+        }
+        let symbolTable = self.machFileAddress(segments, headerVirtual, symbols[0] as u64, 16 * (symbols[1] as u64))?
+        let strings = self.machFileAddress(segments, headerVirtual, symbols[2] as u64, symbols[3] as u64)?
+        index = 0
+        while index < symbols[1] {
+            let entry = process.read<[u64; 2]>(symbolTable.add(16 * (index as u64)))?
+            // N_EXT | N_SECT only: no debugging, private, or indirect flags.
+            if ((entry[0] >> 32) & 0xff) == 0x0f {
+                let sectionIndex = ((entry[0] >> 40) & 0xff) as u32
+                if sectionIndex == 0 || sectionIndex > sections.length() { throw "Mach-O symbol section is invalid" }
+                let section = sections[sectionIndex - 1]
+                let nameOffset = entry[0] & 0xffffffff
+                if nameOffset >= (symbols[3] as u64) { throw "Mach-O symbol name is outside its string table" }
+                let available = (symbols[3] as u64) - nameOffset
+                let requested = (name.byteLength() as u64) + 1
+                let length = if available < requested { available } else { requested }
+                let candidate = if nameOffset == 0 { "" } else { process.readUtf8(strings.add(nameOffset), length as u32)? }
+                if candidate == name && available > (name.byteLength() as u64) && section[2] != 0 {
+                    if entry[1] < section[0] || entry[1] - section[0] >= section[1] || entry[1] < headerVirtual {
+                        throw "Mach-O symbol lies outside its executable section"
+                    }
+                    return self.boundedAddress(entry[1] - headerVirtual, 1)?
+                }
+            }
+            index += 1
+            if index % 64 == 0 { await nextTick() }
+        }
+        throw `module does not export {name}`
+    }
+
     /// Returns the module's host-provided filesystem path.
     ///
     /// The returned value is an absolute path in the runtime's portable,

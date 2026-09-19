@@ -424,6 +424,20 @@ const RUNTIME_FIXTURES: &[RuntimeFixture] = &[
         extra_arguments: &["elf"],
     },
     RuntimeFixture {
+        source: "tests/mach_export.split",
+        output: "mach-export-debug.wasm",
+        profile: "debug",
+        harness: "tests/mach_export_runtime.mjs",
+        extra_arguments: &[],
+    },
+    RuntimeFixture {
+        source: "tests/mach_export.split",
+        output: "mach-export-release.wasm",
+        profile: "release",
+        harness: "tests/mach_export_runtime.mjs",
+        extra_arguments: &[],
+    },
+    RuntimeFixture {
         source: "tests/mach_uuid.split",
         output: "mach_uuid.wasm",
         profile: "release",
