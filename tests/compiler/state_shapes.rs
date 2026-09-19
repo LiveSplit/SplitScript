@@ -822,6 +822,8 @@ fn managed_arrays_compose_strings_and_owned_classes() {
         include_str!("../managed_set_classes.split"),
         include_str!("../managed_map_classes.split"),
         include_str!("../managed_nested_map.split"),
+        include_str!("../managed_map_lists.split"),
+        include_str!("../managed_set_lists.split"),
         include_str!("../managed_nested_set.split"),
         include_str!("../managed_set_inline.split"),
     ] {
@@ -855,6 +857,10 @@ fn managed_maps_project_children_and_compose_with_snapshot_types() {
         "Map<String, Set<[String?]>>",
         "[Set<String>?]",
         "Set<u8>",
+        "Set<List<String>>",
+        "Set<List<List<String?>>>",
+        "Map<List<String>, List<Map<List<String>, Root>>>",
+        "Map<Set<List<String>>, Map<List<Root>, List<String>>>",
         "Set<Set<String>>",
         "Set<Map<String, [String?]>>",
         "Map<Set<String>, Map<String, [String?]>>",
@@ -1780,4 +1786,90 @@ fn instance_enumeration_ignores_unused_address_array_declarations() {
                 .unwrap();
         }
     }
+}
+
+#[test]
+fn managed_collection_constraints_use_owned_types_only_within_field_schemas() {
+    let schema = r#"
+        image "Assembly-CSharp" { class Root { static Set<List<String>> values; } }
+    "#;
+    for source in [
+        format!("{schema} state Unity [\"game.exe\"] {{ values: Set<[String]> = Root.values?; }}"),
+        format!("{schema} state \"game.exe\" {{}}"),
+    ] {
+        let checked = splitscript::check(splitscript::parse(&source).unwrap()).unwrap();
+        let field = checked.syntax().managed_class_declarations()[0].fields[0].id;
+        let storage = checked.semantics().managed_field_type(field).unwrap();
+        assert!(checked.capabilities().has(
+            storage,
+            splitscript::compiler::stdlib::StdlibCapabilityId::ManagedReadable,
+            checked.semantics()
+        ));
+        let wasm = splitscript::codegen(&checked);
+        Validator::new_with_features(WasmFeatures::all())
+            .validate_all(&wasm)
+            .unwrap();
+    }
+    // Both uses can share one interned syntax application. The ordinary use
+    // must not inherit the field's interpretation of List as remote storage.
+    let ordinary = "fn accepts(value: Set<List<String>>) {}";
+    for source in [
+        format!("{schema} {ordinary}"),
+        format!("{ordinary} {schema}"),
+    ] {
+        let source = format!("{source} state \"game.exe\" {{}}");
+        let errors = splitscript::compile(&source)
+            .map(|wasm| wasm.len())
+            .unwrap_err();
+        let ordinary_set = source.find("fn accepts").unwrap() + ordinary.find("Set<").unwrap();
+        assert!(errors.iter().any(|error| error.span.start == ordinary_set));
+        assert!(
+            errors
+                .iter()
+                .any(|error| error.message.contains("Equatable")
+                    || error.message.contains("equality")),
+            "{errors:?}"
+        );
+    }
+}
+
+#[test]
+fn owned_collection_constraints_reject_non_equatable_nested_values() {
+    for field in [
+        "Set<List<Root.Ref>>",
+        "Map<List<Root.Ref>, i32>",
+        "Set<Map<String, Root.Ref>>",
+    ] {
+        let source = format!(
+            r#"
+            image "Assembly-CSharp" {{ class Root {{ static {field} values; }} }}
+            state "game.exe" {{}}
+        "#
+        );
+        let errors = splitscript::compile(&source)
+            .map(|wasm| wasm.len())
+            .unwrap_err();
+        assert!(
+            errors
+                .iter()
+                .any(|error| error.message.contains("equality")),
+            "{field}: {errors:?}"
+        );
+    }
+    // The completed semantic proof also checks ordinary annotations rather
+    // than waiting for a constructor or a lookup to force the constraint.
+    let source = r#"
+        image "Assembly-CSharp" { class Root { Root.Ref live; } }
+        state "game.exe" {}
+        fn accepts(values: Set<[Root]>) {}
+    "#;
+    let errors = splitscript::compile(source)
+        .map(|wasm| wasm.len())
+        .unwrap_err();
+    assert!(
+        errors
+            .iter()
+            .any(|error| error.message.contains("equality")),
+        "{errors:?}"
+    );
 }

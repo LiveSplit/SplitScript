@@ -2417,3 +2417,22 @@ fn storing_nested_collections_does_not_emit_collection_equality() {
         );
     }
 }
+
+#[test]
+fn unused_managed_list_key_schemas_add_no_wasm() {
+    let native = r#"state "game.exe" {}"#;
+    let (expected, _) = release_emission(native);
+    for field in [
+        "Set<List<String>>",
+        "Map<List<List<String?>>, List<String?>>",
+    ] {
+        let source = format!(
+            r#"
+            image "Assembly-CSharp" {{ class Root {{ static {field} values; }} }}
+            {native}
+        "#
+        );
+        let (wasm, _) = release_emission(&source);
+        assert_eq!(wasm, expected, "{field}");
+    }
+}

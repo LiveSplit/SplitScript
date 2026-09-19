@@ -1,0 +1,11 @@
+image "Assembly-CSharp" { class ProfileProbe { static Set<List<List<String?>>> rows; } }
+state Unity ["game.exe"] { rows: Set<[[String?]]> = ProfileProbe.rows?; }
+whileAttached {
+    setVariable("rows", current.rows)
+    setVariable("old", old.rows)
+    setVariable("equal", current.rows == old.rows)
+    setVariable("contains", current.rows.contains([[Some("seed"), None], [Some("tail")]]))
+    setVariable("result", match ProfileProbe.rows { Ok(_) => "ok", Err(error) => error })
+    let mutation = process.read<i32>(0x6f000) else return
+    if mutation == 1 { for row in current.rows { for inner in row { inner.clear() } } }
+}

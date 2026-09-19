@@ -3012,14 +3012,34 @@ pub(crate) fn type_may_have_capability(
     if behavior == CapabilityBehavior::StructuralManagedRead {
         return type_may_have_capability(library, types, ty, StdlibCapabilityId::MemoryReadable)
             || match ty {
-                Type::Known(id) => matches!(
-                    types.kind(id),
-                    TypeKind::Standard(crate::stdlib::StdlibTypeId::String)
-                        | TypeKind::Option { .. }
-                        | TypeKind::ManagedClass(_)
-                        | TypeKind::Array { .. }
-                ),
-                Type::Option(_) | Type::Array(_) => true,
+                Type::Known(id) => {
+                    matches!(
+                        types.kind(id),
+                        TypeKind::Standard(crate::stdlib::StdlibTypeId::String)
+                            | TypeKind::Option { .. }
+                            | TypeKind::ManagedClass(_)
+                            | TypeKind::Array { .. }
+                            | TypeKind::Set { .. }
+                    ) || matches!(types.kind(id), TypeKind::Application { constructor, .. }
+                    if matches!(*constructor, StdlibTypeConstructorId::List | StdlibTypeConstructorId::Map))
+                }
+                Type::Option(_) | Type::Array(_) | Type::Set(_) => true,
+                Type::Application(application) => types
+                    .iter()
+                    .find_map(|(_, kind)| match kind {
+                        TypeKind::Application {
+                            layout,
+                            constructor,
+                            ..
+                        } if *layout == application => Some(*constructor),
+                        _ => None,
+                    })
+                    .is_none_or(|constructor| {
+                        matches!(
+                            constructor,
+                            StdlibTypeConstructorId::List | StdlibTypeConstructorId::Map
+                        )
+                    }),
                 _ => false,
             };
     }

@@ -57,6 +57,20 @@ pub(crate) fn validate(
     let effects = OperationAnalysis::infer(syntax, hir, semantics, &capabilities, &scoped_globals);
     let mut diagnostics = Vec::new();
     diagnostics.extend(scoped_global_diagnostics);
+    for (ty, capability, span) in semantics.constructor_constraints() {
+        if let Err(error) = capabilities.require(ty, capability, semantics) {
+            diagnostics.push(capability_diagnostic(
+                error,
+                span,
+                ty,
+                capability,
+                syntax,
+                semantics,
+                &standard_library,
+                &capabilities,
+            ));
+        }
+    }
     diagnostics.extend(validate_enum_memory_layouts(
         syntax,
         semantics,

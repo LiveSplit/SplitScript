@@ -268,6 +268,11 @@ fn initialize_checker(
         checker.standard_field_types.insert(field.id, ty);
         checker.semantics.resolve_standard_field_type(field.id, ty);
     }
+    let managed_type_spans = program
+        .managed_class_declarations()
+        .into_iter()
+        .flat_map(|class| class.all_fields().map(|field| field.type_span))
+        .collect::<Vec<_>>();
     for application in &program.type_applications {
         let name = program.type_name(application.constructor);
         let Some(constructor) = checker
@@ -287,13 +292,39 @@ fn initialize_checker(
         ) {
             continue;
         }
-        for (argument, parameter) in application.arguments.iter().zip(constructor.parameters) {
-            let argument = checker.syntax_type(*argument);
-            checker.require(
-                argument,
-                Requirements::capabilities(parameter.constraints.iter().copied()),
-                program.type_name_span(application.constructor),
-            );
+        // Interned syntax can occur both in a managed field and in an ordinary
+        // annotation. Interpret each written use in its own storage context.
+        for occurrence in &application.occurrences {
+            let managed = managed_type_spans
+                .iter()
+                .any(|span| span.start <= occurrence.span.start && occurrence.span.end <= span.end);
+            for (argument, parameter) in application.arguments.iter().zip(constructor.parameters) {
+                if parameter.constraints.is_empty() {
+                    continue;
+                }
+                let argument = checker.syntax_type(*argument);
+                let argument = if managed {
+                    checker.managed_owned_type(argument)
+                } else {
+                    argument
+                };
+                if checker
+                    .require(
+                        argument,
+                        Requirements::capabilities(parameter.constraints.iter().copied()),
+                        occurrence.constructor,
+                    )
+                    .is_some()
+                {
+                    for constraint in parameter.constraints {
+                        checker.semantics.record_constructor_constraint(
+                            argument,
+                            *constraint,
+                            occurrence.constructor,
+                        );
+                    }
+                }
+            }
         }
     }
     checker

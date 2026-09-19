@@ -1368,6 +1368,44 @@ pairs, not every recursive equality operation; that accounting remains open,
 along with the other metadata, profile/platform, error, UTF-16, and Lunistice
 requirements in the full plan.
 
+### Owned list keys and set elements
+
+Managed field schemas now check constructor constraints against their recursively
+decoded output types. `Set<List<List<String?>>>` therefore reads as
+`Set<[[String?]]>`, and `Map<List<List<String?>>, List<String?>>` reads as
+`Map<[[String?]], [String?]>`. Map/Set semantics are preserved at every level;
+the list storage description projects to an ordinary owned array.
+
+Constraint checking follows each written occurrence, because one interned type
+application can appear both in a managed field and an ordinary annotation.
+Ordinary annotations do not gain the managed storage interpretation of `List`.
+After inference, the completed capability proof checks nested arguments even
+when a declaration is unused. Live references and other non-equatable contents
+cannot slip through a conservative outer array/collection check. The managed
+decoder graph also verifies equality for decoded map keys and set elements
+before advertising `ManagedReadable`.
+
+Runtime fixtures cover nested list keys/elements, nullable string children,
+lookup and snapshot equality, decoded duplicates, unreadable/null children,
+list capacity versus live count, rollback, and transitive freezing. They run
+across Mono's three supported families, IL2CPP, both pointer widths, both keyed
+storage layouts, and both build profiles. Compiler coverage includes deeper
+list/map/set/class combinations and byte-identical Release modules for unused
+list-key schemas.
+
+Validation: 443 library tests (one ignored), 676 compiler tests, and four
+baseline unit tests pass. The runtime catalog validates 130 artifacts and 160
+scenarios, including 512 nested-list collection cases. Formatting, Clippy with
+warnings denied, and all 558 documentation pages pass. All 34 existing baseline
+fixtures retain exact module/section sizes, function/type counts, sorted body
+sizes, and full emission metadata. The strict size gate and Lunistice base/DLC
+fixtures pass; explicit Lunistice remains 58,178 bytes and automatic selection
+125,920 bytes. No live game was launched.
+
+The shared recursive comparison budget, remote type/stride validation, raw
+UTF-16, structured errors, complete profiles/platforms, and explicit Lunistice
+size target remain open in the full Unity plan.
+
 ## Source map for implementation
 
 Upstream links below are pinned to the reviewed tip; the PR table provides the historical changes.

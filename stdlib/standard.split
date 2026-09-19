@@ -4944,6 +4944,8 @@ typeConstructor T? {}
 ///
 /// Reading it produces an owned array. Its elements are decoded recursively,
 /// so lists, managed vectors, strings, and class snapshots can be nested.
+/// In a managed [`Map`] key or [`Set`] element, equality is checked against that
+/// owned array and its decoded elements.
 ///
 /// # Example
 ///

@@ -6,11 +6,11 @@ use crate::{
     ast::{
         ActionKind, ArrayTypeId, AssignmentId, EnumId, EnumVariantId, ExprId, FunctionId,
         ManagedClassId, ManagedFieldId, OptionTypeId, PatternId, ResultTypeId,
-        SettingChoiceOptionId, StructFieldId, StructId, TypeApplicationId, ValueId,
+        SettingChoiceOptionId, Span, StructFieldId, StructId, TypeApplicationId, ValueId,
     },
     inference::Type,
     stdlib::{
-        StandardLibrary, StdlibFieldId, StdlibItemId, StdlibStateProviderId,
+        StandardLibrary, StdlibCapabilityId, StdlibFieldId, StdlibItemId, StdlibStateProviderId,
         StdlibTypeConstructorId, StdlibTypeId, StdlibVariantId, TypeRef as CatalogTypeRef,
     },
     types::{
@@ -389,6 +389,7 @@ pub struct ResolvedShapePredicate {
 #[derive(Debug, Clone, Default)]
 pub struct SemanticModel {
     types: TypeStore,
+    constructor_constraints: Vec<(TypeId, StdlibCapabilityId, Span)>,
     state_provider: Option<StdlibStateProviderId>,
     state_provider_selector: Option<usize>,
     state_provider_alternatives: HashMap<EnumVariantId, (StdlibStateProviderId, Option<usize>)>,
@@ -442,6 +443,12 @@ pub struct SemanticModel {
 }
 
 impl SemanticModel {
+    pub(crate) fn constructor_constraints(
+        &self,
+    ) -> impl Iterator<Item = (TypeId, StdlibCapabilityId, Span)> + '_ {
+        self.constructor_constraints.iter().copied()
+    }
+
     pub fn types(&self) -> &TypeStore {
         &self.types
     }
@@ -1984,6 +1991,7 @@ struct PendingValueConversion {
 
 #[derive(Debug, Clone, Default)]
 pub(crate) struct SemanticBuilder {
+    constructor_constraints: Vec<(Type, StdlibCapabilityId, Span)>,
     state_provider: Option<StdlibStateProviderId>,
     state_provider_selector: Option<usize>,
     state_provider_alternatives: HashMap<EnumVariantId, (StdlibStateProviderId, Option<usize>)>,
@@ -2029,6 +2037,15 @@ pub(crate) struct SemanticBuilder {
 }
 
 impl SemanticBuilder {
+    pub(crate) fn record_constructor_constraint(
+        &mut self,
+        ty: Type,
+        capability: StdlibCapabilityId,
+        span: Span,
+    ) {
+        self.constructor_constraints.push((ty, capability, span));
+    }
+
     pub(crate) fn resolved_value(&self, expression: ExprId) -> Option<ResolvedValue> {
         self.values.get(&expression).copied()
     }
@@ -2448,6 +2465,7 @@ impl SemanticBuilder {
             applications,
         };
         let Self {
+            constructor_constraints,
             state_provider,
             state_provider_selector,
             state_provider_alternatives,
@@ -2651,6 +2669,16 @@ impl SemanticBuilder {
                 )
             })
             .collect();
+        let constructor_constraints = constructor_constraints
+            .into_iter()
+            .map(|(ty, capability, span)| {
+                (
+                    types.intern_inferred(resolve(ty), constructed),
+                    capability,
+                    span,
+                )
+            })
+            .collect();
         let expression_types = expression_types
             .into_iter()
             .map(|(expression, ty)| (expression, types.intern_inferred(resolve(ty), constructed)))
@@ -2761,6 +2789,7 @@ impl SemanticBuilder {
             })
             .collect();
         SemanticModel {
+            constructor_constraints,
             types,
             state_provider,
             state_provider_selector,

@@ -84,6 +84,7 @@ pub(crate) struct ManagedReadTypes {
 impl ManagedReadTypes {
     pub(crate) fn build(
         memory: &MemoryLayouts,
+        equality: &crate::equality::EqualityCapabilities,
         semantics: &SemanticModel,
         classes: &[&ManagedClassDecl],
     ) -> Self {
@@ -164,6 +165,13 @@ impl ManagedReadTypes {
                 })
                 .collect::<Vec<_>>();
             invalid.extend(nodes.iter().filter_map(|(ty, node)| {
+                if let ManagedDecoderKind::Map { key, .. }
+                | ManagedDecoderKind::Set { element: key } = node.kind
+                    && let Some(key) = nodes.get(&key)
+                    && equality.require(key.output, semantics).is_err()
+                {
+                    return Some(*ty);
+                }
                 node.kind
                     .children()
                     .any(|child| !nodes.contains_key(&child))
