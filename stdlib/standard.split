@@ -1931,8 +1931,9 @@ private struct UnityFields {
                     if offset < 0 || (offset as u32) < header {
                         throw "Unity collection field does not use supported instance storage"
                     }
+                    let typeAddress = types.fieldTypeAddress(field)?
                     found[slot] = Some(UnityCollectionMember {
-                        offset: (offset as u32) - header, typeAddress: types.fieldTypeAddress(field)? })
+                        offset: (offset as u32) - header, typeAddress, minimumWidth: types.minimumWidth(typeAddress)? })
                 }
                 slot += 1
             }
@@ -1942,16 +1943,16 @@ private struct UnityFields {
         return result
     }
 
-    private fn validateMembers(members: [UnityCollectionMember], types: UnityCollectionTypes, extent: u64) -> bool! {
+    private fn validateMembers(members: [UnityCollectionMember], extent: u64) -> bool! {
         let i: u32 = 0
         while i < members.length() {
             let start = members[i].offset as u64
-            let end = start + (types.minimumWidth(members[i].typeAddress)? as u64)
+            let end = start + (members[i].minimumWidth as u64)
             if end > extent { throw "Unity collection member exceeds its storage span" }
             let j: u32 = 0
             while j < i {
                 let other = members[j].offset as u64
-                if start < other + (types.minimumWidth(members[j].typeAddress)? as u64) && other < end {
+                if start < other + (members[j].minimumWidth as u64) && other < end {
                     throw "Unity collection members overlap"
                 }
                 j += 1
@@ -1970,7 +1971,7 @@ private struct UnityFields {
             || types.kind(outer[2].typeAddress)? != 0x08 || types.kind(outer[3].typeAddress)? != 0x08 {
             throw "Unity collection has invalid backing or count field types"
         }
-        self.validateMembers(outer, types, 0x80000000)?
+        self.validateMembers(outer, 0x80000000)?
         let entry = types.arrayElementClass(outer[1].typeAddress)?
         let stride = types.stride(entry)?
         let inner = self.collectionMembers(entry, members, types, readCount, header)?
@@ -1978,9 +1979,9 @@ private struct UnityFields {
         if (hashKind != 0x08 && hashKind != 0x09) || types.kind(inner[1].typeAddress)? != 0x08 {
             throw "Unity collection hash and next fields must be integers"
         }
-        self.validateMembers(inner, types, stride as u64)?
+        self.validateMembers(inner, stride as u64)?
         return UnityKeyedLayout { runtimeClass: class, declaringClass: owner,
-            parallel: false, fields: outer, stride, members: inner }
+            parallel: false, fields: outer, stride, members: inner, width: self.names.width, mono: types.mono }
     }
 
     private fn parallelLayout(class: address, owner: address, fields: [[String]],
@@ -1996,7 +1997,7 @@ private struct UnityFields {
             }
             index += 1
         }
-        self.validateMembers(outer, types, 0x80000000)?
+        self.validateMembers(outer, 0x80000000)?
         let link = types.arrayElementClass(outer[1].typeAddress)?
         let stride = types.stride(link)?
         if stride != 8 { throw "Unity collection Link must contain exactly two integers" }
@@ -2005,9 +2006,9 @@ private struct UnityFields {
         if (hashKind != 0x08 && hashKind != 0x09) || types.kind(inner[1].typeAddress)? != 0x08 {
             throw "Unity collection Link members must be integers"
         }
-        self.validateMembers(inner, types, 8)?
+        self.validateMembers(inner, 8)?
         return UnityKeyedLayout { runtimeClass: class, declaringClass: owner,
-            parallel: true, fields: outer, stride, members: inner }
+            parallel: true, fields: outer, stride, members: inner, width: self.names.width, mono: types.mono }
     }
 
     private fn dictionaryLayout(class: address, types: UnityCollectionTypes,
@@ -13881,6 +13882,8 @@ private struct UnityCollectionMember {
     private offset: u32,
     /// Remote metadata type address.
     private typeAddress: address,
+    /// Minimum remote width justified by the field type tag.
+    private minimumWidth: u32,
 }
 
 /// A dictionary or set shape, discovered without reading its payload.
@@ -13908,4 +13911,232 @@ private struct UnityKeyedLayout {
     private stride: u32,
     /// Entry members, or the two Link members, in declared order.
     private members: [UnityCollectionMember],
+    /// Target pointer width for the attachment that discovered this layout.
+    private width: u64,
+    /// Whether object headers lead through a Mono vtable.
+    private mono: bool,
+
+    private fn dictionary() -> bool {
+        return if self.parallel { self.fields.length() == 6 } else { self.members.length() == 4 }
+    }
+
+    private fn pointerReads() -> UnityClassNames {
+        return UnityClassNames { width: self.width, name: 0, namespace: 0, declaring: None }
+    }
+
+    private fn verifyClass(object: address) -> bool! {
+        let names = self.pointerReads()
+        let header = names.pointer(object, 0)?
+        if header == 0 { throw "Unity collection object header is null" }
+        let class = if self.mono { names.pointer(header, 0)? } else { header }
+        if class != self.runtimeClass { throw "Unity collection runtime class changed during the read" }
+        return true
+    }
+
+    private fn counts(object: address) -> [i32; 2]! {
+        let names = self.pointerReads()
+        let at = if self.parallel { self.fields.length() - 2 } else { 2 }
+        return [process.read<i32>(names.member(object, self.fields[at].offset as u64, 4)?)?,
+            process.read<i32>(names.member(object, self.fields[at + 1].offset as u64, 4)?)?]
+    }
+
+    // Validate the full address span even though only the touched prefix will
+    // be scanned. Spare capacity never contributes to the output element count.
+    private fn arrayData(array: address, stride: u64, touched: u32) -> address! {
+        if array == 0 {
+            if touched == 0 { return 0 as address }
+            throw "Unity collection has touched slots without backing storage"
+        }
+        let names = self.pointerReads()
+        let header = 4 * self.width
+        names.member(array, 0, header)?
+        if names.pointer(array, 2 * self.width)? != 0 { throw "Unity collection backing storage is not a vector" }
+        let capacity = names.pointer(array, 3 * self.width)? as u64
+        if (touched as u64) > capacity { throw "Unity collection touched count exceeds backing capacity" }
+        let limit: u64 = if self.width == 4 { 0xffffffff } else { !0 }
+        if stride == 0 || capacity > (limit - header) / stride {
+            throw "Unity collection backing capacity overflows its storage span"
+        }
+        names.member(array, 0, header + capacity * stride)?
+        if capacity == 0 { return 0 as address }
+        return names.member(array, header, 1)
+    }
+
+    private fn elementFits(member: u32, bytes: u32) -> bool {
+        return bytes > 0 && member <= self.stride && bytes <= self.stride - member
+    }
+
+    private fn overlaps(a: u32, aBytes: u32, b: u32, bBytes: u32) -> bool {
+        return (a as u64) < (b as u64) + (bBytes as u64)
+            && (b as u64) < (a as u64) + (aBytes as u64)
+    }
+
+    // Sizes come from child storage plans, never from owned Map/Set/GC sizes.
+    private fn validateElementSizes(keyBytes: u32, valueBytes: u32) -> bool! {
+        let dictionary = self.dictionary()
+        if valueBytes == 0 || (dictionary && keyBytes == 0) {
+            throw "Unity collection element storage must have a positive width"
+        }
+        if !self.parallel {
+            let value = self.members[self.members.length() - 1].offset
+            if valueBytes < self.members[self.members.length() - 1].minimumWidth || !self.elementFits(value, valueBytes) {
+                throw "Unity collection value exceeds its entry stride"
+            }
+            if self.overlaps(value, valueBytes, self.members[0].offset, 4)
+                || self.overlaps(value, valueBytes, self.members[1].offset, 4) {
+                throw "Unity collection value overlaps a bookkeeping member"
+            }
+            if dictionary {
+                let key = self.members[2].offset
+                if keyBytes < self.members[2].minimumWidth || !self.elementFits(key, keyBytes) { throw "Unity collection key exceeds its entry stride" }
+                if self.overlaps(key, keyBytes, value, valueBytes)
+                    || self.overlaps(key, keyBytes, self.members[0].offset, 4)
+                    || self.overlaps(key, keyBytes, self.members[1].offset, 4) {
+                    throw "Unity collection key overlaps another entry member"
+                }
+            }
+        }
+        return true
+    }
+
+    // One finite synchronous scan. The caller supplies remaining root budgets
+    // and deducts the returned work before invoking any recursive child reader.
+    // This adapter never dereferences key/value slots or reads spare capacity.
+    private fn readSlots(object: address, keyBytes: u32, valueBytes: u32,
+        scanBudget: u32, elementBudget: u32, byteBudget: u64) -> UnityKeyedRead! {
+        if object == 0 { throw "Unity collection object is null" }
+        if byteBudget < 768 { throw "Unity collection exceeds the shared byte budget" }
+        self.validateElementSizes(keyBytes, valueBytes)?
+        self.verifyClass(object)?
+        let counts = self.counts(object)?
+        let dictionary = self.dictionary()
+        let touched = if self.parallel || dictionary { counts[0] } else { counts[1] }
+        let live = if self.parallel { counts[1] } else if dictionary { counts[0] - counts[1] } else { counts[0] }
+        if counts[0] < 0 || counts[1] < 0 || live < 0 || touched < live {
+            throw "Unity collection counts are inconsistent"
+        }
+        if (touched as u32) > scanBudget || touched > 4096 {
+            throw "Unity collection exceeds the shared scan budget"
+        }
+        if (live as u32) > elementBudget || live > 16384 {
+            throw "Unity collection exceeds the shared element budget"
+        }
+        // Includes header reads/rechecks, temporary slot records, and their
+        // backing vector. Child payloads and final owned storage are separate.
+        let bytes = 768 + (touched as u64) * (if self.parallel { 4 as u64 } else { 8 as u64 }) + (live as u64) * 64
+        if bytes > byteBudget || bytes > 1048576 { throw "Unity collection exceeds the shared byte budget" }
+        let names = self.pointerReads()
+        let backing: [address] = []
+        let limit = if self.parallel { self.fields.length() - 2 } else { 2 }
+        let field: u32 = 1
+        while field < limit {
+            backing.push(names.pointer(object, self.fields[field].offset as u64)?)
+            field += 1
+        }
+        if self.parallel {
+            for array in backing { if array == 0 { throw "Unity parallel collection backing storage is not initialized" } }
+        }
+        let entries = self.arrayData(backing[0], self.stride as u64, touched as u32)?
+        let keys: address = 0
+        let values: address = 0
+        if self.parallel {
+            if dictionary { keys = self.arrayData(backing[1], keyBytes as u64, touched as u32)? }
+            values = self.arrayData(backing[backing.length() - 1], valueBytes as u64, touched as u32)?
+        }
+        let slots: [UnityKeyedSlot] = []
+        let index: u32 = 0
+        while index < (touched as u32) {
+            let entry = names.member(entries, (index as u64) * (self.stride as u64), self.stride as u64)?
+            let hash = process.read<u32>(names.member(entry, self.members[0].offset as u64, 4)?)?
+            let occupied = if self.parallel { (hash & 0x80000000) != 0 } else {
+                let next = process.read<i32>(names.member(entry, self.members[1].offset as u64, 4)?)?
+                hash != 0xffffffff && next >= -1
+            }
+            if occupied {
+                if slots.length() >= (live as u32) { throw "Unity collection has more live slots than its count" }
+                let key: address = 0
+                let value: address = 0
+                if self.parallel {
+                    if dictionary { key = names.member(keys, (index as u64) * (keyBytes as u64), keyBytes as u64)? }
+                    value = names.member(values, (index as u64) * (valueBytes as u64), valueBytes as u64)?
+                } else {
+                    if dictionary { key = names.member(entry, self.members[2].offset as u64, keyBytes as u64)? }
+                    value = names.member(entry, self.members[self.members.length() - 1].offset as u64, valueBytes as u64)?
+                }
+                slots.push(UnityKeyedSlot { key, value })
+            }
+            index += 1
+        }
+        if slots.length() != (live as u32) { throw "Unity collection has fewer live slots than its count" }
+        let result = UnityKeyedRead { layout: self, object, counts, backing, slots, scanned: touched as u32, bytes }
+        result.verify()?
+        return result
+    }
+
+}
+
+
+/// Validated remote slots for one live key/value pair or set element.
+///
+/// # Example
+///
+/// Keep slot addresses inside the managed reader
+///
+/// ```splitscript
+/// image "Assembly-CSharp" { class SlotOwner {} }
+/// state Unity ["game.exe"] {}
+/// ```
+@representation(gcStruct, nullable)
+@valueUsage(localVariable)
+private struct UnityKeyedSlot {
+    /// Inline value or reference slot of the key; zero for sets.
+    private key: address,
+    /// Inline value or reference slot of the value.
+    private value: address,
+}
+
+/// A complete slot scan whose header can be rechecked after child reads.
+///
+/// # Example
+///
+/// Keep collection work inside one managed root read
+///
+/// ```splitscript
+/// image "Assembly-CSharp" { class ScannedOwner {} }
+/// state Unity ["game.exe"] {}
+/// ```
+@representation(gcStruct, nullable)
+@valueUsage(localVariable)
+private struct UnityKeyedRead {
+    /// Attachment layout that describes the scanned object.
+    private layout: UnityKeyedLayout,
+    /// Collection object whose header was captured.
+    private object: address,
+    /// Original signed count fields in metadata order.
+    private counts: [i32; 2],
+    /// Original backing identities in metadata order, excluding buckets.
+    private backing: [address],
+    /// Live slot addresses in remote storage order.
+    private slots: [UnityKeyedSlot],
+    /// Work charged against the root scan budget, including freed slots.
+    private scanned: u32,
+    /// Conservative remote-read and temporary-storage byte charge.
+    private bytes: u64,
+
+    private fn verify() -> bool! {
+        self.layout.verifyClass(self.object)?
+        let counts = self.layout.counts(self.object)?
+        if counts[0] != self.counts[0] || counts[1] != self.counts[1] {
+            throw "Unity collection counts changed during the read"
+        }
+        let names = self.layout.pointerReads()
+        let index: u32 = 0
+        for backing in self.backing {
+            if names.pointer(self.object, self.layout.fields[index + 1].offset as u64)? != backing {
+                throw "Unity collection backing storage changed during the read"
+            }
+            index += 1
+        }
+        return true
+    }
 }

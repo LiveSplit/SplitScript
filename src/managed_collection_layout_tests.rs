@@ -27,6 +27,18 @@ fn managed_keyed_collection_layout_runtime() {
     );
 }
 
+#[test]
+fn managed_keyed_collection_slots_runtime() {
+    run_layout_fixtures(
+        "slots",
+        "tests/managed_keyed_slots_runtime.mjs",
+        [
+            ("mono", include_str!("../tests/mono_keyed_reads.split")),
+            ("il2cpp", include_str!("../tests/il2cpp_keyed_reads.split")),
+        ],
+    );
+}
+
 fn run_layout_fixtures(kind: &str, harness: &str, fixtures: [(&str, &str); 2]) {
     for (backend, source) in fixtures {
         let mut parsed = parse(source).unwrap();

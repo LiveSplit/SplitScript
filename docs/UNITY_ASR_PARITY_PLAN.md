@@ -1133,6 +1133,58 @@ compiler-generated diagnostic names only, apart from build identity and timing.
 The strict gate and Lunistice base/DLC behavior checks pass; explicit Lunistice
 remains 58,178 bytes and automatic selection 125,920 bytes. No game was launched.
 
+### Bounded keyed-collection slot scans
+
+The private dictionary/set adapter now turns a discovered layout into an exact
+ordered sequence of live key/value slot addresses. It validates signed counts,
+target-width backing spans, vector headers, schema-supplied remote element
+widths, member room, and overlap before scanning. Dictionary entries use
+`count - freeCount`; sets use live count and high-water mark. Freed hash/next
+markers and old corlib's hash high bit select occupied slots. Both too many and
+too few observed live slots reject the whole scan. Spare capacity and child
+payloads are never read by this stage.
+
+Entry-array collections accept zero-count unallocated backing. Parallel-array
+collections require initialized backing arrays even when empty, matching the
+upstream reader; zero-capacity arrays are supported, including at the target
+address-space boundary. Runtime class, count fields, and backing identities
+are checked before accepting a scan and can be rechecked after child decoding.
+These checks detect header changes, not every concurrent mutation of contents.
+
+The adapter takes the root's remaining scan, element, and byte budgets and
+returns its consumed scan/byte work. The synchronous hard limit is 4,096 touched
+slots, including holes. A 16,384-slot prototype measured roughly 13–15 ms median
+and peaks near 40 ms in the Node fixture, motivating the lower cap. Temporary
+slot records cost 64 budget bytes per live entry, bookkeeping reads cost four
+or eight per scanned slot, and a conservative 768-byte base covers headers,
+temporary wrappers, and final verification. Payload decoding and final owned
+storage need separate charges against the same context. Exhaustion returns an
+ordinary error; it never returns a truncated collection.
+
+This is the slot-reading stage, not public managed Map/Set support. The next
+compiler work must deduct these charges from one shared root context, enter
+collection/backing objects in its active path, invoke recursive child plans,
+validate remote type compatibility, reject equality collisions, freeze the
+finished local Map/Set, and recheck the captured header before publication.
+Attachment caches and lossless pair/value projections also remain to be wired.
+
+Validation: 443 library tests (one ignored), 666 compiler tests, and four baseline
+tests pass. The final adapter matrix passes 2,640 scanner cases, 3,104 keyed-layout
+cases, and 236 list-layout cases across Debug and Release. Budget/count failures
+are checked to perform no backing reads; marker reads are checked to exclude
+child payloads and spare capacity. The 4,096-slot boundary requires at most
+8,194 array-header/marker reads; isolated fixture runs measured roughly 3.5–4.3 ms
+median, with 6–8 ms peaks. These are Node fixture measurements, not native-game
+latency guarantees. Clippy, formatting, and 558 generated documentation pages
+pass. The final runtime catalog validates 108 artifacts and 138 scenarios.
+
+All 30 optimized baseline fixtures retain their previous module/section sizes,
+function/type counts, helpers, and memory metrics. No keyed scanner or resolver
+is retained. The reviewed baseline refresh only renumbers generated names and
+updates build/timing metadata. The strict gate and Lunistice base/DLC behavior
+pass; explicit Lunistice remains 58,178 bytes and automatic selection 125,920
+bytes. No live game was launched.
+
 ## Source map for implementation
 
 Upstream links below are pinned to the reviewed tip; the PR table provides the historical changes.
