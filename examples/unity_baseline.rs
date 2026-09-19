@@ -53,6 +53,18 @@ fn fixtures() -> BTreeMap<String, String> {
     BTreeMap::from([
         ("native".into(), "state \"game.exe\" {}".into()),
         (
+            "pe-debug-id".into(),
+            include_str!("../tests/pe_debug_id.split").into(),
+        ),
+        (
+            "elf-build-id".into(),
+            include_str!("../tests/elf_build_id.split").into(),
+        ),
+        (
+            "mach-uuid".into(),
+            include_str!("../tests/mach_uuid.split").into(),
+        ),
+        (
             "local-map".into(),
             include_str!("../tests/map_runtime.split").into(),
         ),

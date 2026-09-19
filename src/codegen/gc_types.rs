@@ -107,6 +107,9 @@ pub(super) fn encode(inputs: Inputs<'_>) -> EncodedTypes {
         },
     }];
     for declaration in standard_library.all_types() {
+        if !reachability.contains_standard_type(declaration.id) {
+            continue;
+        }
         let inner = match declaration.representation {
             RuntimeRepresentation::Scalar { .. } => continue,
             RuntimeRepresentation::GcArray {

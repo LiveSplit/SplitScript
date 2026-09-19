@@ -382,6 +382,27 @@ const RUNTIME_FIXTURES: &[RuntimeFixture] = &[
         extra_arguments: &[],
     },
     RuntimeFixture {
+        source: "tests/pe_debug_id.split",
+        output: "pe_debug_id.wasm",
+        profile: "release",
+        harness: "tests/pe_debug_id_runtime.mjs",
+        extra_arguments: &[],
+    },
+    RuntimeFixture {
+        source: "tests/elf_build_id.split",
+        output: "elf_build_id.wasm",
+        profile: "release",
+        harness: "tests/unix_identity_runtime.mjs",
+        extra_arguments: &["elf"],
+    },
+    RuntimeFixture {
+        source: "tests/mach_uuid.split",
+        output: "mach_uuid.wasm",
+        profile: "release",
+        harness: "tests/unix_identity_runtime.mjs",
+        extra_arguments: &["mach"],
+    },
+    RuntimeFixture {
         source: "examples/artificial.split",
         output: "artificial.wasm",
         profile: "release",

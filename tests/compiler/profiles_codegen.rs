@@ -16,6 +16,32 @@ fn release_emission(source: &str) -> (Vec<u8>, splitscript::compiler::CodegenRep
 }
 
 #[test]
+fn binary_identity_readers_follow_the_requested_format() {
+    let readers = ["ModulePeDebugId", "ModuleElfBuildId", "ModuleMachUuid"];
+    for (source, expected) in [
+        ("state \"game.exe\" {}", None),
+        (include_str!("../pe_debug_id.split"), Some(readers[0])),
+        (include_str!("../elf_build_id.split"), Some(readers[1])),
+        (include_str!("../mach_uuid.split"), Some(readers[2])),
+    ] {
+        let (wasm, report) = release_emission(source);
+        Validator::new_with_features(WasmFeatures::all())
+            .validate_all(&wasm)
+            .unwrap();
+        for reader in readers {
+            assert_eq!(
+                report
+                    .functions
+                    .iter()
+                    .any(|(_, name)| name.ends_with(reader)),
+                expected == Some(reader),
+                "unexpected demand for {reader}"
+            );
+        }
+    }
+}
+
+#[test]
 fn managed_metadata_demand_ignores_dead_and_debug_reads() {
     for provider in ["Unity.il2cpp(2020)", "Unity.mono(MonoVersion.V2)", "Unity"] {
         let source = format!(

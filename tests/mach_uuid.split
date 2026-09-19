@@ -1,0 +1,12 @@
+state "game.exe" {}
+onAttach {
+    let runtime = await process.module("runtime")
+    match runtime.machUuid() {
+        Ok(Some(bytes)) => {
+            print("found")
+            for byte in bytes { print(byte) }
+        },
+        Ok(None) => print("none"),
+        Err(message) => print(`error: {message}`),
+    }
+}

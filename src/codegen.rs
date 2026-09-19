@@ -576,7 +576,14 @@ fn compile_internal(inputs: BackendProgram<'_>, report: Option<&mut CodegenRepor
         capabilities,
         automatic_shape,
     );
-    reachability.require_runtime_helper_types(&dependencies, array_types, semantics);
+    reachability.require_runtime_helper_types(
+        &dependencies,
+        array_types,
+        program,
+        semantics,
+        &standard_library,
+        capabilities,
+    );
     let failure_payloads = FailurePayloadDemand::analyze(semantics, wasm_ir, &reachability);
     let static_data = StaticData::collect(
         program,

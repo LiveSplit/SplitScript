@@ -6055,6 +6055,102 @@ struct FileVersion {
     }
 }
 
+/// The PDB 7.0 identity embedded in a Windows PE module's CodeView record.
+///
+/// Both the GUID and age identify a build. GUID bytes retain their on-disk
+/// order; the first three GUID components are little-endian, unlike their
+/// usual textual spelling. The PDB pathname is not part of this identity.
+///
+/// # Example
+///
+/// Read a Mono runtime's exact build identity
+///
+/// ```splitscript
+/// let runtime = await process.module("mono-2.0-bdwgc.dll")
+/// let identity = runtime.peDebugId()? else return
+/// print(identity)
+/// ```
+@representation(gcStruct, nullable)
+@valueUsage(structField, enumPayload, stateField, localVariable, globalVariable)
+@capabilities(Equatable)
+struct PeDebugId {
+    /// The 16 GUID bytes in CodeView storage order.
+    ///
+    /// # Example
+    ///
+    /// Read the first stored GUID byte
+    ///
+    /// ```splitscript
+    /// let runtime = await process.module("mono-2.0-bdwgc.dll")
+    /// let identity = runtime.peDebugId()? else return
+    /// print(identity.guid[0])
+    /// ```
+    guid: [u8; 16],
+
+    /// The PDB age, which distinguishes revisions sharing a GUID.
+    ///
+    /// # Example
+    ///
+    /// Read the PDB revision
+    ///
+    /// ```splitscript
+    /// let runtime = await process.module("mono-2.0-bdwgc.dll")
+    /// let identity = runtime.peDebugId()? else return
+    /// print(identity.age)
+    /// ```
+    age: u32,
+
+    /// Constructs an identity from CodeView-order GUID bytes and its PDB age.
+    ///
+    /// Compare the complete identity when recognizing a build: a matching GUID
+    /// with a different age is a different PDB identity.
+    ///
+    /// # Example
+    ///
+    /// Construct an expected build identity
+    ///
+    /// ```splitscript
+    /// let expected = PeDebugId.fromParts(
+    ///     [0, 17, 34, 51, 68, 85, 102, 119, 136, 153, 170, 187, 204, 221, 238, 255],
+    ///     1,
+    /// )
+    /// ```
+    static fn fromParts(
+        /// The GUID's 16 bytes in their stored order, without byte swapping.
+        guid: [u8; 16],
+        /// The PDB revision number.
+        age: u32,
+    ) -> PeDebugId {
+        return PeDebugId { guid, age }
+    }
+}
+
+/// Normalized program-header fields for internal mapped ELF identity reads.
+///
+/// The identity reader uses these fields to apply the loaded image's relocation.
+///
+/// # Example
+///
+/// Read the executable's identity through its mapped segments
+///
+/// ```splitscript
+/// let executable = await process.mainModule()
+/// let executableId = executable.elfBuildId() else None
+/// print(executableId)
+/// ```
+@representation(gcStruct, nullable)
+@valueUsage(localVariable)
+private struct ElfIdentitySegment {
+    /// The ELF segment type.
+    private kind: u32,
+    /// The segment's file offset, used to locate the header load segment.
+    private fileOffset: u64,
+    /// The segment address before relocation.
+    private virtualAddress: u64,
+    /// The number of initialized bytes in the segment.
+    private fileSize: u64,
+}
+
 /// The fixed numeric versions embedded in a Windows PE module.
 ///
 /// Windows keeps separate file and product identities in `VS_FIXEDFILEINFO`.
@@ -6160,6 +6256,298 @@ struct Module {
             throw "module does not have a PE header"
         }
         return Ok(peHeader.add(0x18))
+    }
+
+    // Validates a mapped-image span before forming its process address.
+    private fn boundedAddress(offset: u64, length: u64) -> address! {
+        if offset > self.size || length > self.size - offset {
+            throw "module metadata lies outside the mapped image"
+        }
+        let address = self.address.add(offset)
+        if address < self.address
+            || length != 0 && address.add(length - 1) < address {
+            throw "module metadata address overflows"
+        }
+        return Ok(address)
+    }
+
+    /// Reads the GUID and age of a Windows PE module's PDB 7.0 debug record.
+    ///
+    /// Supports PE32 and PE32+. A valid image without a debug directory, with
+    /// no CodeView record, or with only older CodeView formats returns [`None`].
+    /// Invalid headers, truncated records, failed reads, and out-of-image
+    /// addresses return an error. Both the mapped extent and `SizeOfImage`
+    /// bound the walk. At most 4096 debug entries are examined per call.
+    /// Records use their mapped RVA, never their on-disk file offset.
+    ///
+    /// # Example
+    ///
+    /// Inspect a Mono build before selecting its measured layout
+    ///
+    /// ```splitscript
+    /// let runtime = await process.module("mono-2.0-bdwgc.dll")
+    /// let build = runtime.peDebugId() else return
+    /// match build {
+    ///     Some(identity) => print(identity),
+    ///     None => print("no PDB identity"),
+    /// }
+    /// ```
+    @mustUse("use the returned build identity")
+    fn peDebugId() -> PeDebugId?! {
+        let dos = self.boundedAddress(0, 0x40)?
+        if process.read<u16>(dos)? != 0x5a4d {
+            throw "module does not have a DOS header"
+        }
+        let peOffset = process.read<u32>(dos.add(0x3c))? as u64
+        let pe = self.boundedAddress(peOffset, 0x18)?
+        if process.read<u32>(pe)? != 0x00004550 {
+            throw "module does not have a PE header"
+        }
+        let optionalSize = process.read<u16>(pe.add(0x14))? as u64
+        let optionalOffset = peOffset + 0x18
+        let optional = self.boundedAddress(optionalOffset, optionalSize)?
+        if optionalSize < 2 {
+            throw "PE optional header is truncated"
+        }
+        let magic = process.read<u16>(optional)?
+        let directories: u64 = if magic == 0x010b {
+            0x60
+        } else if magic == 0x020b {
+            0x70
+        } else {
+            throw "module has an unsupported PE optional header"
+        }
+        if optionalSize < directories {
+            throw "PE optional header is truncated"
+        }
+        let imageSize = process.read<u32>(optional.add(0x38))? as u64
+        if imageSize == 0 || optionalOffset + optionalSize > imageSize {
+            throw "PE headers lie outside SizeOfImage"
+        }
+        let directoryCount = process.read<u32>(optional.add(directories - 4))?
+        if directoryCount <= 6 {
+            return Ok(None)
+        }
+        if optionalSize < directories + 7 * 8 {
+            throw "PE debug directory slot is truncated"
+        }
+        let debugDirectory = process.read<[u32; 2]>(optional.add(directories + 6 * 8))?
+        let debugOffset = debugDirectory[0] as u64
+        let debugSize = debugDirectory[1] as u64
+        if debugOffset == 0 && debugSize == 0 {
+            return Ok(None)
+        }
+        if debugOffset == 0 || debugSize == 0 || debugSize % 28 != 0 {
+            throw "PE debug directory is malformed"
+        }
+        if debugOffset + debugSize > imageSize {
+            throw "PE debug directory lies outside SizeOfImage"
+        }
+        let table = self.boundedAddress(debugOffset, debugSize)?
+        let entries = debugSize / 28
+        if entries > 4096 {
+            throw "PE debug directory exceeds the entry limit"
+        }
+        let index: u64 = 0
+        while index < entries {
+            let entry = process.read<[u32; 7]>(table.add(index * 28))?
+            index += 1
+            if entry[3] != 2 {
+                continue
+            }
+            let recordSize = entry[4] as u64
+            let recordOffset = entry[5] as u64
+            if recordOffset == 0 || recordSize < 4 {
+                throw "PE CodeView record is truncated"
+            }
+            if recordOffset + recordSize > imageSize {
+                throw "PE CodeView record lies outside SizeOfImage"
+            }
+            let record = self.boundedAddress(recordOffset, recordSize)?
+            if process.read<u32>(record)? != 0x53445352 {
+                continue
+            }
+            if recordSize < 24 {
+                throw "PE PDB 7.0 record is truncated"
+            }
+            return Ok(Some(PeDebugId {
+                guid: process.read<[u8; 16]>(record.add(4))?,
+                age: process.read<u32>(record.add(20))?,
+            }))
+        }
+        return Ok(None)
+    }
+
+    private fn elfIdentitySegment(offset: u64, is64: bool) -> ElfIdentitySegment! {
+        if is64 {
+            let data = process.read<[u64; 7]>(self.boundedAddress(offset, 56)?)?
+            return ElfIdentitySegment {
+                kind: data[0] as u32,
+                fileOffset: data[1],
+                virtualAddress: data[2],
+                fileSize: data[4],
+            }
+        }
+        let data = process.read<[u32; 8]>(self.boundedAddress(offset, 32)?)?
+        return ElfIdentitySegment {
+            kind: data[0],
+            fileOffset: data[1] as u64,
+            virtualAddress: data[2] as u64,
+            fileSize: data[4] as u64,
+        }
+    }
+
+    /// Reads a GNU build ID from a mapped little-endian ELF32 or ELF64 image.
+    ///
+    /// Returns [`None`] when there is no GNU build-ID note. Malformed headers,
+    /// failed reads, unsupported formats, and IDs outside 1–32 bytes return
+    /// an error. Notes are located using virtual addresses and the header's
+    /// load segment, so relocated shared objects and non-relocated executables
+    /// work alike. Work is limited to 1024 program headers and 4096 notes.
+    ///
+    /// # Example
+    ///
+    /// Inspect a Linux Mono runtime's exact build identity
+    ///
+    /// ```splitscript
+    /// let runtime = await process.module("libmonobdwgc-2.0.so")
+    /// let buildId = runtime.elfBuildId()? else return
+    /// print(buildId)
+    /// ```
+    @mustUse("use the returned build identity")
+    fn elfBuildId() -> [u8]?! {
+        let ident = process.read<[u8; 16]>(self.boundedAddress(0, 16)?)?
+        if ident[0] != 0x7f || ident[1] != 0x45 || ident[2] != 0x4c || ident[3] != 0x46 {
+            throw "module does not have an ELF header"
+        }
+        if ident[5] != 1 || ident[6] != 1 || ident[4] != 1 && ident[4] != 2 {
+            throw "unsupported ELF encoding or class"
+        }
+        let is64 = ident[4] == 2
+        let minimumHeader: u64 = if is64 { 64 } else { 52 }
+        let header = self.boundedAddress(0, minimumHeader)?
+        let imageType = process.read<u16>(header.add(16))?
+        if imageType != 2 && imageType != 3 || process.read<u32>(header.add(20))? != 1 {
+            throw "unsupported ELF image type or version"
+        }
+        let headerSizes = process.read<[u16; 3]>(header.add(if is64 { 52 } else { 40 }))?
+        if (headerSizes[0] as u64) < minimumHeader {
+            throw "ELF header is truncated"
+        }
+        self.boundedAddress(0, headerSizes[0] as u64)?
+        let entrySize = headerSizes[1] as u64
+        let count = headerSizes[2] as u64
+        if count == 0 { return Ok(None) }
+        if count > 1024 { throw "ELF program-header count exceeds the limit" }
+        if entrySize < (if is64 { 56 } else { 32 }) {
+            throw "ELF program-header entry is truncated"
+        }
+        let tableOffset: u64 = if is64 {
+            process.read<u64>(header.add(32))?
+        } else {
+            process.read<u32>(header.add(28))? as u64
+        }
+        self.boundedAddress(tableOffset, entrySize * count)?
+        let headerVirtualAddress: u64? = None
+        let index: u64 = 0
+        while index < count {
+            let segment = self.elfIdentitySegment(tableOffset + index * entrySize, is64)?
+            if segment.kind == 1 && segment.fileOffset == 0 {
+                if segment.fileSize < minimumHeader {
+                    throw "ELF header load segment is truncated"
+                }
+                headerVirtualAddress = Some(segment.virtualAddress)
+                break
+            }
+            index += 1
+        }
+        let headerVirtual = headerVirtualAddress else throw "ELF image lacks a header load segment"
+        index = 0
+        let remainingNotes: u32 = 4096
+        while index < count {
+            let segment = self.elfIdentitySegment(tableOffset + index * entrySize, is64)?
+            index += 1
+            if segment.kind != 4 { continue }
+            if segment.virtualAddress < headerVirtual {
+                throw "ELF note segment precedes the mapped image"
+            }
+            let noteAddress = self.boundedAddress(segment.virtualAddress - headerVirtual, segment.fileSize)?
+            let offset: u64 = 0
+            while offset < segment.fileSize {
+                if segment.fileSize - offset < 12 { throw "ELF note header is truncated" }
+                if remainingNotes == 0 { throw "ELF note count exceeds the limit" }
+                remainingNotes -= 1
+                let note = process.read<[u32; 3]>(noteAddress.add(offset))?
+                let nameSize = note[0] as u64
+                let dataSize = note[1] as u64
+                let paddedName = (nameSize + 3) & 0xfffffffffffffffc
+                let paddedData = (dataSize + 3) & 0xfffffffffffffffc
+                let totalSize = 12 + paddedName + paddedData
+                if totalSize > segment.fileSize - offset { throw "ELF note payload is truncated" }
+                if note[2] == 3 && nameSize == 4
+                    && process.read<u32>(noteAddress.add(offset + 12))? == 0x00554e47 {
+                    if dataSize == 0 || dataSize > 32 {
+                        throw "ELF build ID must contain 1 through 32 bytes"
+                    }
+                    let result: [u8] = []
+                    let byteIndex: u64 = 0
+                    while byteIndex < dataSize {
+                        result.push(process.read<u8>(noteAddress.add(offset + 12 + paddedName + byteIndex))?)
+                        byteIndex += 1
+                    }
+                    return Ok(Some(result))
+                }
+                offset += totalSize
+            }
+        }
+        return Ok(None)
+    }
+
+    /// Reads the UUID of a mapped little-endian 64-bit Mach-O image.
+    ///
+    /// Reads `LC_UUID` from the active image at this module's base, rather
+    /// than selecting a slice from a universal file on disk. Returns [`None`]
+    /// when no UUID command exists. Unsupported headers, malformed command
+    /// sizes, and failed reads return an error. The walk stays inside the
+    /// mapped command table and examines at most 4096 load commands.
+    ///
+    /// # Example
+    ///
+    /// Inspect the loaded macOS Mono runtime's UUID
+    ///
+    /// ```splitscript
+    /// let runtime = await process.module("libmonobdwgc-2.0.dylib")
+    /// let uuid = runtime.machUuid()? else return
+    /// print(uuid)
+    /// ```
+    @mustUse("use the returned build identity")
+    fn machUuid() -> [u8; 16]?! {
+        let header = process.read<[u32; 8]>(self.boundedAddress(0, 32)?)?
+        if header[0] != 0xfeedfacf {
+            throw "module is not a little-endian 64-bit Mach-O image"
+        }
+        let count = header[4]
+        let tableSize = header[5] as u64
+        if count > 4096 { throw "Mach-O load-command count exceeds the limit" }
+        let commands = self.boundedAddress(32, tableSize)?
+        let offset: u64 = 0
+        let index: u32 = 0
+        while index < count {
+            if tableSize - offset < 8 { throw "Mach-O load command is truncated" }
+            let command = process.read<[u32; 2]>(commands.add(offset))?
+            let size = command[1] as u64
+            if size < 8 || size % 8 != 0 || size > tableSize - offset {
+                throw "Mach-O load-command size is invalid"
+            }
+            if command[0] == 0x1b {
+                if size < 24 { throw "Mach-O UUID command is truncated" }
+                return Ok(Some(process.read<[u8; 16]>(commands.add(offset + 8))?))
+            }
+            offset += size
+            index += 1
+        }
+        if offset != tableSize { throw "Mach-O command count does not cover the table" }
+        return Ok(None)
     }
 
     /// Returns the module's host-provided filesystem path.

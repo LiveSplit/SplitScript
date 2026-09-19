@@ -27,6 +27,7 @@ pub(super) struct Reachability {
     equality_options: BTreeSet<OptionTypeId>,
     equality_results: BTreeSet<ResultTypeId>,
     string_equality: bool,
+    gc_standard: BTreeSet<StdlibTypeId>,
     gc_structs: BTreeSet<StructId>,
     gc_managed_classes: BTreeSet<ManagedClassId>,
     managed_snapshots: BTreeSet<ManagedClassId>,
@@ -589,12 +590,26 @@ impl Reachability {
                             type_roots.push(specialize(*receiver_type));
                         }
                         wasm_ir::CallTarget::Intrinsic {
+                            intrinsic,
                             type_arguments,
                             receiver_type,
                             ..
                         } => {
                             type_roots.extend(type_arguments.iter().copied().map(specialize));
                             type_roots.extend(receiver_type.map(specialize));
+                            let contract = crate::intrinsic_registry::contract(*intrinsic);
+                            for policy in contract
+                                .async_scratch
+                                .iter()
+                                .chain(contract.async_state)
+                                .chain(contract.synchronous_scratch)
+                            {
+                                if let crate::intrinsic_registry::ScratchType::Standard(standard) =
+                                    policy.ty
+                                {
+                                    type_roots.push(semantics.types().id_for_standard(standard));
+                                }
+                            }
                         }
                         wasm_ir::CallTarget::LibraryOverload {
                             dispatch_type,
@@ -650,20 +665,11 @@ impl Reachability {
         reachable.string_equality |= wasm_ir
             .state_transforms()
             .any(|transform| block_uses_string_match_pattern(&transform.entry, wasm_ir));
-        // Standard GC structs are currently emitted as one recursive catalog
-        // group. Their constructed field layouts therefore need matching
-        // dynamic GC types even when no user expression reaches the owner.
-        type_roots.extend(
-            standard_library
-                .fields()
-                .iter()
-                .filter(|field| matches!(field.owner, crate::stdlib::StdlibOwner::Type(_)))
-                .map(|field| {
-                    semantics
-                        .standard_field_type(field.id)
-                        .expect("checked nominal standard fields have semantic types")
-                }),
-        );
+        // Settings refresh owns a temporary string slot even for boolean-only
+        // settings. Derived formatters return strings outside source bodies.
+        if !program.settings.is_empty() || !reachable.derived_debugs.is_empty() {
+            type_roots.push(semantics.types().id_for_standard(StdlibTypeId::String));
+        }
         reachable.require_types(
             type_roots,
             program,
@@ -698,7 +704,10 @@ impl Reachability {
         &mut self,
         dependencies: &super::dependencies::BackendDependencies,
         arrays: &[ResolvedArrayType],
+        program: &Program,
         semantics: &SemanticModel,
+        standard_library: &StandardLibrary,
+        capabilities: &crate::capabilities::CapabilityAnalysis,
     ) {
         let required = super::runtime_helper_registry::required_array_layouts(
             dependencies.helpers(),
@@ -708,6 +717,24 @@ impl Reachability {
         .collect::<Vec<_>>();
         self.gc_arrays.extend(required.iter().copied());
         self.gc_array_storage.extend(required);
+        use super::runtime_helper_registry::{HelperValueType, descriptor};
+        let roots = dependencies
+            .helpers()
+            .flat_map(|helper| {
+                let signature = descriptor(helper).signature;
+                signature.params.iter().chain(signature.results)
+            })
+            .filter_map(|ty| match ty {
+                HelperValueType::Standard(standard) => Some(*standard),
+                HelperValueType::String
+                | HelperValueType::StringArray
+                | HelperValueType::StringResult
+                | HelperValueType::OptionalStringResult => Some(StdlibTypeId::String),
+                _ => None,
+            })
+            .map(|standard| semantics.types().id_for_standard(standard))
+            .collect::<Vec<_>>();
+        self.require_types(roots, program, semantics, standard_library, capabilities);
     }
 
     pub fn functions(&self) -> impl Iterator<Item = &FunctionInstance> {
@@ -865,6 +892,10 @@ impl Reachability {
         self.gc_applications.contains(&application)
     }
 
+    pub fn contains_standard_type(&self, standard: StdlibTypeId) -> bool {
+        self.gc_standard.contains(&standard)
+    }
+
     fn require_types(
         &mut self,
         roots: impl IntoIterator<Item = TypeId>,
@@ -934,6 +965,7 @@ impl Reachability {
                     );
                 }
                 TypeKind::Standard(standard) => {
+                    self.gc_standard.insert(*standard);
                     if matches!(
                         standard_library.type_decl(*standard).representation,
                         RuntimeRepresentation::GcStruct { .. }
@@ -967,6 +999,7 @@ impl Reachability {
                 TypeKind::Result { layout, value } => {
                     self.gc_results.insert(*layout);
                     pending.push(*value);
+                    pending.push(semantics.types().id_for_standard(StdlibTypeId::String));
                 }
                 TypeKind::Async { layout, value } => {
                     self.gc_asyncs.insert(*layout);
@@ -1276,4 +1309,87 @@ fn collect_assignment_function_roots(
     }
 
     AssignmentCollector { owner, output }.visit_block(block, program);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Reachability;
+    use crate::{stdlib::StdlibTypeId, types::TypeKind};
+
+    #[test]
+    fn identity_types_and_their_fields_follow_reachable_reads() {
+        for (source, pe, elf, guid) in [
+            ("state \"game.exe\" {}", false, false, false),
+            (
+                "state \"game.exe\" {} fn unused(value: PeDebugId) { print(value.guid) }",
+                false,
+                false,
+                false,
+            ),
+            (
+                include_str!("../../tests/pe_debug_id.split"),
+                true,
+                false,
+                true,
+            ),
+            (
+                include_str!("../../tests/elf_build_id.split"),
+                false,
+                true,
+                true,
+            ),
+            (
+                include_str!("../../tests/mach_uuid.split"),
+                false,
+                false,
+                true,
+            ),
+        ] {
+            let checked = crate::check(crate::parse(source).unwrap()).unwrap();
+            let backend = crate::lower_wasm_with_options(
+                &checked,
+                crate::CompilerOptions {
+                    profile: crate::BuildProfile::Release,
+                    ..Default::default()
+                },
+            );
+            let reachable = Reachability::analyze(
+                &backend.program,
+                &backend.semantics,
+                &backend.wasm_ir,
+                &backend.standard_library,
+                backend.capabilities,
+                [],
+            );
+            assert_eq!(
+                reachable.contains_standard_type(StdlibTypeId::PeDebugId),
+                pe
+            );
+            assert_eq!(
+                reachable.contains_standard_type(StdlibTypeId::ElfIdentitySegment),
+                elf
+            );
+            let guid_type = backend
+                .semantics
+                .types()
+                .iter()
+                .find_map(|(_, kind)| match kind {
+                    TypeKind::Array {
+                        layout,
+                        element,
+                        length: Some(16),
+                    } if *element
+                        == backend
+                            .semantics
+                            .types()
+                            .id_for_core(crate::stdlib::CoreTypeId::U8) =>
+                    {
+                        Some(*layout)
+                    }
+                    _ => None,
+                })
+                .expect("the catalog declares the GUID field layout");
+            assert_eq!(reachable.contains_array_type(guid_type), guid);
+        }
+    }
 }

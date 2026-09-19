@@ -424,6 +424,17 @@ runtime metadata discovery such as Mono's `mono_assembly_foreach`; it is not a
 cross-platform symbol API, and malformed or absent exports remain ordinary
 `T!` errors.
 
+Build identities are available through [`Module.peDebugId`],
+[`Module.elfBuildId`], and [`Module.machUuid`]. The PE reader returns a
+[`PeDebugId`] containing the stored GUID bytes and PDB age; both components
+participate in equality. ELF reads preserve 1–32 GNU build-ID bytes and account
+for relocation. Mach-O reads return the active mapped 64-bit image's 16 UUID
+bytes. These methods return an optional identity inside a fallible result:
+`None` means a supported image has no supported identity record; an error
+means malformed, unsupported, unreadable, or excessive metadata. They validate
+mapped bounds before reading and use finite traversal limits. They do not
+read an on-disk universal binary or select a Unity runtime profile themselves.
+
 An [`address`] supports [`address.offset`] for integer displacements and
 [`address.add`] for unsigned full-width deltas. Signed arguments retain their sign;
 smaller integer widths are extended before addition. Both wrap modulo the 64-bit address space while

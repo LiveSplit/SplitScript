@@ -87,6 +87,7 @@ impl GcLayout {
         let standard = standard_library
             .all_types()
             .iter()
+            .filter(|declaration| reachability.contains_standard_type(declaration.id))
             .filter(|declaration| {
                 matches!(
                     declaration.representation,

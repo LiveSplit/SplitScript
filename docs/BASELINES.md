@@ -54,7 +54,7 @@ Run the gate after each Unity implementation step:
 cargo xtask unity-baseline
 ```
 
-It builds the runner with Cargo's `max-opt` profile, compiles 14 fixtures with
+It builds the runner with Cargo's `max-opt` profile, compiles 17 fixtures with
 SplitScript's Release profile, validates the modules, and runs the Lunistice
 base and DLC synthetic host scenarios. `cargo xtask conformance` and
 `cargo xtask check` include this gate. The automatic Unity Lunistice variant
@@ -161,6 +161,38 @@ for a synthetic future name changing from `expr6432::poll` to `expr6424::poll`
 as lowered expression IDs shift. Its body remains 437 bytes; there is no new
 runtime helper or module/section/body/memory growth. This rename was reviewed
 when updating the rolling baseline; the strict name-retention gate is unchanged.
+
+### Binary identities and unused standard-library types (2026-09-19)
+
+The PE debug ID, ELF build ID, and Mach-O UUID readers add three fixtures.
+Their first measurement exposed eager emission of every standard-library GC
+type, including unused declarations and their constructed field types. Type
+planning now follows reachable values, transitive fields, and the storage and
+signatures required by emitted runtime code. Unused identity readers and types
+are excluded; shared array layouts remain when other reachable reads need them.
+
+| Fixture | Previous Wasm bytes | Current Wasm bytes | Scratch bytes |
+| --- | ---: | ---: | ---: |
+| Empty native | 1,005 | 615 | 0 |
+| IL2CPP scalar | 14,881 | 14,576 | 8,192 |
+| Mono scalar | 20,277 | 19,909 | 4,104 |
+| Lunistice explicit | 27,677 | 27,204 | 14,336 |
+| Lunistice automatic | 51,354 | 50,575 | 14,336 |
+| PE debug identity | New | 7,135 | 32 |
+| ELF build identity | New | 7,718 | 56 |
+| Mach-O UUID | New | 4,308 | 32 |
+
+All 14 existing fixtures shrink, with unchanged function counts, runtime-helper
+sets, scratch reservations, and initial memory pages. No existing section or
+function body grows. The three new measurements cover complete fixtures,
+including result handling and printing, rather than isolated parser costs.
+
+Comparisons against both the previous and initial reports flag the new fixtures
+and changed numeric IDs in generated array/set/debug/future names. These are
+reviewed identifier shifts, not new functions in existing scripts. The rolling
+baseline records all 17 fixtures; the initial baseline remains unchanged.
+All 101 runtime scenarios pass, including 196 identity cases and Lunistice
+base/DLC. Automatic Lunistice remains size-only in this gate.
 
 ## 2026-09-12 source-path suggestion indexing
 

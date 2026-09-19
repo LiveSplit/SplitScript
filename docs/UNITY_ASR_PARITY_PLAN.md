@@ -1,6 +1,6 @@
 # Unity support: ASR research and SplitScript implementation plan
 
-Status: researched on 2026-09-18; the Step 1 measurement gate, demand-driven scratch allocation, and reachable metadata binding are implemented. The profile and recursive managed-reader work remains planned. See [implementation progress](#implementation-progress).
+Status: researched on 2026-09-18; the measurement gate, reachable binding/scratch allocation, and Step 3 binary identity readers are implemented. Runtime profile integration and recursive managed readers remain planned. See [implementation progress](#implementation-progress).
 
 ## Objective and baseline
 
@@ -43,7 +43,19 @@ The third implementation slice makes generated metadata binding follow reachable
 - Size comparison: unused-string schemas shrink by **699 bytes (IL2CPP)** and **703 bytes (Mono)** and become byte-identical to scalar schemas. Mono instances shrink by **3,959 bytes** by omitting unread `health` metadata discovery. All other fixtures and scratch reservations are unchanged; Lunistice remains **27,677 bytes** explicit / **51,354 bytes** automatic, and both edition scenarios pass. The strict gate flags only a synthetic future rename (`expr6432` → `expr6424`, same 437-byte body); no module, section, body, or memory grows. This rename is reviewed in the rolling baseline; the original baseline is preserved.
 - Validation: full `cargo xtask conformance` passes with **652 compiler integration tests**, **98 runtime scenarios**, and the 14-fixture size gate plus Lunistice base/DLC. Clippy with warnings denied, formatting, and diff checks pass. No live-game validation was performed.
 
-Step 1 is **in progress**, not complete: executable contracts for new profile/read APIs, richer shared host fixtures, and the remaining acceptance examples still need implementation. No new managed collection or recursive snapshot support is claimed by these slices. Live game validation has not been performed.
+The fourth slice adds the binary identities needed by measured runtime profiles (Step 3):
+
+- Added `Module.peDebugId() -> PeDebugId?!` for PE32/PE32+ RSDS records. `PeDebugId` retains all 16 GUID bytes in CodeView storage order and the PDB age, with structural equality and `fromParts` for expected identities. Missing debug metadata and older CodeView formats return `None`; malformed or unreadable records return an error.
+- Added `Module.elfBuildId() -> [u8]?!` for little-endian ELF32/ELF64. It derives relocation from the header's `PT_LOAD`, locates `PT_NOTE` through virtual addresses, respects note padding, and returns exactly 1–32 bytes. Oversized IDs fail without truncation.
+- Added `Module.machUuid() -> [u8; 16]?!` for an active little-endian 64-bit Mach-O image at the host-reported module base. It validates command bounds and sizes before reading `LC_UUID`; raw universal files, Mach-O32, and big-endian images are rejected. This API consumes the mapped image and does not choose an architecture from an on-disk wrapper.
+- All three are source-defined standard-library readers using the existing host ABI. A shared private span check guards mapped bounds and address overflow. Traversals fail explicitly beyond 4096 PE entries, 1024 ELF program headers / 4096 ELF notes, or 4096 Mach-O commands. They do not silently inspect only an initial table prefix.
+- Added reusable mapped-image builders and **196 runtime cases** covering both PE/ELF widths and Mach-O x86-64/arm64, absence versus failure, late entries, byte order, age comparison, relocation, different file offsets/RVAs, malformed lengths, failed reads, work limits, and host-read bounds. Identity readers have separate size fixtures and format-specific reachability coverage.
+- The first size check exposed unconditional emission of standard-library GC types and their constructed field types. Fixed type planning to retain only reachable declarations and their transitive fields, including dependencies of runtime-helper signatures, intrinsic scratch state, result error strings, settings refresh, and derived formatting. Regression coverage distinguishes PE identity and ELF segment types from their shared GUID array layout, including unused function parameters.
+- Final size comparison: all 14 existing fixtures shrink, with no new runtime helpers or functions and no scratch/page growth. Empty native Wasm is **615 bytes** (previously 1,005); Lunistice is **27,204 bytes** explicit / **50,575 bytes** automatic (previously 27,677 / 51,354). The new complete identity fixtures are **7,135 bytes PE**, **7,718 bytes ELF**, and **4,308 bytes Mach-O**. Comparisons against the previous and initial reports require review only for these new fixtures and generated numeric-name shifts; the rolling gate now covers 17 artifacts.
+- Validation on 2026-09-19: **442 library tests**, **653 compiler integration tests**, and **101 runtime scenarios** pass, including all 196 identity cases and Lunistice base/DLC. Formatting, Clippy with warnings denied, documentation validation, and the reviewed size gate pass. No live-game validation was performed.
+- Exact Mono/IL2CPP profile selection is not wired to these readers yet. Linux/macOS Unity discovery and live-game validation also remain separate work.
+
+Step 1 is **in progress**, not complete: executable contracts for new profile/read APIs and recursive acceptance examples still need implementation. No new managed collection or recursive snapshot support is claimed by these slices. Live game validation has not been performed.
 
 ## What changed upstream
 
@@ -190,6 +202,11 @@ state Unity ["game.exe"] {
 The root snapshot has one finite read policy covering all map entries, inner arrays, strings, and class objects (the exact configuration spelling is chosen in Step 1). `catalog.labelsByCategory` is an ordinary local map; `catalog.groups` contains local optional `Item` snapshots. Reading either later performs no process reads. Changing the remote strings or replacing an inner container cannot change an accepted `old.catalog`. Inactive conditional fields are not traversed or charged. Null at a non-optional level, unreadable nested data, type/shape mismatch, a cycle, or budget exhaustion rejects the root snapshot rather than returning a partially filled graph.
 
 ### Demand-driven emission and size gate for every step
+
+Implementation priority: deliver the new Unity functionality. Use measurements
+as a regression guard while doing that work; do not schedule independent
+optimization passes over existing behavior. Address unnecessary growth caused
+by a new feature or a concrete implementation need, and otherwise move on.
 
 The compiler may know every profile and decoder. The generated autosplitter must contain only what its reachable operations need. Treat this as an architectural invariant from the first refactor, not a final optimization pass.
 

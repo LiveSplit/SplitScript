@@ -1,0 +1,17 @@
+state "game.exe" {}
+
+onAttach {
+    let runtime = await process.module("runtime.dll")
+    match runtime.peDebugId() {
+        Ok(Some(identity)) => {
+            print("found")
+            for byte in identity.guid { print(byte) }
+            print(identity.age)
+            print(identity == identity)
+            let differentAge = PeDebugId.fromParts(identity.guid, identity.age ^ 1)
+            print(identity == differentAge)
+        },
+        Ok(None) => print("none"),
+        Err(message) => print(`error: {message}`),
+    }
+}
