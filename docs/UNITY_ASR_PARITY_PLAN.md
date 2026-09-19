@@ -1712,6 +1712,38 @@ and function-body size multisets after this fix. The baseline refresh changes
 generated expression identifiers rather than retained functionality. Explicit
 Lunistice remains 58,178 bytes; its base/DLC fixtures pass.
 
+## IL2CPP parallel collection element contracts (2026-09-19)
+
+Parallel-array Map/Set layouts now follow each payload vector's measured type-data
+pointer to its element type. The cached layout retains the element kind and
+proven primitive/reference width; each read checks these against its requested
+child decoder before scanning payload storage. This also checks a second schema
+using an already cached layout. Null, unreadable, overflowing, and unsupported
+element metadata fail discovery. Payload descriptors follow the two Link members
+in the internal member list and use offset zero within their separate arrays.
+
+This closes the IL2CPP parallel-array kind/width gap without assuming that plain
+class/value-type indices are class pointers. Exact generic argument identity,
+IL2CPP inline value sizes, Mono array element metadata, and recursive element-type
+contracts remain open. Existing nested values still use their recursive decoders;
+this change does not claim that those remaining metadata proofs are complete.
+
+The focused layout/slot probes pass in Debug and Release, including malformed
+payload type pointers, kind mismatches, and incorrect scalar widths rejected
+before any payload read. Public Map/Set tests also check cached-schema mismatches
+and 32-/64-bit parallel scalar storage; the collection suite covers nested lists,
+arrays, classes, Map/Set values, inline values, and frozen snapshots.
+
+The size review leaves all 32 fixtures without managed Map/Set unchanged in
+module/section sizes, function/type counts, and function-body size multisets.
+Explicit Lunistice remains 58,178 bytes and automatic Lunistice 201,662 bytes;
+both edition fixtures pass. IL2CPP Map/Set grow by 419 bytes each, and Mono Map/Set
+by 416 bytes each because they share the keyed metadata adapter. Growth is confined
+to code for parallel layout discovery and element validation; data, types, scratch,
+and memory pages do not grow. The checked-in baseline refresh also accounts for
+renumbered generated expression names. The final sub-30,000-byte Lunistice target
+and the remaining metadata requirements are still unfinished.
+
 ## Source map for implementation
 
 Upstream links below are pinned to the reviewed tip; the PR table provides the historical changes.

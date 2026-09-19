@@ -2066,6 +2066,19 @@ private struct UnityFields {
             throw "Unity collection Link members must be integers"
         }
         self.validateMembers(inner, 8)?
+        if !types.mono {
+            index = 2
+            while index < outer.length() - 2 {
+                // IL2CPP vectors point to an element type. Mono vectors point
+                // to a class and need separate measured by-value metadata.
+                let dataOffset = types.data else throw "Unity profile lacks type data metadata"
+                let element = types.names.pointer(outer[index].typeAddress, dataOffset)?
+                let kind = types.kind(element)?
+                inner.push(UnityCollectionMember { offset: 0, typeAddress: element, kind,
+                    minimumWidth: types.minimumWidth(element, kind)?, exactWidth: kind != 0x11 && kind != 0x15 })
+                index += 1
+            }
+        }
         return UnityKeyedLayout { runtimeClass: class, declaringClass: owner,
             parallel: true, fields: outer, stride, members: inner, width: self.names.width, mono: types.mono }
     }
@@ -15007,7 +15020,8 @@ private struct UnityKeyedLayout {
     private fields: [UnityCollectionMember],
     /// Unboxed entry or Link stride.
     private stride: u32,
-    /// Entry members, or the two Link members, in declared order.
+    /// Entry members, or Link members followed by proven parallel payload types.
+    /// Parallel payload offsets are zero within their separate backing arrays.
     private members: [UnityCollectionMember],
     /// Target pointer width for the attachment that discovered this layout.
     private width: u64,
@@ -15074,6 +15088,10 @@ private struct UnityKeyedLayout {
         let dictionary = self.dictionary()
         if valueBytes == 0 || (dictionary && keyBytes == 0) {
             throw "Unity collection element storage must have a positive width"
+        }
+        if self.parallel && !self.mono {
+            self.members[self.members.length() - 1].validateStorage(valueBytes, valueKinds)?
+            if dictionary { self.members[2].validateStorage(keyBytes, keyKinds)? }
         }
         if !self.parallel {
             self.members[self.members.length() - 1].validateStorage(valueBytes, valueKinds)?

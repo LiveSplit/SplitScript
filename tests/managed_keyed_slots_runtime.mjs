@@ -18,8 +18,9 @@ for(const family of backend==='mono'?['V1Cattrs','V2','V3']:['il2cpp'])for(const
     if((!parallel||!dictionary)&&['short keys','null keys'].includes(mode))continue;
     if(!parallel&&['short values','null values'].includes(mode))continue;
     if(parallel&&['unreadable next','value overrun','short reference'].includes(mode))continue;
-    if((parallel||!dictionary)&&['key overrun','key kind mismatch'].includes(mode))continue;
-    if(parallel&&['value kind mismatch','scalar wrong width'].includes(mode))continue;
+    if((parallel||!dictionary)&&mode==='key overrun')continue;
+    if((!dictionary||(parallel&&family!=='il2cpp'))&&mode==='key kind mismatch')continue;
+    if(parallel&&family!=='il2cpp'&&['value kind mismatch','scalar wrong width'].includes(mode))continue;
     if(mode.startsWith('inline ')&&(parallel||family==='il2cpp'))continue;
     const f=createKeyedCollectionFixture({family,width,dictionary,parallel,reversed:mode==='reversed',renamed:mode==='renamed',inline:mode.startsWith('inline')});
     const {memory,number,ptr,object,vtable,root,outer,stride,hash,next,key,value,bytes}=f;

@@ -10,8 +10,9 @@ const fields = {
     il2cpp: {32: [0x40, 0xac], 64: [0x80, 0x124]},
 };
 let cases = 0;
-for (const family of Object.keys(fields)) for (const width of [32, 64]) {
-    const f = createKeyedCollectionFixture({family, width, dictionary: false});
+for (const family of Object.keys(fields)) for (const width of [32, 64]) for (const parallel of [false, true]) {
+    if (parallel && family !== 'il2cpp') continue;
+    const f = createKeyedCollectionFixture({family, width, dictionary: false, parallel});
     const {number, ptr, memory, bytes, object, outer, stride, hash, next, value} = f;
     const mono = family !== 'il2cpp', [fieldOffset, countOffset] = fields[family][width];
     ptr(0x14000n + BigInt(fieldOffset), 0x58000n);
@@ -26,18 +27,23 @@ for (const family of Object.keys(fields)) for (const width of [32, 64]) {
         ptr((mono ? 0x18000n : 0x16000n) + BigInt(offset), object);
     });
     number(0x50400n + BigInt(bytes + 2), 1, 0x08); // System.Int32
-    number(object + BigInt(outer[2][1]), 4, 2);
-    number(object + BigInt(outer[3][1]), 4, 2);
+    number(object + BigInt(outer[parallel ? 3 : 2][1]), 4, 2);
+    number(object + BigInt(outer[parallel ? 4 : 3][1]), 4, 2);
     ptr(object + BigInt(outer[1][1]), 0x80000n);
     ptr(0x80000n + BigInt(2 * bytes), 0);
     ptr(0x80000n + BigInt(3 * bytes), 2);
+    if (parallel) {
+        ptr(object + BigInt(outer[2][1]), 0x81000n);
+        ptr(0x81000n + BigInt(2 * bytes), 0);
+        ptr(0x81000n + BigInt(3 * bytes), 2);
+    }
     for (let i = 0; i < 2; i++) {
         const at = 0x80000n + BigInt(4 * bytes + i * stride);
-        number(at + BigInt(hash), 4, 1);
+        number(at + BigInt(hash), 4, parallel ? 0x80000001 : 1);
         number(at + BigInt(next), 4, -1);
-        number(at + BigInt(value), 4, i + 1);
+        number(parallel ? 0x81000n + BigInt(4 * bytes + i * 4) : at + BigInt(value), 4, i + 1);
     }
-    const host = await SplitScriptHost.instantiate(wasm), label = `${family}/${width}`;
+    const host = await SplitScriptHost.instantiate(wasm), label = `${family}/${width}/${parallel ? 'parallel' : 'entries'}`;
     host.addProcess('game.exe', f.process); host.start();
     host.updateUntil(() => host.variables.has('wrong'), label);
     assert.equal(host.variables.get('rows').replace(/\s/g, ''), 'Set{1,2,}', label);

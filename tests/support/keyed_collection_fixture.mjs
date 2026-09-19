@@ -50,6 +50,14 @@ export function createKeyedCollectionFixture({family='V2', width=64, dictionary=
         : dictionary?['_buckets','_entries','_count','_freeCount']:['_buckets','_slots','_count','_lastIndex'];
     if(renamed&&!parallel)names.forEach((name,i)=>names[i]=dictionary?name.slice(1):`m${name}`);
     const outer=names.map((name,i)=>[name,header+i*bytes,i>=names.length-2?intType:vectorType]);
+    if(!mono&&parallel){
+        for(let i=2;i<outer.length-2;i++){
+            const vector=base+0x50600n+BigInt((i-2)*256);
+            number(vector+BigInt(bytes+2),1,0x1d);
+            ptr(vector,dictionary&&i===2?keyType:valueType);
+            outer[i][2]=vector;
+        }
+    }
     const hash=reversed?4:0, next=reversed?0:4, key=8, value=8+(dictionary?keyBytes:0);
     const members=parallel?[['HashCode',header+hash,hashType],['Next',header+next,intType]]
         : [['hashCode',header+hash,hashType],['next',header+next,intType],...(dictionary?[['key',header+key,keyType]]:[]),['value',header+value,valueType]];

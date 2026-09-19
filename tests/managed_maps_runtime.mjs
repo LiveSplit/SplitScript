@@ -17,7 +17,7 @@ const fieldLayouts = {
 let cases = 0;
 for (const family of Object.keys(fieldLayouts)) for (const width of [32, 64])
 for (const parallel of [false, true]) for (const mode of modes) {
-    if (parallel && mode.startsWith('wrong ')) continue;
+    if (parallel && family !== 'il2cpp' && mode.startsWith('wrong ')) continue;
     const f = createKeyedCollectionFixture({family, width, parallel});
     const {memory, number, ptr, object, bytes, outer, stride, hash, next, key, value} = f;
     const mono = family !== 'il2cpp', wide = width === 64;
