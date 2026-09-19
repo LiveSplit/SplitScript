@@ -461,6 +461,7 @@ pub(super) fn encode<'a>(
 
     let mut managed_decoder_functions = HashMap::new();
     for value in reachability.managed_decoders() {
+        let output = capabilities.managed_decoder(value).unwrap().output;
         let result = semantics
             .types()
             .iter()
@@ -468,7 +469,7 @@ pub(super) fn encode<'a>(
                 crate::types::TypeKind::Result {
                     value: candidate,
                     layout,
-                } if *candidate == value => Some(*layout),
+                } if *candidate == output => Some(*layout),
                 _ => None,
             })
             .expect("managed child reads have Result layouts");

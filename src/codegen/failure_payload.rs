@@ -29,6 +29,7 @@ impl FailurePayloadDemand {
         program: &wasm_ir::Program,
         reachability: &Reachability,
         managed: &crate::managed::ManagedBindingPlan,
+        capabilities: &crate::capabilities::CapabilityAnalysis,
     ) -> Self {
         let mut demanded = BTreeSet::new();
         let mut dependencies = BTreeMap::<ResultTypeId, BTreeSet<ResultTypeId>>::new();
@@ -172,17 +173,10 @@ impl FailurePayloadDemand {
         }
 
         for ty in reachability.managed_decoders() {
-            let child = match semantics.types().kind(ty) {
-                TypeKind::Array {
-                    element,
-                    length: None,
-                    ..
-                } => Some(*element),
-                TypeKind::Option { value, .. } => Some(*value),
-                _ => None,
-            };
-            if let Some(child) = child {
-                for target in &results[&ty] {
+            let plan = capabilities.managed_decoder(ty).unwrap();
+            if let Some(child) = plan.kind.child() {
+                let child = capabilities.managed_decoder(child).unwrap().output;
+                for target in &results[&plan.output] {
                     dependencies
                         .entry(*target)
                         .or_default()

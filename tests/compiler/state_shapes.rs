@@ -836,6 +836,50 @@ fn managed_arrays_compose_strings_and_owned_classes() {
 }
 
 #[test]
+fn collection_snapshots_preserve_direct_live_class_reads() {
+    let source = r#"
+        image "Assembly-CSharp" {
+            class Root {
+                static Child one;
+                static Child? optional;
+                static [Child?] many;
+            }
+            class Child { i32 value; }
+        }
+        state Unity ["game.exe"] { many = Root.many?; }
+        whileAttached {
+            let single: Child.Ref = Root.one else return
+            let number = single.value else return
+            setVariable("one", number)
+            let optional: Child.Ref? = Root.optional else return
+            match optional {
+                Some(reference) => {
+                    let optionalNumber = reference.value else return
+                    setVariable("optional", optionalNumber)
+                },
+                None => {},
+            }
+        }
+    "#;
+    for profile in [
+        splitscript::BuildProfile::Debug,
+        splitscript::BuildProfile::Release,
+    ] {
+        let wasm = splitscript::compile_with_options(
+            source,
+            splitscript::CompilerOptions {
+                profile,
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        Validator::new_with_features(WasmFeatures::all())
+            .validate_all(&wasm)
+            .expect("a class decoder retained by an array must not replace a live field read");
+    }
+}
+
+#[test]
 fn managed_array_elements_must_be_owned_managed_readable_values() {
     let source = r#"image "Assembly-CSharp" {
         class Player { [Player.Ref] children; }

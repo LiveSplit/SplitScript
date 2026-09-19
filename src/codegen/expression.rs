@@ -3040,16 +3040,17 @@ fn emit_managed_read_at_address(
         .expect("a checked managed field access has a concrete Result layout");
     let value_type = semantic_type(field.value_type, context.semantics);
 
-    if context
-        .managed_decoder_functions
-        .contains_key(&field.value_type)
+    if field.snapshot_type == field.value_type
+        && context
+            .managed_decoder_functions
+            .contains_key(&field.declared_type)
     {
         emit_managed_binding_field(function, MANAGED_POINTER_SIZE_FIELD, context);
         emit_managed_read_context(function, context);
         function
             .instruction(&Instruction::I32Const(0))
             .instruction(&Instruction::Call(
-                context.managed_decoder_functions[&field.value_type],
+                context.managed_decoder_functions[&field.declared_type],
             ));
         return Type::Result(result);
     }

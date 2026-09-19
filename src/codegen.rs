@@ -580,7 +580,7 @@ fn compile_internal(inputs: BackendProgram<'_>, report: Option<&mut CodegenRepor
         capabilities,
     );
     let failure_payloads =
-        FailurePayloadDemand::analyze(semantics, wasm_ir, &reachability, &managed);
+        FailurePayloadDemand::analyze(semantics, wasm_ir, &reachability, &managed, capabilities);
     let static_data = StaticData::collect(
         program,
         &process_names,

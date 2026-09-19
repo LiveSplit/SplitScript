@@ -1,5 +1,6 @@
-//! Type-directed managed decoder nodes. TypeId is already interned by semantic
-//! analysis, so child edges share one node rather than expanding type trees.
+//! Type-directed managed decoder nodes, keyed by their remote storage type.
+//! Each node also names its owned output type. Child edges identify storage
+//! plans even when multiple remote representations produce the same value.
 //! This graph is compiler data: constructing it does not retain Wasm readers.
 
 use std::collections::HashMap;
@@ -25,7 +26,13 @@ use crate::{
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum ManagedDecoder {
+pub(crate) struct ManagedDecoder {
+    pub output: TypeId,
+    pub kind: ManagedDecoderKind,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ManagedDecoderKind {
     /// Fixed-layout base case, proven directly without re-entering capability
     /// implication (`MemoryReadable` itself implies `ManagedReadable`).
     Memory,
@@ -42,6 +49,15 @@ pub(crate) enum ManagedDecoder {
     },
 }
 
+impl ManagedDecoderKind {
+    pub(crate) fn child(self) -> Option<TypeId> {
+        match self {
+            Self::Array { element } | Self::Optional { value: element } => Some(element),
+            _ => None,
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub(crate) struct ManagedReadTypes {
     nodes: HashMap<TypeId, ManagedDecoder>,
@@ -56,12 +72,12 @@ impl ManagedReadTypes {
         let mut nodes = HashMap::new();
         for (ty, kind) in semantics.types().iter() {
             let node = match kind {
-                TypeKind::Standard(StdlibTypeId::String) => ManagedDecoder::String,
+                TypeKind::Standard(StdlibTypeId::String) => ManagedDecoderKind::String,
                 TypeKind::Array {
                     element,
                     length: None,
                     ..
-                } => ManagedDecoder::Array { element: *element },
+                } => ManagedDecoderKind::Array { element: *element },
                 TypeKind::Option { value, .. }
                     if matches!(
                         semantics.types().kind(*value),
@@ -70,19 +86,28 @@ impl ManagedReadTypes {
                             | TypeKind::Array { length: None, .. }
                     ) =>
                 {
-                    ManagedDecoder::Optional { value: *value }
+                    ManagedDecoderKind::Optional { value: *value }
                 }
-                _ if memory.require_layout(ty, semantics).is_ok() => ManagedDecoder::Memory,
+                _ if memory.require_layout(ty, semantics).is_ok() => ManagedDecoderKind::Memory,
                 _ => continue,
             };
-            nodes.insert(ty, node);
+            nodes.insert(
+                ty,
+                ManagedDecoder {
+                    output: ty,
+                    kind: node,
+                },
+            );
         }
         // Intern all class nodes before checking children. Recursive schemas
         // are finite graphs; object cycles are rejected by the runtime path.
         for class in classes {
             nodes.insert(
                 semantics.types().id_for_managed_class(class.id),
-                ManagedDecoder::Class { class: class.id },
+                ManagedDecoder {
+                    output: semantics.types().id_for_managed_class(class.id),
+                    kind: ManagedDecoderKind::Class { class: class.id },
+                },
             );
         }
         loop {
@@ -95,15 +120,16 @@ impl ManagedReadTypes {
                             .all_fields()
                             .filter(|field| !field.is_static)
                             .any(|field| {
-                                !nodes.contains_key(
-                                    &semantics.managed_field_snapshot_type(field.id).unwrap(),
-                                )
+                                !nodes
+                                    .contains_key(&semantics.managed_field_type(field.id).unwrap())
                             }))
                     .then_some(ty)
                 })
                 .collect::<Vec<_>>();
             invalid.extend(nodes.iter().filter_map(|(ty, node)| {
-                matches!(node, ManagedDecoder::Optional { value } | ManagedDecoder::Array { element: value } if !nodes.contains_key(value))
+                node.kind
+                    .child()
+                    .is_some_and(|child| !nodes.contains_key(&child))
                     .then_some(*ty)
             }));
             if invalid.is_empty() {

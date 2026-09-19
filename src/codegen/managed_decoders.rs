@@ -6,7 +6,7 @@ use crate::{
     ast::ResultTypeId,
     capabilities::CapabilityAnalysis,
     intrinsic_registry::RuntimeHelperId as H,
-    managed_read::ManagedDecoder,
+    managed_read::ManagedDecoderKind,
     memory::MemoryAddressWidth,
     stdlib::StdlibTypeId,
     types::{TypeId, TypeKind},
@@ -23,36 +23,39 @@ use super::{
 const CONTEXT: u32 = 3;
 
 pub(super) fn compile(
-    value: TypeId,
+    source: TypeId,
     capabilities: &CapabilityAnalysis,
     lowering: &EmissionContext<'_>,
 ) -> Function {
-    let node = capabilities.managed_decoder(value).unwrap();
+    let plan = capabilities.managed_decoder(source).unwrap();
+    let value = plan.output;
+    let node = plan.kind;
     let result = result_for(value, lowering);
     let mut reader = Reader {
         value,
         result,
         lowering,
+        capabilities,
         entered: None,
     };
     let mut locals = Vec::new();
     match node {
-        ManagedDecoder::Memory if lowering.managed_freezers.contains_key(&value) => {
+        ManagedDecoderKind::Memory if lowering.managed_freezers.contains_key(&value) => {
             locals.push((1, nullable(lowering.gc.val_type(Type::Result(result)))))
         }
-        ManagedDecoder::String => locals.push((
+        ManagedDecoderKind::String => locals.push((
             1,
             nullable(lowering.gc.val_type(Type::Standard(StdlibTypeId::String))),
         )),
-        ManagedDecoder::Optional { value } => locals.push((
+        ManagedDecoderKind::Optional { value } => locals.push((
             1,
             nullable(
                 lowering
                     .gc
-                    .val_type(Type::Result(result_for(value, lowering))),
+                    .val_type(Type::Result(result_for(reader.output(value), lowering))),
             ),
         )),
-        ManagedDecoder::Array { element } => {
+        ManagedDecoderKind::Array { element } => {
             let TypeKind::Array { layout, .. } = lowering.semantics.types().kind(value) else {
                 unreachable!()
             };
@@ -68,7 +71,7 @@ pub(super) fn compile(
                 nullable(
                     lowering
                         .gc
-                        .val_type(Type::Result(result_for(element, lowering))),
+                        .val_type(Type::Result(result_for(reader.output(element), lowering))),
                 ),
             ));
             reader.entered = Some(8);
@@ -76,7 +79,7 @@ pub(super) fn compile(
         _ => {}
     }
     let mut f = Function::new(locals);
-    if !matches!(node, ManagedDecoder::Memory) {
+    if !matches!(node, ManagedDecoderKind::Memory) {
         f.instruction(&I::LocalGet(4))
             .instruction(&I::I32Eqz)
             .instruction(&I::If(BlockType::Empty))
@@ -94,7 +97,7 @@ pub(super) fn compile(
         f.instruction(&I::LocalSet(1)).instruction(&I::End);
     }
     match node {
-        ManagedDecoder::Memory => {
+        ManagedDecoderKind::Memory => {
             let (bytes, elements) = crate::managed_read::inline_materialization_cost(
                 value,
                 lowering.memory,
@@ -161,7 +164,7 @@ pub(super) fn compile(
                     .instruction(&I::LocalGet(5));
             }
         }
-        ManagedDecoder::String => {
+        ManagedDecoderKind::String => {
             arguments(&mut f);
             f.instruction(&I::Call(
                 lowering.runtime_helpers.function(H::ReadManagedString),
@@ -175,12 +178,12 @@ pub(super) fn compile(
             f.instruction(&I::LocalGet(5));
             emit_result_success(&mut f, result, lowering.gc);
         }
-        ManagedDecoder::Class { class } => {
+        ManagedDecoderKind::Class { class } => {
             f.instruction(&I::LocalGet(1))
                 .instruction(&I::LocalGet(CONTEXT))
                 .instruction(&I::Call(lowering.managed_snapshot_functions[&class]));
         }
-        ManagedDecoder::Optional { value: child } => {
+        ManagedDecoderKind::Optional { value: child } => {
             let TypeKind::Option { layout, .. } = lowering.semantics.types().kind(value) else {
                 unreachable!()
             };
@@ -200,12 +203,12 @@ pub(super) fn compile(
                 child,
                 5,
                 0,
-                semantic_type(child, lowering.semantics),
+                semantic_type(reader.output(child), lowering.semantics),
             );
             f.instruction(&I::StructNew(lowering.gc.index(Type::Option(*layout))));
             emit_result_success(&mut f, result, lowering.gc);
         }
-        ManagedDecoder::Array { element } => reader.array(&mut f, element, capabilities),
+        ManagedDecoderKind::Array { element } => reader.array(&mut f, element),
     }
     f.instruction(&I::End);
     f
@@ -215,10 +218,15 @@ struct Reader<'a, 'b> {
     value: TypeId,
     result: ResultTypeId,
     lowering: &'a EmissionContext<'b>,
+    capabilities: &'a CapabilityAnalysis,
     entered: Option<u32>,
 }
 
 impl Reader<'_, '_> {
+    fn output(&self, source: TypeId) -> TypeId {
+        self.capabilities.managed_decoder(source).unwrap().output
+    }
+
     fn leave(&self, f: &mut Function) {
         if let Some(entered) = self.entered {
             let context = self
@@ -260,7 +268,7 @@ impl Reader<'_, '_> {
             f,
             self.lowering
                 .gc
-                .index(Type::Result(result_for(child, self.lowering))),
+                .index(Type::Result(result_for(self.output(child), self.lowering))),
             field,
             ty,
         );
@@ -284,7 +292,7 @@ impl Reader<'_, '_> {
         .instruction(&I::End);
     }
 
-    fn array(&self, f: &mut Function, element: TypeId, capabilities: &CapabilityAnalysis) {
+    fn array(&self, f: &mut Function, element: TypeId) {
         let l = self.lowering;
         let TypeKind::Array { layout, .. } = l.semantics.types().kind(self.value) else {
             unreachable!()
@@ -292,8 +300,10 @@ impl Reader<'_, '_> {
         let storage = super::array_value::storage_id(*layout, l.arrays, l.semantics);
         let storage_type = l.gc.index(Type::ArrayStorage(storage));
         let strides = if matches!(
-            capabilities.managed_decoder(element),
-            Some(ManagedDecoder::Memory)
+            self.capabilities
+                .managed_decoder(element)
+                .map(|plan| plan.kind),
+            Some(ManagedDecoderKind::Memory)
         ) {
             [MemoryAddressWidth::Bit32, MemoryAddressWidth::Bit64]
                 .map(|width| l.memory.layout(element, l.semantics, width).unwrap().size() as i64)
@@ -411,7 +421,13 @@ impl Reader<'_, '_> {
         f.instruction(&I::LocalGet(9))
             .instruction(&I::RefAsNonNull)
             .instruction(&I::LocalGet(7));
-        self.child_field(f, element, 10, 0, semantic_type(element, l.semantics));
+        self.child_field(
+            f,
+            element,
+            10,
+            0,
+            semantic_type(self.output(element), l.semantics),
+        );
         f.instruction(&I::ArraySet(storage_type))
             .instruction(&I::LocalGet(7))
             .instruction(&I::I32Const(1))

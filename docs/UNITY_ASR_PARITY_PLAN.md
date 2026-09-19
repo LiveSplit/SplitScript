@@ -1015,6 +1015,27 @@ names. Explicit Lunistice remains 58,178 bytes; automatic selection remains
 125,920 bytes. The strict gate and base/DLC behavior checks pass. No live game
 launch was needed.
 
+### Separate decoder storage and output identities
+
+Decoder nodes now carry an owned output type independently of the source type
+that identifies their remote storage plan. Reachability follows source edges;
+GC layouts, function results, nested payloads, and forwarded failures follow
+output types. Managed field and class validation checks the source storage.
+Direct class-field reads still produce live references, even when a collection
+elsewhere retains a decoder for owned snapshots of the same class.
+
+Existing decoders retain identity projections. This compiler change prepares
+the list-to-array projection without introducing list discovery into vector
+readers. List schema projection, payload decoding, and attachment-scoped layout
+caching remain to be implemented.
+
+Validation: 441 library tests (one ignored), 666 compiler tests, and four
+baseline tests passed. After changing field validation to use storage types,
+all 31 managed compiler tests passed again. The nested-array, recursive-class,
+and freezing runtime fixtures pass 432 cases across Debug and Release. Clippy
+and formatting pass. All 28 optimized baselines are unchanged, including
+58,178-byte explicit-profile Lunistice; the base/DLC behavior gate passes.
+
 ## Source map for implementation
 
 Upstream links below are pinned to the reviewed tip; the PR table provides the historical changes.

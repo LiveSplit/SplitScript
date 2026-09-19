@@ -733,7 +733,7 @@ impl Reachability {
                 == crate::managed::ManagedFieldRead::Array
                 || super::managed_freezers::contains_array(value, capabilities.memory(), semantics)
             {
-                pending_decoders.push(value);
+                pending_decoders.push(semantics.managed_field_type(field).unwrap());
             }
         }
         // Interleave class and decoder nodes to close recursive schemas without
@@ -765,7 +765,7 @@ impl Reachability {
                             semantics,
                         )
                     {
-                        pending_decoders.push(ty);
+                        pending_decoders.push(semantics.managed_field_type(field.id).unwrap());
                     }
                 }
             }
@@ -773,21 +773,22 @@ impl Reachability {
                 if !reachable.managed_decoders.insert(ty) {
                     continue;
                 }
-                type_roots.push(ty);
-                type_roots.extend(semantics.types().iter().find_map(|(id, kind)| {
-                    matches!(kind, TypeKind::Result { value, .. } if *value == ty).then_some(id)
-                }));
-                match capabilities
+                let plan = capabilities
                     .managed_decoder(ty)
-                    .expect("reachable managed values have decoder nodes")
-                {
-                    crate::managed_read::ManagedDecoder::Array { element } => {
+                    .expect("reachable managed values have decoder nodes");
+                type_roots.push(plan.output);
+                type_roots.extend(semantics.types().iter().find_map(|(id, kind)| {
+                    matches!(kind, TypeKind::Result { value, .. } if *value == plan.output)
+                        .then_some(id)
+                }));
+                match plan.kind {
+                    crate::managed_read::ManagedDecoderKind::Array { element } => {
                         pending_decoders.push(element)
                     }
-                    crate::managed_read::ManagedDecoder::Optional { value } => {
+                    crate::managed_read::ManagedDecoderKind::Optional { value } => {
                         pending_decoders.push(value)
                     }
-                    crate::managed_read::ManagedDecoder::Class { class }
+                    crate::managed_read::ManagedDecoderKind::Class { class }
                         if reachable.managed_snapshots.insert(class) =>
                     {
                         pending_classes.push(class);

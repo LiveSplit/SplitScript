@@ -544,8 +544,11 @@ fn validate_remote_memory_layouts(
             if reference {
                 continue;
             }
+            let storage = semantics
+                .managed_field_type(field.id)
+                .expect("checked managed fields have storage types");
             let Err(error) =
-                capabilities.require(ty, StdlibCapabilityId::ManagedReadable, semantics)
+                capabilities.require(storage, StdlibCapabilityId::ManagedReadable, semantics)
             else {
                 continue;
             };
