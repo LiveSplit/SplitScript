@@ -6715,6 +6715,7 @@ fn compile_intrinsic_equality(
         operand_type,
         Type::Standard(_)
             | Type::Struct(_)
+            | Type::ManagedClass(_)
             | Type::Enum(_)
             | Type::Array(_)
             | Type::Option(_)

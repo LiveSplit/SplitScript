@@ -52,6 +52,7 @@ pub(crate) struct StructuralTypes {
     semantic_types: HashMap<StructuralTypeId, TypeId>,
     structs: Vec<TypeId>,
     enums: Vec<TypeId>,
+    managed_classes: Vec<TypeId>,
 }
 
 impl StructuralTypes {
@@ -120,6 +121,7 @@ impl StructuralTypes {
             );
             enum_types.push(ty);
         }
+        let mut class_types = Vec::with_capacity(managed_classes.len());
         for class in managed_classes {
             let id = StructuralTypeId::ManagedClass(class.id);
             let ty = semantic_types[&id];
@@ -143,12 +145,14 @@ impl StructuralTypes {
                         .collect(),
                 },
             );
+            class_types.push(ty);
         }
         Self {
             by_type,
             semantic_types,
             structs: struct_types,
             enums: enum_types,
+            managed_classes: class_types,
         }
     }
 
@@ -164,11 +168,18 @@ impl StructuralTypes {
         self.structs
             .iter()
             .chain(&self.enums)
+            .chain(&self.managed_classes)
             .map(|ty| (self.by_type[ty].id, *ty))
     }
 
     pub fn structs(&self) -> impl Iterator<Item = (TypeId, &StructuralType)> {
         self.structs.iter().map(|ty| (*ty, &self.by_type[ty]))
+    }
+
+    pub fn managed_classes(&self) -> impl Iterator<Item = (TypeId, &StructuralType)> {
+        self.managed_classes
+            .iter()
+            .map(|ty| (*ty, &self.by_type[ty]))
     }
 
     pub fn enums(&self) -> impl Iterator<Item = (TypeId, &StructuralType)> {

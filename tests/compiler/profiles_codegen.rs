@@ -2307,3 +2307,55 @@ fn compiles_the_complete_settings_showcase() {
         assert!(wasm.windows(expected.len()).any(|bytes| bytes == expected));
     }
 }
+
+#[test]
+fn owned_managed_class_equality_is_recursive_and_demand_driven() {
+    let source = r#"
+        image "Assembly-CSharp" {
+            class Node { String label; [Node?] children; }
+        }
+        state "game.exe" {}
+        fn same(left: Node, right: Node) -> bool { return left == right }
+        setup { let callback = same }
+    "#;
+    let (wasm, report) = release_emission(source);
+    Validator::new_with_features(WasmFeatures::all())
+        .validate_all(&wasm)
+        .unwrap();
+    assert!(
+        report
+            .functions
+            .iter()
+            .any(|(_, name)| name == "__splitscript::equals::Node")
+    );
+    assert!(
+        !report
+            .functions
+            .iter()
+            .any(|(_, name)| name.contains("::snapshot") || name.contains("::managed::"))
+    );
+    let unused = source.replace("return left == right", "return true");
+    let (_, report) = release_emission(&unused);
+    assert!(
+        !report
+            .functions
+            .iter()
+            .any(|(_, name)| name.contains("::equals::"))
+    );
+}
+
+#[test]
+fn recursive_snapshot_equality_checks_every_field() {
+    let source = r#"
+        image "Assembly-CSharp" {
+            class Node { Node? next; Node.Ref live; }
+        }
+        state "game.exe" {}
+        fn same(left: Node, right: Node) -> bool { return left == right }
+        setup { let callback = same }
+    "#;
+    let error = splitscript::compile(source)
+        .map(|wasm| wasm.len())
+        .unwrap_err();
+    assert!(format!("{error:?}").contains("equality"));
+}

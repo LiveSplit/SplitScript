@@ -156,7 +156,7 @@ Mono remains different: exact PE/ELF/Mach-O identity selection followed by forma
 
 **Strings:** ASR's `ManagedString` is a raw UTF-16-unit container; SplitScript produces a normal UTF-8 `String`, replacing invalid surrogate sequences. Keep ordinary text reads as normal `String` values. To achieve the raw-unit capability too, add a bounded managed UTF-16 storage decoder whose output is `[u16]`; this avoids changing every language string operation or exposing Rust's `ManagedString` representation. Test both paths with unpaired surrogates and embedded NUL.
 
-**Collections:** ASR exposes bounded vectors of values, pairs, or addresses. SplitScript should decode recursively into its normal local `[T]`, `Map<K,V>`, and `Set<T>` values. `Map<String, [String]>` is a required ordinary case, not a special convenience API. Local map/set equality remains SplitScript equality; a custom .NET comparer is not reproduced. Detect duplicate decoded keys/elements that would silently lose remote entries and fail the materialization with a diagnostic. Offer an entry/value sequence projection for callers who need every remote entry despite incompatible equality, or whose keys cannot satisfy local `Equatable`; this must not replace first-class nested map/set support.
+**Collections:** ASR exposes bounded vectors of values, pairs, or addresses. SplitScript should decode recursively into its normal local `[T]`, `Map<K,V>`, and `Set<T>` values. `Map<String, [String]>` is a required ordinary case, not a special convenience API. Local map/set equality remains SplitScript equality; a custom .NET comparer is not reproduced. Detect duplicate decoded keys/elements that would silently lose remote entries and fail the materialization with a diagnostic. Keep `Map` and `Set` as both schema and result types. Extend structural equality to owned class snapshots and nested collections so composition works without changing collection kinds. Any future decision about C# versus SplitScript spelling is a syntax decision, independent of these semantics.
 
 **References:** ASR returns `Address`, including zero, for reference array/list elements. SplitScript must distinguish live access (`T.Ref`) from managed materialization (`T`, the declared class snapshot). A root `.snapshot()` recursively materializes declared class fields and container contents into values; callers should not need a manual `.snapshot()`/loop at every nested level. An explicitly requested live-reference view can still return `[T.Ref?]`, subject to lifetime restrictions. Neither a copied outer array nor `ManagedReadable` makes live references retainable in `current`/`old`. Nullability is expressed at each level and preserves element positions.
 
@@ -392,7 +392,7 @@ Each step is a reviewable change with its own acceptance gate **and the mandator
 4. Dictionaries scan allocated entries and expect `count - freeCount` live pairs. Sets scan through the high-water index and expect `count` live values. Validate signed counts, ordering, backing reach, and output limits before scanning.
 5. Skip entries with hash `u32::MAX` or `next < -1`, covering the supported freed-entry conventions. Require exact observed/live tally; never silently return a short or truncated result. Accept canonical empty unallocated entry/slot storage.
 6. Cache by concrete collection type and element decoder, not just field offset or collection kind. Distinct generic instantiations may have different strides/layouts.
-7. Construct ordinary local `Map<K,V>`/`Set<T>` values by recursively invoking key/value/element plans. Support `Map<String, [String]>`, `[Map<String, [String]>]`, nested maps, and maps containing declared class snapshots without special readers for those combinations. Validate duplicate decoded keys/elements under local equality and fail rather than lose entries; provide the lossless pair/value projection separately. ASR's generic raw reader does not supply managed comparer semantics.
+7. Construct ordinary local `Map<K,V>`/`Set<T>` values by recursively invoking key/value/element plans. Support `Map<String, [String]>`, `[Map<String, [String]>]`, nested maps, and maps containing declared class snapshots without special readers for those combinations. Validate duplicate decoded keys/elements under local equality and fail rather than lose entries; retain maps and sets throughout recursive composition. ASR's generic raw reader does not supply managed comparer semantics.
 8. Bound work by **allocated/scanned slots**, not just live results. ASR permits up to `1 << 20` slots; a direct synchronous port could violate SplitScript's update budget. Use a documented finite synchronous scan limit for state reads, and a cancellable async snapshot API for larger reads if needed. Measure and set the actual limits before declaring the reader ready.
 
 **Gate:** both naming families/backends/widths; derived and impostor types; wrong field types, incomplete classes, scrambled/oversized layouts, holes and each freed marker, all-deleted collections, empty unallocated storage, live-size versus backing-size limits, exact count mismatch, nested reference/value decoding, comparer collisions, cache invalidation, and measured per-update work. A declared class snapshot containing a map of string arrays is mandatory. Retained snapshots must not share mutable construction buffers or retain nested live references.
@@ -1166,7 +1166,7 @@ compiler work must deduct these charges from one shared root context, enter
 collection/backing objects in its active path, invoke recursive child plans,
 validate remote type compatibility, reject equality collisions, freeze the
 finished local Map/Set, and recheck the captured header before publication.
-Attachment caches and lossless pair/value projections also remain to be wired.
+Attachment caches remain to be wired.
 
 Validation: 443 library tests (one ignored), 666 compiler tests, and four baseline
 tests pass. The final adapter matrix passes 2,640 scanner cases, 3,104 keyed-layout
@@ -1204,7 +1204,7 @@ class, counts, and backing identities are checked again after child decoding.
 Decoded keys are compared under local equality before insertion. A collision
 fails the whole read instead of replacing an entry. Pair comparisons share the
 16,384 work budget; consequently large maps can exhaust work before their scan
-or element allowance. Lossless pair projections remain outstanding.
+or element allowance.
 
 Runtime coverage includes dictionary values containing nullable string arrays,
 arrays of nullable dictionaries, dictionaries in class snapshots, native keys,
@@ -1214,7 +1214,7 @@ mutation protection. Compiler coverage additionally validates nested map/list
 projections and rejects unsupported child decoders. Unused map declarations
 retain no readers, discovery, scan counter, scratch, or extra Wasm size.
 
-This is the first public map integration. Set decoding, lossless projections,
+This is the first public map integration. Set decoding, compound structural equality,
 full remote element/generic-type compatibility, raw UTF-16, structured nested
 errors, and shared metadata work remain open. The overall Unity goal also still
 includes the profile replacement, platform coverage, and Lunistice size target.
@@ -1252,9 +1252,9 @@ Both set and map storage/output projections now traverse their children. Further
 work remains on capability checking against owned projections: source-only
 `List<T>` currently prevents using it directly as a Map key or Set element even
 when its owned array supports equality. Containers whose owned contents cannot
-support local equality also need the planned lossless entry/value projections;
-managed class snapshots currently have no equality implementation, so direct
-`Set<SomeClass>` and class-valued Map keys require that follow-up as well.
+support local equality need structural equality support while retaining map/set semantics;
+at this checkpoint, managed class snapshots had no equality implementation.
+The following milestone resolves direct `Set<SomeClass>` and class-valued Map keys.
 These remaining cases are part of the full nesting requirement, not reasons to
 declare the collection work finished. Remote type/stride compatibility, raw
 UTF-16, structured nested errors, and shared metadata work also remain open.
@@ -1275,6 +1275,51 @@ and 57,448 bytes for Mono. The baseline refresh otherwise renumbers generated
 internal names and updates build/timing metadata. The strict size gate and
 Lunistice base/DLC fixtures pass; explicit Lunistice remains 58,178 bytes and
 automatic selection 125,920 bytes. No live game was launched.
+
+### Structural equality for owned class snapshots
+
+`Map` and `Set` remain the schema and result types. The choice between C# and
+SplitScript spelling is deferred; it must not change collection semantics. The
+previous proposed sequence-projection workaround is no longer a requirement.
+
+Owned class values now derive `Equatable` from their non-static snapshot fields.
+This enables `Set<C>`, `Map<C, V>`, and comparisons such as
+`current.player == old.player` when those fields support equality. Recursive
+schemas through nullable classes and arrays are supported: snapshot materialization
+already rejects object cycles and produces a frozen, finite owned graph. The
+capability proof still visits every field and rejects live references or other
+non-equatable children, including fields after a recursive edge. Cycles consisting
+only of ordinary local aggregate types keep their previous equality restriction.
+
+Generated class comparisons stop at the first unequal field. Conditional
+reference fields compare their saved slots safely even when inactive fields hold
+null defaults; comparison does not consult the current attachment's shape or
+reread process memory. Helpers and their transitive dependencies are emitted only
+when equality is reachable. Comparing class parameters alone does not retain
+snapshot readers or Unity discovery.
+
+Runtime fixtures cover class keys and set elements across three Mono families,
+IL2CPP, both pointer widths, both collection layouts, active/inactive conditional
+fields, and Debug/Release. They exercise deep equality through separately allocated
+strings and child arrays, decoded duplicates, failed reads, cycles, immutable old
+snapshots, and frozen nested arrays. The existing recursive-tree fixture also
+compares consecutive snapshots across successful reads and rollback cases.
+
+Validation: 443 library tests (one ignored), 669 compiler tests, and four baseline
+unit tests pass. The full runtime catalog validates 120 artifacts and 150 scenarios;
+the class collection matrix additionally passes its expanded 896 cases across both
+build profiles, and recursive-tree equality passes 88 cases. Formatting and Clippy
+with warnings denied pass. All 34 existing optimized fixtures preserve module and
+section sizes, function/type counts, sorted body sizes, and full emission reports.
+The strict size gate and both Lunistice edition fixtures pass. Explicit Lunistice
+remains 58,178 bytes; this milestone adds no size to scripts that do not use the
+new equality. No live game was launched.
+
+The full collection-nesting requirement remains open: compound map/set equality
+and equality constraints applied to the owned projection of source `List<T>`
+are still needed. Remote type/stride compatibility, raw UTF-16, structured nested
+errors, shared metadata/comparison work, complete profiles/platforms, and the
+explicit Lunistice size target remain part of the active Unity goal.
 
 ## Source map for implementation
 

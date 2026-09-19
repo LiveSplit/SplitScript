@@ -819,6 +819,8 @@ fn managed_arrays_compose_strings_and_owned_classes() {
         include_str!("../managed_maps.split"),
         include_str!("../managed_map_inline.split"),
         include_str!("../managed_sets.split"),
+        include_str!("../managed_set_classes.split"),
+        include_str!("../managed_map_classes.split"),
         include_str!("../managed_set_inline.split"),
     ] {
         for profile in [
@@ -851,6 +853,8 @@ fn managed_maps_project_children_and_compose_with_snapshot_types() {
         "Map<String, Set<[String?]>>",
         "[Set<String>?]",
         "Set<u8>",
+        "Set<Root>",
+        "Map<Root, [String?]>",
         "Set<[i32; 2]>",
     ] {
         let source = format!(

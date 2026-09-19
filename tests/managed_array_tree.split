@@ -19,6 +19,7 @@ state Unity ["game.exe"] {
     tree = ProfileProbe.instance?.snapshot()?;
 }
 whileAttached {
+    setVariable("equal", current.tree == old.tree)
     setVariable("tree", current.tree)
     setVariable("count", nodeCount(current.tree))
     setVariable("old", old.tree)

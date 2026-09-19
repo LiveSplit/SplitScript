@@ -1,0 +1,25 @@
+enum Edition { Base, Demo }
+let edition: Edition
+image "Assembly-CSharp" {
+    class ProfileProbe {
+        static Map<ProfileProbe, String> rows;
+        static ProfileProbe anchor;
+        String label;
+        [ProfileProbe?] children;
+        if edition == Edition.Demo { String inactive; }
+    }
+}
+state Unity ["game.exe"] {
+    rows = ProfileProbe.rows?;
+    anchor = ProfileProbe.anchor?.snapshot()?;
+}
+onAttach { edition = if (process.read<u8>(0x6f004) else 0) == 1 { Edition.Demo } else { Edition.Base } }
+whileAttached {
+    setVariable("rows", current.rows)
+    setVariable("old", old.rows)
+    setVariable("contains", current.rows.containsKey(current.anchor))
+    setVariable("equal", current.anchor == old.anchor)
+    setVariable("result", match ProfileProbe.rows { Ok(_) => "ok", Err(error) => error })
+    let mutation = process.read<i32>(0x6f000) else return
+    if mutation == 1 { for row in current.rows { row.key.children.clear() } }
+}

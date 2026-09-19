@@ -5,10 +5,10 @@
 //! This is shared by diagnostics, future editor queries, and Wasm helper
 //! generation rather than being inferred independently in the backend.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 
 use crate::{
-    ast::{EnumDecl, EnumId, StructDecl, StructId},
+    ast::{EnumDecl, EnumId, ManagedClassId, StructDecl, StructId},
     semantic::SemanticModel,
     stdlib::{StandardLibrary, StdlibCapabilityId},
     structural::{StructuralTypeId, StructuralTypes},
@@ -21,6 +21,7 @@ pub struct EqualityCapabilities {
     structural: StructuralTypes,
     structs: HashMap<StructId, Result<(), String>>,
     enums: HashMap<EnumId, Result<(), String>>,
+    managed_classes: HashMap<ManagedClassId, Result<(), String>>,
 }
 
 impl EqualityCapabilities {
@@ -48,10 +49,11 @@ impl EqualityCapabilities {
             structural,
             structs: HashMap::new(),
             enums: HashMap::new(),
+            managed_classes: HashMap::new(),
         };
         let aggregates = capabilities.structural.iter().collect::<Vec<_>>();
         for (id, ty) in aggregates {
-            let result = capabilities.check_aggregate(ty, semantics, &mut HashSet::new());
+            let result = capabilities.check_type(ty, semantics, &mut Vec::new());
             match id {
                 StructuralTypeId::Struct(structure) => {
                     capabilities.structs.entry(structure).or_insert(result);
@@ -59,8 +61,8 @@ impl EqualityCapabilities {
                 StructuralTypeId::Enum(enumeration) => {
                     capabilities.enums.entry(enumeration).or_insert(result);
                 }
-                StructuralTypeId::ManagedClass(_) => {
-                    unreachable!("managed snapshots do not derive structural equality")
+                StructuralTypeId::ManagedClass(class) => {
+                    capabilities.managed_classes.insert(class, result);
                 }
             }
         }
@@ -83,6 +85,7 @@ impl EqualityCapabilities {
             {
                 Ok(())
             }
+            TypeKind::ManagedClass(class) => self.managed_class(*class).map_err(str::to_owned),
             TypeKind::Struct(structure) => self.structure(*structure).map_err(str::to_owned),
             TypeKind::Enum(enumeration) => self.enumeration(*enumeration).map_err(str::to_owned),
             TypeKind::Option { value, .. } => self
@@ -116,15 +119,35 @@ impl EqualityCapabilities {
             .map_err(String::as_str)
     }
 
+    pub fn managed_class(&self, class: ManagedClassId) -> Result<(), &str> {
+        self.managed_classes
+            .get(&class)
+            .expect("every managed class has an equality result")
+            .as_ref()
+            .copied()
+            .map_err(String::as_str)
+    }
+
     fn check_type(
         &mut self,
         ty: TypeId,
         semantics: &SemanticModel,
-        visiting: &mut HashSet<TypeId>,
+        visiting: &mut Vec<TypeId>,
     ) -> Result<(), String> {
-        if !visiting.insert(ty) {
-            return Err("recursive values do not currently support structural equality".to_owned());
+        if let Some(start) = visiting.iter().position(|candidate| *candidate == ty) {
+            // Snapshot decoding rejects object cycles and freezes its entire
+            // owned graph. Recursive schemas through a class therefore produce
+            // finite values. Keep rejecting cycles of ordinary local values.
+            return if visiting[start..]
+                .iter()
+                .any(|ty| matches!(semantics.types().kind(*ty), TypeKind::ManagedClass(_)))
+            {
+                Ok(())
+            } else {
+                Err("recursive values do not currently support structural equality".to_owned())
+            };
         }
+        visiting.push(ty);
         let result = match semantics.types().kind(ty) {
             TypeKind::Builtin(builtin)
                 if self
@@ -140,6 +163,7 @@ impl EqualityCapabilities {
             {
                 Ok(())
             }
+            TypeKind::ManagedClass(_) => self.check_aggregate(ty, semantics, visiting),
             TypeKind::Struct(structure) => self.check_aggregate(
                 self.structural
                     .semantic_type(StructuralTypeId::Struct(*structure)),
@@ -157,7 +181,7 @@ impl EqualityCapabilities {
             TypeKind::Array { element, .. } => self.check_type(*element, semantics, visiting),
             _ => Err("the contained type does not support equality".to_owned()),
         };
-        visiting.remove(&ty);
+        visiting.pop();
         result
     }
 
@@ -165,7 +189,7 @@ impl EqualityCapabilities {
         &mut self,
         ty: TypeId,
         semantics: &SemanticModel,
-        visiting: &mut HashSet<TypeId>,
+        visiting: &mut Vec<TypeId>,
     ) -> Result<(), String> {
         let aggregate = self
             .structural

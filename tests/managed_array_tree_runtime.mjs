@@ -83,6 +83,7 @@ for (const mono of [true, false]) for (const width of [32, 64]) {
         assert.equal(host.variables.get('count'), String(mode === 'depth boundary' ? 32 : mode === 'object boundary' ? 512 : count), `${label}: complete owned traversal`);
         assert.equal(normalize(host.variables.get('old')), seed, `${label}: old changed`);
         assert.equal(host.variables.get('result') === 'ok', ok, `${label}: result`);
+        assert.equal(host.variables.get('equal'), String(!['mutate', 'empty', 'depth boundary', 'object boundary'].includes(mode)), `${label}: structural snapshot equality`);
         if (mode.includes('cycle')) assert.match(host.variables.get('result'), /cycle/, label);
         if (mode.includes('overflow')) assert.match(host.variables.get('result'), /object\/depth limit/, label);
         cases++;

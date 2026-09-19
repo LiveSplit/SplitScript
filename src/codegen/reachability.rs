@@ -21,6 +21,7 @@ pub(super) struct Reachability {
     function_values: BTreeSet<FunctionValueInstance>,
     expression_instances: BTreeSet<(Option<FunctionInstance>, ExprId)>,
     equality_structs: BTreeSet<StructId>,
+    equality_managed_classes: BTreeSet<ManagedClassId>,
     equality_standard_structs: BTreeSet<StdlibTypeId>,
     equality_enums: BTreeSet<EnumId>,
     equality_arrays: BTreeSet<ArrayTypeId>,
@@ -924,6 +925,10 @@ impl Reachability {
         self.function_values.iter()
     }
 
+    pub fn requires_managed_class_equality(&self, class: ManagedClassId) -> bool {
+        self.equality_managed_classes.contains(&class)
+    }
+
     pub fn requires_struct_equality(&self, structure: StructId) -> bool {
         self.equality_structs.contains(&structure)
     }
@@ -1255,9 +1260,11 @@ impl Reachability {
                 TypeKind::Builtin(_)
                 | TypeKind::StateSnapshot
                 | TypeKind::SettingsView
-                | TypeKind::ManagedClass(_)
                 | TypeKind::ManagedReference(_)
                 | TypeKind::GenericParameter { .. } => {}
+                TypeKind::ManagedClass(class) if self.equality_managed_classes.insert(*class) => {
+                    pending.extend(capabilities.structural_dependency_types(ty));
+                }
                 TypeKind::Struct(structure) if self.equality_structs.insert(*structure) => {
                     pending.extend(capabilities.structural_dependency_types(ty));
                 }
@@ -1277,6 +1284,7 @@ impl Reachability {
                     pending.push(*value);
                 }
                 TypeKind::Struct(_)
+                | TypeKind::ManagedClass(_)
                 | TypeKind::Enum(_)
                 | TypeKind::Array { .. }
                 | TypeKind::Option { .. }

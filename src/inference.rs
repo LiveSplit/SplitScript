@@ -2999,7 +2999,7 @@ pub(crate) fn type_may_have_capability(
                     | CapabilityBehavior::StructuralMemoryLayout
                     | CapabilityBehavior::StructuralMethods
             ),
-            TypeKind::ManagedClass(_) => false,
+            TypeKind::ManagedClass(_) => behavior == CapabilityBehavior::StructuralEquality,
             TypeKind::ManagedReference(_) => false,
             TypeKind::Option { .. } => {
                 behavior == CapabilityBehavior::StructuralEquality

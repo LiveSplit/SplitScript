@@ -13,8 +13,9 @@ use crate::{
 
 use super::super::{
     EqualityFunctions, GcLayout, RuntimeHelperPlan, Type, array_value, emit_array_get,
-    emit_typed_struct_get, enum_variant_payload, option_value_type, result_value_type,
-    semantic_type, standard_field_type, struct_field_type, try_array_element_type,
+    emit_typed_struct_get, enum_variant_payload, managed_snapshot_field_type, option_value_type,
+    result_value_type, semantic_type, standard_field_type, struct_field_type,
+    try_array_element_type,
 };
 #[allow(clippy::too_many_arguments)]
 pub(in crate::codegen) fn compile_equality(
@@ -56,6 +57,20 @@ pub(in crate::codegen) fn compile_equality(
         if equality_functions.structs.contains_key(&struct_id) {
             equality.push(compile_struct_equality(
                 structure,
+                semantics,
+                equality_functions,
+                string_equality,
+                gc,
+            ));
+        }
+    }
+    for (_, class) in structural.managed_classes() {
+        let StructuralTypeId::ManagedClass(class_id) = class.id else {
+            unreachable!()
+        };
+        if equality_functions.managed_classes.contains_key(&class_id) {
+            equality.push(compile_managed_class_equality(
+                class,
                 semantics,
                 equality_functions,
                 string_equality,
@@ -269,6 +284,67 @@ fn compile_struct_equality(
         function.instruction(&Instruction::I32And);
     }
     function.instruction(&Instruction::End);
+    function
+}
+
+fn compile_managed_class_equality(
+    class: &StructuralType,
+    semantics: &SemanticModel,
+    equality_functions: &EqualityFunctions,
+    string_eq: u32,
+    gc: &GcLayout,
+) -> Function {
+    let mut function = Function::new([]);
+    let StructuralTypeId::ManagedClass(class_id) = class.id else {
+        unreachable!()
+    };
+    let type_index = gc.index(Type::ManagedClass(class_id));
+    for (field_index, field) in class.members.iter().enumerate() {
+        let StructuralMemberId::ManagedField(field_id) = field.source else {
+            unreachable!()
+        };
+        let ty = managed_snapshot_field_type(field_id, semantics);
+        let get = |function: &mut Function, object| {
+            function
+                .instruction(&Instruction::LocalGet(object))
+                .instruction(&Instruction::RefAsNonNull);
+            emit_typed_struct_get(function, type_index, field_index as u32, ty);
+        };
+        // Inactive conditional fields contain defaults. Reference defaults are
+        // null, including normally non-null strings and arrays. Compare the
+        // saved slots without consulting the current attachment's shape.
+        let conditional_reference = semantics.managed_field_shape_predicate(field_id).is_some()
+            && matches!(gc.val_type(ty), ValType::Ref(_));
+        if conditional_reference {
+            get(&mut function, 0);
+            function.instruction(&Instruction::RefIsNull);
+            get(&mut function, 1);
+            function
+                .instruction(&Instruction::RefIsNull)
+                .instruction(&Instruction::I32Or)
+                .instruction(&Instruction::If(BlockType::Result(ValType::I32)));
+            get(&mut function, 0);
+            get(&mut function, 1);
+            function
+                .instruction(&Instruction::RefEq)
+                .instruction(&Instruction::Else);
+        }
+        get(&mut function, 0);
+        get(&mut function, 1);
+        emit_value_equality(&mut function, ty, equality_functions, string_eq);
+        if conditional_reference {
+            function.instruction(&Instruction::End);
+        }
+        function
+            .instruction(&Instruction::I32Eqz)
+            .instruction(&Instruction::If(BlockType::Empty))
+            .instruction(&Instruction::I32Const(0))
+            .instruction(&Instruction::Return)
+            .instruction(&Instruction::End);
+    }
+    function
+        .instruction(&Instruction::I32Const(1))
+        .instruction(&Instruction::End);
     function
 }
 
@@ -501,6 +577,7 @@ pub(in crate::codegen) fn emit_value_equality(
                 unreachable!("catalog validation rejected unsupported equality for `{standard:?}`")
             }
         },
+        Type::ManagedClass(class) => Instruction::Call(equality_functions.managed_classes[&class]),
         Type::Struct(structure) => Instruction::Call(equality_functions.structs[&structure]),
         Type::Enum(enumeration) => Instruction::Call(equality_functions.enums[&enumeration]),
         Type::Array(array) => Instruction::Call(equality_functions.arrays[&array]),

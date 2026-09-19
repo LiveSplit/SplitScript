@@ -208,6 +208,22 @@ pub(super) fn encode<'a>(
             equality.structs.insert(struct_id, function);
         }
     }
+    for (_, class) in structural.managed_classes() {
+        let StructuralTypeId::ManagedClass(class_id) = class.id else {
+            unreachable!()
+        };
+        if reachability.requires_managed_class_equality(class_id)
+            && equality_capabilities.managed_class(class_id).is_ok()
+        {
+            let class_type = gc.val_type(Type::ManagedClass(class_id));
+            let function = declarations.declare(
+                || format!("__splitscript::equals::{}", class.name),
+                vec![class_type, class_type],
+                vec![ValType::I32],
+            );
+            equality.managed_classes.insert(class_id, function);
+        }
+    }
     for (_, enumeration) in structural.enums() {
         let StructuralTypeId::Enum(enum_id) = enumeration.id else {
             unreachable!()
