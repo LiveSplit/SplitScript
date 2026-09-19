@@ -816,6 +816,20 @@ const RUNTIME_FIXTURES: &[RuntimeFixture] = &[
         extra_arguments: &[],
     },
     RuntimeFixture {
+        source: "tests/managed_set_inline_enum.split",
+        output: "managed_set_inline_enum.wasm",
+        profile: "release",
+        harness: "tests/managed_set_inline_runtime.mjs",
+        extra_arguments: &["--enum"],
+    },
+    RuntimeFixture {
+        source: "tests/managed_set_inline_enum.split",
+        output: "managed_set_inline_enum_debug.wasm",
+        profile: "debug",
+        harness: "tests/managed_set_inline_runtime.mjs",
+        extra_arguments: &["--enum"],
+    },
+    RuntimeFixture {
         source: "tests/managed_set_inline.split",
         output: "managed_set_inline.wasm",
         profile: "release",

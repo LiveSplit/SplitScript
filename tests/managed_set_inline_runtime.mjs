@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { SplitScriptHost } from './support/splitscript_host.mjs';
 import { createKeyedCollectionFixture } from './support/keyed_collection_fixture.mjs';
-const [wasm] = process.argv.slice(2);
+const [wasm, enumMode] = process.argv.slice(2);
 const layouts = {
     V1Cattrs: {32: [0x78, 0x68], 64: [0xb0, 0x9c]},
     V2: {32: [0x60, 0xa4], 64: [0x98, 0x100]},
@@ -39,7 +39,16 @@ for (const parallel of [false, true]) for (const mode of ['seed', 'mutate', 'dup
     const label = `${family}/${width}/${parallel}/${mode}`;
     host.addProcess('game.exe', f.process); host.start();
     host.updateUntil(() => host.variables.has('rows'), label); host.update(2);
-    const normalize = value => value.replace(/\s/g, '');
+    const normalize = value => {
+        if (enumMode === '--enum') {
+            const numbers = {Negative: -1, Zero: 0, One: 1, Two: 2, Ten: 10, Eleven: 11, Twelve: 12, Thirteen: 13, Changed: 99};
+            value = value.replace(/Value\.(\w+)/g, (_, variant) => {
+                assert(Object.hasOwn(numbers, variant), variant);
+                return String(numbers[variant]);
+            });
+        }
+        return value.replace(/\s/g, '');
+    };
     const before = normalize(host.variables.get('rows'));
     assert.equal(before, 'Set{Record{values:[-1,0,1,2,],},Record{values:[10,11,12,13,],},}', label);
     if (mode === 'mutate') number(valueSlot(0), 4, 99);

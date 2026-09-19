@@ -30,6 +30,7 @@ pub(super) struct FunctionPlan<'a> {
     pub section: FunctionSection,
     pub runtime_helpers: RuntimeHelperPlan,
     pub equality: EqualityFunctions,
+    pub managed_equality: EqualityFunctions,
     pub array_functions: ArrayFunctions,
     pub sets: SetFunctions,
     pub users: HashMap<FunctionInstance, UserFunctionPlan>,
@@ -298,6 +299,84 @@ pub(super) fn encode<'a>(
             vec![ValType::I32],
         );
         functions.insert(layout, function);
+    }
+
+    let mut managed_equality = EqualityFunctions {
+        standard_library: standard_library.clone(),
+        ..Default::default()
+    };
+    if reachability.managed_equality().next().is_some() {
+        managed_equality.budget = Some(super::equality_plan::ComparisonBudget {
+            charge: helper_functions
+                [&crate::intrinsic_registry::RuntimeHelperId::ChargeManagedWork],
+            context_type: gc.standard_index(crate::stdlib::StdlibTypeId::ManagedReadContext),
+        });
+    }
+    for ty in reachability.managed_equality() {
+        let value = semantic_type(ty, semantics);
+        let needs_function = match value {
+            Type::Standard(crate::stdlib::StdlibTypeId::String) => true,
+            Type::Standard(standard) => matches!(
+                standard_library.type_decl(standard).representation,
+                RuntimeRepresentation::GcStruct { .. }
+            ),
+            Type::ManagedClass(_)
+            | Type::Struct(_)
+            | Type::Enum(_)
+            | Type::Array(_)
+            | Type::Option(_)
+            | Type::Result(_)
+            | Type::Set(_)
+            | Type::Application(_) => true,
+            _ => false,
+        };
+        if !needs_function {
+            continue;
+        }
+        let index = declarations.declare(
+            || format!("__splitscript::managed_equals::type#{}", ty.index()),
+            vec![
+                gc.val_type(value),
+                gc.val_type(value),
+                gc.val_type(Type::Standard(
+                    crate::stdlib::StdlibTypeId::ManagedReadContext,
+                )),
+            ],
+            vec![ValType::I32],
+        );
+        match value {
+            Type::Standard(crate::stdlib::StdlibTypeId::String) => {
+                managed_equality.string = Some(index);
+            }
+            Type::Standard(id) => {
+                managed_equality.standard_structs.insert(id, index);
+            }
+            Type::ManagedClass(id) => {
+                managed_equality.managed_classes.insert(id, index);
+            }
+            Type::Struct(id) => {
+                managed_equality.structs.insert(id, index);
+            }
+            Type::Enum(id) => {
+                managed_equality.enums.insert(id, index);
+            }
+            Type::Array(id) => {
+                managed_equality.arrays.insert(id, index);
+            }
+            Type::Option(id) => {
+                managed_equality.options.insert(id, index);
+            }
+            Type::Result(id) => {
+                managed_equality.results.insert(id, index);
+            }
+            Type::Set(id) => {
+                managed_equality.sets.insert(id, index);
+            }
+            Type::Application(id) => {
+                managed_equality.maps.insert(id, index);
+            }
+            _ => unreachable!(),
+        }
     }
 
     let mut displays = DisplayFunctions {
@@ -865,6 +944,7 @@ pub(super) fn encode<'a>(
         section: declarations.section,
         runtime_helpers,
         equality,
+        managed_equality,
         array_functions,
         sets: set_functions,
         users,

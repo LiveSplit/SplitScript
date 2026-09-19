@@ -1406,6 +1406,56 @@ The shared recursive comparison budget, remote type/stride validation, raw
 UTF-16, structured errors, complete profiles/platforms, and explicit Lunistice
 size target remain open in the full Unity plan.
 
+### Recursive managed comparison work
+
+Managed Map/Set duplicate detection now uses separately demanded structural
+comparison helpers carrying the root read context. Composite visits, field and
+element comparisons, enum variant dispatch, inspected string bytes, and keyed
+matching candidates all consume the same work allowance as the rest of the
+root materialization. This
+closes the gap where nested work within one outer key comparison could bypass
+that limit. The helpers reuse ordinary equality's value semantics,
+including order-independent Map/Set matching and NaN behavior.
+
+Exhaustion leaves a sticky marker in the existing work counter. The decoder
+checks it before interpreting the comparison result or publishing an entry, so
+exhaustion cannot masquerade as unequal keys or as a duplicate. Failure unwinds
+the read normally and preserves the previously accepted snapshot. Each new root
+starts with a fresh context. No extra context slots or global state are needed.
+
+Only comparisons required by reachable managed collection decoders retain these
+helpers. Ordinary script equality keeps its original signatures and behavior;
+managed-only comparisons no longer retain an unused ordinary helper graph.
+Runtime coverage exercises nested maps, sets, arrays, and nullable strings with
+one large comparison, cumulative work across multiple outer pairs, cheap early
+mismatches, rollback, and successful retry on the same attachment. The same
+large snapshots can still be compared explicitly by ordinary script equality.
+Inline Set fixtures also exercise native enum values inside frozen fixed arrays,
+including ordinary changes, duplicate detection, failed reads, and mutation rejection.
+
+Measured growth is confined to the four reachable managed Map/Set baselines:
+IL2CPP and Mono maps each grow 177 bytes; IL2CPP sets grow 274 bytes and Mono
+sets 275 bytes. These fixtures gain one function and one function-signature type
+net: they add bounded string comparison, while context-bearing composite
+comparisons replace unneeded ordinary counterparts. Their helper, scratch, and memory
+requirements are unchanged. All other 30 baseline fixtures retain their module/
+section sizes, function/type counts, sorted body sizes, and full emission metadata.
+Explicit Lunistice remains 58,178 bytes and automatic selection 125,920 bytes.
+
+Validation: 443 library tests (one ignored), 677 compiler tests, and four baseline
+unit tests pass. After adding the final enum-dispatch charge, the focused
+comparison-demand test passes with native enums in both managed and ordinary
+comparisons. The final optimized compiler validates 132 artifacts and 162 runtime
+scenarios, including 576 nested keyed-collection cases and 160 new native-enum
+Set cases across Debug and Release. Formatting, Clippy with warnings denied,
+and all 558 documentation pages pass. The reviewed strict size gate and both
+Lunistice edition fixtures pass; all 34 final measurements exactly match the
+reviewed baseline's code, section, and emission metrics. No live game was launched.
+
+The remaining full-plan work includes remote runtime type/stride validation,
+shared metadata work, raw UTF-16, structured errors, complete profiles/platforms,
+and restoring explicit-profile Lunistice below 30,000 bytes.
+
 ## Source map for implementation
 
 Upstream links below are pinned to the reviewed tip; the PR table provides the historical changes.

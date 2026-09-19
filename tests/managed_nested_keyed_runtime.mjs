@@ -11,7 +11,7 @@ const layouts = {
 };
 let cases = 0;
 for (const family of Object.keys(layouts)) for (const width of [32, 64])
-for (const parallel of [false, true]) for (const mode of ['seed', 'reorder', 'mutate', 'duplicate', 'unreadable', 'freeze']) {
+for (const parallel of [false, true]) for (const mode of ['seed', 'reorder', 'mutate', 'duplicate', 'unreadable', 'freeze', 'comparison budget', 'shared budget', 'early mismatch']) {
     const f = createKeyedCollectionFixture({family, width, parallel, dictionary});
     const inner = createKeyedCollectionFixture({family, width, parallel: !parallel, dictionary: !dictionary, base: 0x400000n});
     for (const [at, value] of inner.memory) if (at >= 0x430000n) f.memory.set(at, value);
@@ -77,6 +77,44 @@ for (const parallel of [false, true]) for (const mode of ['seed', 'reorder', 'mu
     if (mode === 'freeze') {
         number(0x6f000n, 4, 1);
         assert.throws(() => host.update(), WebAssembly.RuntimeError, label); cases++; continue;
+    }
+    if (['comparison budget', 'shared budget', 'early mismatch'].includes(mode)) {
+        const large = 0xc00000n, different = 0xc10000n, differentRow = 0xd00000n;
+        const length = mode === 'shared budget' ? 6000 : 17000;
+        string(large, 'x'.repeat(length)); vector(row, [large, 0n]);
+        if (mode === 'shared budget') {
+            const third = inner.object + 0x4000n, thirdRow = 0xd10000n, thirdText = 0xc20000n;
+            string(thirdText, 'third'); vector(thirdRow, [thirdText]);
+            collection(inner, third, 0xb80000n, !dictionary, !parallel, [[firstKey, row], [secondKey, thirdRow]]);
+            collection(f, f.object, 0x80000n, dictionary, parallel,
+                dictionary ? [[a, row], [b, tailRow], [third, thirdRow]] : [[0n, a], [0n, b], [0n, third]]);
+        }
+        if (mode === 'early mismatch') {
+            string(different, 'y' + 'x'.repeat(length - 1)); vector(differentRow, [different, 0n]);
+            collection(inner, b, 0xb40000n, !dictionary, !parallel, [[firstKey, differentRow], [secondKey, otherRow]]);
+        }
+        host.update();
+        assert.equal(host.variables.get('old'), before, label);
+        if (mode === 'early mismatch') {
+            assert.equal(host.variables.get('result'), 'ok', label);
+            assert.equal(host.variables.get('equal'), 'false', label);
+            // Ordinary script equality can still compare these large snapshots.
+            host.update();
+            assert.equal(host.variables.get('equal'), 'true', label);
+        } else {
+            assert.match(host.variables.get('result'), /comparison work budget/, label);
+            assert.equal(host.variables.get('rows'), before, label);
+            assert.equal(host.variables.get('equal'), 'true', label);
+        }
+        // Exhaustion belongs to this root only. Repair and retry on the same attachment.
+        vector(row, [text, 0n]);
+        collection(inner, b, 0xb40000n, !dictionary, !parallel, rowsB);
+        collection(f, f.object, 0x80000n, dictionary, parallel, dictionary ? [[a, row], [b, tailRow]] : [[0n, a], [0n, b]]);
+        host.update(2);
+        assert.equal(host.variables.get('result'), 'ok', label);
+        assert.equal(host.variables.get('rows'), before, label);
+        assert.equal(host.variables.get('equal'), 'true', label);
+        cases++; continue;
     }
     host.update();
     assert.equal(host.variables.get('old'), before, label);

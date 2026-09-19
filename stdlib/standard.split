@@ -4477,6 +4477,8 @@ typeConstructor T..=T {
 /// [`ManagedReadable`] and local equality. Reads recursively create owned,
 /// deeply immutable values and share their root's budgets. Distinct game
 /// elements that decode to equal local values make the whole read fail.
+/// Recursive duplicate comparisons share the read's work budget; exhaustion
+/// fails the read and leaves the previous state value intact.
 ///
 /// # Example
 ///
@@ -4703,6 +4705,8 @@ typeConstructor MapEntry<K, V> {
 /// must support [`ManagedReadable`]. Reads produce owned, deeply immutable maps,
 /// sharing the root's budgets with nested strings, arrays, lists, and snapshots.
 /// If distinct game keys decode to equal local keys, the whole read fails.
+/// Recursive duplicate comparisons share the read's work budget; exhaustion
+/// fails the read and leaves the previous state value intact.
 ///
 /// # Example
 ///

@@ -649,6 +649,7 @@ fn compile_internal(inputs: BackendProgram<'_>, report: Option<&mut CodegenRepor
         section: functions,
         runtime_helpers,
         equality: equality_functions,
+        managed_equality: managed_equality_functions,
         array_functions,
         sets: set_functions,
         users: user_functions,
@@ -723,6 +724,7 @@ fn compile_internal(inputs: BackendProgram<'_>, report: Option<&mut CodegenRepor
         leaf_futures: &leaf_futures,
         display_functions: &display_functions,
         equality_functions: &equality_functions,
+        managed_equality_functions: &managed_equality_functions,
         array_functions: &array_functions,
         set_functions: &set_functions,
         structs: &program.structs,
@@ -935,6 +937,11 @@ fn compile_internal(inputs: BackendProgram<'_>, report: Option<&mut CodegenRepor
     let refresh_settings = runtime_helpers.optional_function(RuntimeHelperId::RefreshSettings);
     for body in equality_bodies {
         codes.push(&body);
+    }
+    for ty in reachability.managed_equality() {
+        if let Some(body) = runtime_helpers::compile_managed_equality(ty, &lowering) {
+            codes.push(&body);
+        }
     }
     for body in display_bodies {
         codes.push(&body);

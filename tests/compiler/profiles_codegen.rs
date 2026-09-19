@@ -2436,3 +2436,64 @@ fn unused_managed_list_key_schemas_add_no_wasm() {
         assert_eq!(wasm, expected, "{field}");
     }
 }
+
+#[test]
+fn managed_comparison_budget_helpers_follow_read_demand() {
+    let schema = r#"
+        enum Code: u32 { First, Second, Third }
+        image "Assembly-CSharp" {
+            class Key { String label; Code code; }
+            class Root { static Set<Key> values; }
+        }
+    "#;
+    let read = format!("{schema} state Unity [\"game.exe\"] {{ values = Root.values?; }}");
+    let (wasm, report) = release_emission(&read);
+    Validator::new_with_features(WasmFeatures::all())
+        .validate_all(&wasm)
+        .unwrap();
+    assert!(
+        report
+            .functions
+            .iter()
+            .any(|(_, name)| name.contains("::managed_equals::"))
+    );
+    assert!(
+        !report
+            .functions
+            .iter()
+            .any(|(_, name)| name == "__splitscript::equals::Key")
+    );
+
+    let (_, report) = release_emission(&format!(
+        "{read} whileAttached {{ setVariable(\"same\", current.values == old.values) }}"
+    ));
+    assert!(
+        report
+            .functions
+            .iter()
+            .any(|(_, name)| name.contains("::managed_equals::"))
+    );
+    assert!(
+        report
+            .functions
+            .iter()
+            .any(|(_, name)| name == "__splitscript::equals::Key")
+    );
+
+    let local = format!(
+        "{schema} state \"game.exe\" {{}} fn same(a: Key, b: Key) -> bool {{ return a == b }} setup {{ let callback = same }}"
+    );
+    let (_, report) = release_emission(&local);
+    assert!(
+        !report
+            .functions
+            .iter()
+            .any(|(_, name)| name.contains("::managed_equals::"))
+    );
+    assert!(
+        !report
+            .runtime_helpers
+            .iter()
+            .any(|name| name.contains("ManagedWork"))
+    );
+}

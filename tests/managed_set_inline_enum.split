@@ -1,0 +1,13 @@
+enum Value: i32 { Negative = -1, Zero = 0, One = 1, Two = 2, Ten = 10, Eleven = 11, Twelve = 12, Thirteen = 13, Changed = 99 }
+struct Record { values: [Value; 4], }
+image "Assembly-CSharp" {
+    class ProfileProbe { static Set<Record> rows; }
+}
+state Unity ["game.exe"] { rows = ProfileProbe.rows?; }
+whileAttached {
+    setVariable("rows", current.rows)
+    setVariable("old", old.rows)
+    setVariable("result", match ProfileProbe.rows { Ok(_) => "ok", Err(error) => error })
+    let mutation = process.read<i32>(0x6f000) else return
+    if mutation == 1 { for row in current.rows { row.values[0] = Value.Changed } }
+}

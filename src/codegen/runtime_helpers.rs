@@ -36,7 +36,9 @@ mod sms;
 mod strings;
 mod wii;
 
-pub(super) use equality::{compile_equality, emit_value_equality};
+pub(super) use equality::{
+    compile_equality, compile_managed_equality, emit_equality_call, emit_value_equality,
+};
 
 pub(super) fn build_enter_managed_object(inputs: &RuntimeHelperInputs<'_>) -> Function {
     managed_context::enter(inputs.gc)

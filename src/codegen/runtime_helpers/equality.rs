@@ -153,6 +153,33 @@ pub(in crate::codegen) fn compile_equality(
     equality
 }
 
+pub(in crate::codegen) fn compile_managed_equality(
+    ty: crate::types::TypeId,
+    l: &super::super::context::EmissionContext<'_>,
+) -> Option<Function> {
+    let e = l.managed_equality_functions;
+    let string_eq = e.string.unwrap_or(0);
+    let shape = || l.capabilities.structural_types().get(ty).unwrap();
+    Some(match semantic_type(ty, l.semantics) {
+        Type::Standard(StdlibTypeId::String) => compile_string_eq_inner(l.gc, e.budget),
+        Type::Standard(standard) if e.standard_structs.contains_key(&standard) => {
+            compile_standard_struct_equality(standard, l.semantics, e, string_eq, l.gc)
+        }
+        Type::ManagedClass(_) => {
+            compile_managed_class_equality(shape(), l.semantics, e, string_eq, l.gc)
+        }
+        Type::Struct(_) => compile_struct_equality(shape(), l.semantics, e, string_eq, l.gc),
+        Type::Enum(_) => compile_enum_equality(shape(), l.semantics, e, string_eq, l.gc),
+        Type::Array(id) => compile_array_equality(id, l.arrays, l.semantics, e, string_eq, l.gc),
+        Type::Option(id) => compile_option_equality(id, l.semantics, e, string_eq, l.gc),
+        Type::Result(id) => compile_result_equality(id, l.semantics, e, string_eq, l.gc),
+        Type::Set(_) | Type::Application(_) => {
+            keyed::compile(ty, l.arrays, l.semantics, e, string_eq, l.gc)
+        }
+        _ => return None,
+    })
+}
+
 fn compile_array_equality(
     array: ArrayTypeId,
     arrays: &[ResolvedArrayType],
@@ -162,8 +189,9 @@ fn compile_array_equality(
     gc: &GcLayout,
 ) -> Function {
     let mut function = Function::new([(2, ValType::I32)]);
-    let length = 2;
-    let index = 3;
+    equality_functions.charge(&mut function);
+    let length = equality_functions.local(2);
+    let index = equality_functions.local(3);
     let storage = array_value::storage_id(array, arrays, semantics);
     let element = try_array_element_type(array, semantics)
         .expect("reachable array equality has a lowerable element type");
@@ -224,11 +252,21 @@ fn compile_array_equality(
 }
 
 pub(in crate::codegen::runtime_helpers) fn compile_string_eq(gc: &GcLayout) -> Function {
+    compile_string_eq_inner(gc, None)
+}
+
+fn compile_string_eq_inner(
+    gc: &GcLayout,
+    budget: Option<super::super::equality_plan::ComparisonBudget>,
+) -> Function {
     let mut function = Function::new([(2, ValType::I32)]);
     let left = 0;
     let right = 1;
-    let len = 2;
-    let index = 3;
+    let len = 2 + u32::from(budget.is_some());
+    let index = len + 1;
+    if let Some(budget) = budget {
+        budget.emit(&mut function);
+    }
 
     function
         .instruction(&Instruction::LocalGet(left))
@@ -246,7 +284,11 @@ pub(in crate::codegen::runtime_helpers) fn compile_string_eq(gc: &GcLayout) -> F
         .instruction(&Instruction::LocalGet(index))
         .instruction(&Instruction::LocalGet(len))
         .instruction(&Instruction::I32GeU)
-        .instruction(&Instruction::BrIf(1))
+        .instruction(&Instruction::BrIf(1));
+    if let Some(budget) = budget {
+        budget.emit(&mut function);
+    }
+    function
         .instruction(&Instruction::LocalGet(left))
         .instruction(&Instruction::RefAsNonNull)
         .instruction(&Instruction::LocalGet(index))
@@ -284,6 +326,7 @@ fn compile_struct_equality(
     gc: &GcLayout,
 ) -> Function {
     let mut function = Function::new([]);
+    equality_functions.charge(&mut function);
     let StructuralTypeId::Struct(struct_id) = structure.id else {
         unreachable!()
     };
@@ -291,6 +334,7 @@ fn compile_struct_equality(
 
     function.instruction(&Instruction::I32Const(1));
     for (field_index, field) in structure.members.iter().enumerate() {
+        equality_functions.charge(&mut function);
         let StructuralMemberId::StructField(field_id) = field.source else {
             unreachable!()
         };
@@ -318,11 +362,13 @@ fn compile_managed_class_equality(
     gc: &GcLayout,
 ) -> Function {
     let mut function = Function::new([]);
+    equality_functions.charge(&mut function);
     let StructuralTypeId::ManagedClass(class_id) = class.id else {
         unreachable!()
     };
     let type_index = gc.index(Type::ManagedClass(class_id));
     for (field_index, field) in class.members.iter().enumerate() {
+        equality_functions.charge(&mut function);
         let StructuralMemberId::ManagedField(field_id) = field.source else {
             unreachable!()
         };
@@ -379,11 +425,13 @@ fn compile_standard_struct_equality(
     gc: &GcLayout,
 ) -> Function {
     let mut function = Function::new([]);
+    equality_functions.charge(&mut function);
     let ty = Type::Standard(structure);
     let type_index = gc.index(ty);
 
     function.instruction(&Instruction::I32Const(1));
     for (field_index, field) in gc.standard_library.fields_of(structure).enumerate() {
+        equality_functions.charge(&mut function);
         let field_ty = standard_field_type(field.id, semantics);
         function
             .instruction(&Instruction::LocalGet(0))
@@ -408,7 +456,8 @@ fn compile_enum_equality(
     gc: &GcLayout,
 ) -> Function {
     let mut function = Function::new([(1, ValType::I32)]);
-    let tag = 2;
+    equality_functions.charge(&mut function);
+    let tag = equality_functions.local(2);
     let StructuralTypeId::Enum(enum_id) = enumeration.id else {
         unreachable!()
     };
@@ -431,6 +480,7 @@ fn compile_enum_equality(
         .instruction(&Instruction::End);
 
     for (variant_index, variant) in enumeration.members.iter().enumerate() {
+        equality_functions.charge(&mut function);
         function
             .instruction(&Instruction::LocalGet(tag))
             .instruction(&Instruction::I32Const(variant_index as i32))
@@ -475,6 +525,7 @@ fn compile_option_equality(
     gc: &GcLayout,
 ) -> Function {
     let mut function = Function::new([]);
+    equality_functions.charge(&mut function);
     let type_index = gc.index(Type::Option(option));
     let value_type = option_value_type(option, semantics);
 
@@ -512,7 +563,8 @@ fn compile_result_equality(
     gc: &GcLayout,
 ) -> Function {
     let mut function = Function::new([(1, ValType::I32)]);
-    let tag = 2;
+    equality_functions.charge(&mut function);
+    let tag = equality_functions.local(2);
     let type_index = gc.index(Type::Result(result));
     let value_type = result_value_type(result, semantics);
 
@@ -577,6 +629,19 @@ pub(in crate::codegen) fn emit_value_equality(
     equality_functions: &EqualityFunctions,
     string_eq: u32,
 ) {
+    equality_functions.charge(function);
+    emit_equality_call(function, ty, equality_functions, string_eq, 2);
+}
+
+// The caller charges its comparison edge; composite callees also charge their
+// own visits. Managed decoder roots pass a different context local here.
+pub(in crate::codegen) fn emit_equality_call(
+    function: &mut Function,
+    ty: Type,
+    equality_functions: &EqualityFunctions,
+    string_eq: u32,
+    context: u32,
+) {
     let instruction = match ty {
         Type::Standard(StdlibTypeId::String) => Instruction::Call(string_eq),
         Type::Standard(standard) => match equality_functions
@@ -585,11 +650,12 @@ pub(in crate::codegen) fn emit_value_equality(
             .representation
         {
             RuntimeRepresentation::Scalar { storage } => {
-                emit_value_equality(
+                emit_equality_call(
                     function,
                     Type::from_declared(DeclaredTypeRef::Core(storage)),
                     equality_functions,
                     string_eq,
+                    context,
                 );
                 return;
             }
@@ -617,5 +683,8 @@ pub(in crate::codegen) fn emit_value_equality(
         }
         _ => unreachable!("type checking rejected structural equality for `{ty:?}`"),
     };
+    if equality_functions.budget.is_some() && matches!(instruction, Instruction::Call(_)) {
+        function.instruction(&Instruction::LocalGet(context));
+    }
     function.instruction(&instruction);
 }

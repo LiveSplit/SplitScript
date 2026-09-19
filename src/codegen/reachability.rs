@@ -36,6 +36,7 @@ pub(super) struct Reachability {
     gc_managed_classes: BTreeSet<ManagedClassId>,
     managed_snapshots: BTreeSet<ManagedClassId>,
     managed_decoders: BTreeSet<TypeId>,
+    managed_equality: BTreeSet<TypeId>,
     managed_instances: BTreeSet<ManagedClassId>,
     gc_enums: BTreeSet<EnumId>,
     gc_arrays: BTreeSet<ArrayTypeId>,
@@ -790,7 +791,12 @@ impl Reachability {
                 | crate::managed_read::ManagedDecoderKind::Set { element: key } = plan.kind
                 {
                     let key = capabilities.managed_decoder(key).unwrap().output;
-                    reachable.require_equality(key, semantics, standard_library, capabilities);
+                    reachable.require_managed_equality(
+                        key,
+                        semantics,
+                        standard_library,
+                        capabilities,
+                    );
                 }
                 match plan.kind {
                     crate::managed_read::ManagedDecoderKind::Class { class }
@@ -1211,6 +1217,52 @@ impl Reachability {
                         },
                     ));
                 }
+            }
+        }
+    }
+
+    pub fn managed_equality(&self) -> impl Iterator<Item = TypeId> + '_ {
+        self.managed_equality.iter().copied()
+    }
+
+    fn require_managed_equality(
+        &mut self,
+        root: TypeId,
+        semantics: &SemanticModel,
+        standard_library: &StandardLibrary,
+        capabilities: &crate::capabilities::CapabilityAnalysis,
+    ) {
+        let mut pending = vec![root];
+        while let Some(ty) = pending.pop() {
+            if !self.managed_equality.insert(ty) {
+                continue;
+            }
+            match semantics.types().kind(ty) {
+                TypeKind::Array { element, .. } | TypeKind::Option { value: element, .. } => {
+                    pending.push(*element)
+                }
+                TypeKind::Result { value, .. } => {
+                    pending.push(*value);
+                    pending.push(semantics.types().id_for_standard(StdlibTypeId::String));
+                }
+                TypeKind::Set { element, .. } => {
+                    self.gc_standard.insert(StdlibTypeId::String);
+                    pending.push(*element);
+                }
+                TypeKind::Application {
+                    constructor: StdlibTypeConstructorId::Map,
+                    arguments,
+                    ..
+                } => {
+                    self.gc_standard.insert(StdlibTypeId::String);
+                    pending.extend(arguments.iter().copied());
+                }
+                TypeKind::Standard(standard) => pending.extend(
+                    standard_library
+                        .fields_of(*standard)
+                        .map(|field| semantics.standard_field_type(field.id).unwrap()),
+                ),
+                _ => pending.extend(capabilities.structural_dependency_types(ty)),
             }
         }
     }

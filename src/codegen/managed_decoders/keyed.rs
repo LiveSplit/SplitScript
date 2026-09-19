@@ -352,13 +352,25 @@ pub(super) fn compile(
         super::super::emit_array_get(&mut f, storage_index, key_type, l.gc);
     }
     f.instruction(&I::LocalGet(19));
-    super::super::runtime_helpers::emit_value_equality(
+    super::super::runtime_helpers::emit_equality_call(
         &mut f,
         key_type,
-        l.equality_functions,
-        l.runtime_helpers
-            .optional_function(H::StringEquality)
-            .unwrap_or(0),
+        l.managed_equality_functions,
+        l.managed_equality_functions.string.unwrap_or(0),
+        CONTEXT,
+    );
+    // Preserve the boolean on the stack while checking the sticky exhaustion
+    // marker. A comparison that ran out of work must not admit another key.
+    f.instruction(&I::LocalGet(CONTEXT))
+        .instruction(&I::I32Const(2))
+        .instruction(&I::ArrayGet(
+            l.gc.standard_index(StdlibTypeId::ManagedReadContext),
+        ))
+        .instruction(&I::I64Const(crate::managed_read::MAX_SNAPSHOT_WORK))
+        .instruction(&I::I64GtU);
+    r.fail_if(
+        &mut f,
+        &format!("managed {noun} exceeds the shared comparison work budget"),
     );
     r.fail_if(
         &mut f,

@@ -50,6 +50,7 @@ pub(super) struct EmissionContext<'a> {
     pub leaf_futures: &'a HashMap<super::async_frame::LeafFutureInstance, u32>,
     pub display_functions: &'a DisplayFunctions,
     pub equality_functions: &'a EqualityFunctions,
+    pub managed_equality_functions: &'a EqualityFunctions,
     pub array_functions: &'a ArrayFunctions,
     pub set_functions: &'a SetFunctions,
     pub structs: &'a [StructDecl],

@@ -71,12 +71,13 @@ pub(super) fn compile(
         (1, gc.val_type(Type::Standard(StdlibTypeId::String))),
         (3, ValType::I32),
     ]);
-    let left = 2;
-    let right = 3;
-    let matched = 4;
-    let length = 5;
-    let i = 6;
-    let j = 7;
+    equality.charge(&mut f);
+    let left = equality.local(2);
+    let right = equality.local(3);
+    let matched = equality.local(4);
+    let length = equality.local(5);
+    let i = equality.local(6);
+    let j = equality.local(7);
     let emit_length = |f: &mut Function, object| {
         f.instruction(&I::LocalGet(object))
             .instruction(&I::RefAsNonNull);
@@ -125,8 +126,9 @@ pub(super) fn compile(
         .instruction(&I::If(BlockType::Empty))
         .instruction(&I::I32Const(0))
         .instruction(&I::Return)
-        .instruction(&I::End)
-        .instruction(&I::LocalGet(matched))
+        .instruction(&I::End);
+    equality.charge(&mut f);
+    f.instruction(&I::LocalGet(matched))
         .instruction(&I::RefAsNonNull)
         .instruction(&I::LocalGet(j))
         .instruction(&I::ArrayGetU(bytes_index))
