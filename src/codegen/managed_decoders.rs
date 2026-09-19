@@ -37,6 +37,9 @@ pub(super) fn compile(
     };
     let mut locals = Vec::new();
     match node {
+        ManagedDecoder::Memory if lowering.managed_freezers.contains_key(&value) => {
+            locals.push((1, nullable(lowering.gc.val_type(Type::Result(result)))))
+        }
         ManagedDecoder::String => locals.push((
             1,
             nullable(lowering.gc.val_type(Type::Standard(StdlibTypeId::String))),
@@ -141,6 +144,22 @@ pub(super) fn compile(
                 lowering.runtime_globals.process_pointer_size,
                 MemoryByteOrder::Little,
             );
+            if let Some(freeze) = lowering.managed_freezers.get(&value) {
+                f.instruction(&I::LocalSet(5));
+                reader.child_field(&mut f, value, 5, 1, Type::I32);
+                f.instruction(&I::I32Eqz)
+                    .instruction(&I::If(BlockType::Empty));
+                reader.child_field(
+                    &mut f,
+                    value,
+                    5,
+                    0,
+                    semantic_type(value, lowering.semantics),
+                );
+                f.instruction(&I::Call(*freeze))
+                    .instruction(&I::End)
+                    .instruction(&I::LocalGet(5));
+            }
         }
         ManagedDecoder::String => {
             arguments(&mut f);
@@ -403,7 +422,8 @@ impl Reader<'_, '_> {
             .instruction(&I::End);
         self.leave(f);
         f.instruction(&I::LocalGet(9)).instruction(&I::LocalGet(6));
-        super::array_value::emit_wrap_loaded(f, l.gc.index(Type::Array(*layout)));
+        f.instruction(&I::I32Const(super::array_value::FROZEN_VERSION))
+            .instruction(&I::StructNew(l.gc.index(Type::Array(*layout))));
         emit_result_success(f, self.result, l.gc);
     }
 }

@@ -56,6 +56,7 @@ pub(super) struct EmissionContext<'a> {
     pub managed: &'a ManagedBindingPlan,
     pub managed_state_reads: &'a ManagedStateReadCache,
     pub managed_state_read_functions: &'a HashMap<ManagedFieldId, u32>,
+    pub managed_freezers: &'a HashMap<crate::types::TypeId, u32>,
     pub managed_decoder_functions: &'a HashMap<crate::types::TypeId, u32>,
     pub managed_snapshot_functions: &'a HashMap<ManagedClassId, u32>,
     pub enums: &'a [EnumDecl],

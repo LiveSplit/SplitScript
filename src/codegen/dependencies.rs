@@ -769,12 +769,25 @@ impl BackendDependencies {
     ) {
         use crate::managed_read::ManagedDecoder;
         dependencies.require(RuntimeHelperId::ReadManagedMemory);
-        dependencies.require(RuntimeHelperId::EnterManagedObject);
-        dependencies.require(RuntimeHelperId::ChargeManagedBytes);
-        dependencies.require(RuntimeHelperId::ChargeManagedElements);
-        dependencies.memory_read_capacity = dependencies.memory_read_capacity.max(16);
         match capabilities.managed_decoder(value).unwrap() {
+            ManagedDecoder::Array { .. } => {
+                dependencies.require(RuntimeHelperId::EnterManagedObject);
+                dependencies.require(RuntimeHelperId::ChargeManagedBytes);
+                dependencies.require(RuntimeHelperId::ChargeManagedElements);
+                dependencies.memory_read_capacity = dependencies.memory_read_capacity.max(16);
+            }
             ManagedDecoder::Memory => {
+                let (bytes, elements) = crate::managed_read::inline_materialization_cost(
+                    value,
+                    capabilities.memory(),
+                    semantics,
+                );
+                if bytes != 0 {
+                    dependencies.require(RuntimeHelperId::ChargeManagedBytes);
+                }
+                if elements != 0 {
+                    dependencies.require(RuntimeHelperId::ChargeManagedElements);
+                }
                 dependencies.require_memory_read(value, None, semantics, capabilities);
                 if capabilities
                     .memory()

@@ -36,6 +36,7 @@ pub(super) struct Reachability {
     gc_enums: BTreeSet<EnumId>,
     gc_arrays: BTreeSet<ArrayTypeId>,
     gc_array_storage: BTreeSet<ArrayTypeId>,
+    array_sets: BTreeSet<ArrayTypeId>,
     array_pushes: BTreeSet<ArrayTypeId>,
     array_removals: BTreeSet<ArrayTypeId>,
     array_clears: BTreeSet<ArrayTypeId>,
@@ -225,6 +226,20 @@ impl Reachability {
                         semantics.specialize_type(owner, *receiver)
                     });
                     reachable.require_equality(receiver, semantics, standard_library, capabilities);
+                }
+                if let wasm_ir::CallTarget::Intrinsic {
+                    intrinsic: IntrinsicId::ArraySet,
+                    receiver_type: Some(receiver),
+                    ..
+                } = target
+                {
+                    let receiver = owner.as_ref().map_or(*receiver, |owner| {
+                        semantics.specialize_type(owner, *receiver)
+                    });
+                    let TypeKind::Array { layout, .. } = semantics.types().kind(receiver) else {
+                        unreachable!()
+                    };
+                    reachable.array_sets.insert(*layout);
                 }
                 if let wasm_ir::CallTarget::Intrinsic {
                     intrinsic: IntrinsicId::ArrayPush,
@@ -716,6 +731,7 @@ impl Reachability {
             let value = semantics.managed_field_value_type(field).unwrap();
             if crate::managed::ManagedFieldRead::for_type(value, semantics)
                 == crate::managed::ManagedFieldRead::Array
+                || super::managed_freezers::contains_array(value, capabilities.memory(), semantics)
             {
                 pending_decoders.push(value);
             }
@@ -743,6 +759,11 @@ impl Reachability {
                     }
                     if crate::managed::ManagedFieldRead::for_type(ty, semantics)
                         == crate::managed::ManagedFieldRead::Array
+                        || super::managed_freezers::contains_array(
+                            ty,
+                            capabilities.memory(),
+                            semantics,
+                        )
                     {
                         pending_decoders.push(ty);
                     }
@@ -955,6 +976,10 @@ impl Reachability {
 
     pub fn contains_array_storage(&self, array: ArrayTypeId) -> bool {
         self.gc_array_storage.contains(&array)
+    }
+
+    pub fn requires_array_set(&self, array: ArrayTypeId) -> bool {
+        !self.managed_decoders.is_empty() && self.array_sets.contains(&array)
     }
 
     pub fn requires_array_push(&self, array: ArrayTypeId) -> bool {

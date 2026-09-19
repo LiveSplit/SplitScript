@@ -10,12 +10,21 @@ use super::{GcLayout, Type, array_value};
 
 #[derive(Debug, Default)]
 pub(super) struct ArrayFunctions {
+    pub freezing: bool,
+    sets: HashMap<ArrayTypeId, u32>,
     pushes: HashMap<ArrayTypeId, u32>,
     removals: HashMap<ArrayTypeId, u32>,
     clears: HashMap<ArrayTypeId, u32>,
 }
 
 impl ArrayFunctions {
+    pub(super) fn insert_set(&mut self, array: ArrayTypeId, function: u32) {
+        self.sets.insert(array, function);
+    }
+    pub(super) fn set(&self, array: ArrayTypeId) -> Option<u32> {
+        self.sets.get(&array).copied()
+    }
+
     pub(super) fn insert_push(&mut self, array: ArrayTypeId, function: u32) {
         self.pushes.insert(array, function);
     }
@@ -49,14 +58,34 @@ pub(super) fn compile(
 ) -> Vec<Function> {
     let mut functions = Vec::new();
     for array in arrays {
+        if plans.sets.contains_key(&array.id) {
+            let mut f = Function::new([]);
+            f.instruction(&Instruction::LocalGet(0));
+            array_value::emit_require_mutable(&mut f, gc, array.id);
+            f.instruction(&Instruction::LocalGet(0));
+            array_value::emit_backing(&mut f, gc, array.id);
+            f.instruction(&Instruction::LocalGet(1))
+                .instruction(&Instruction::LocalGet(2))
+                .instruction(&Instruction::ArraySet(gc.index(Type::ArrayStorage(
+                    array_value::storage_id(array.id, arrays, semantics),
+                ))))
+                .instruction(&Instruction::End);
+            functions.push(f);
+        }
         if plans.pushes.contains_key(&array.id) {
-            functions.push(compile_push(array, arrays, semantics, gc));
+            functions.push(compile_push(array, arrays, semantics, gc, plans.freezing));
         }
         if plans.removals.contains_key(&array.id) {
-            functions.push(compile_remove_at(array, arrays, semantics, gc));
+            functions.push(compile_remove_at(
+                array,
+                arrays,
+                semantics,
+                gc,
+                plans.freezing,
+            ));
         }
         if plans.clears.contains_key(&array.id) {
-            functions.push(compile_clear(array, arrays, semantics, gc));
+            functions.push(compile_clear(array, arrays, semantics, gc, plans.freezing));
         }
     }
     functions
@@ -67,6 +96,7 @@ fn compile_push(
     arrays: &[ResolvedArrayType],
     semantics: &crate::semantic::SemanticModel,
     gc: &GcLayout,
+    freezing: bool,
 ) -> Function {
     debug_assert!(array.length.is_none());
     let storage = array_value::storage_id(array.id, arrays, semantics);
@@ -74,6 +104,10 @@ fn compile_push(
 
     // Parameters: array, value. Locals: backing, replacement, length, capacity.
     let mut function = Function::new([(2, storage_type), (2, ValType::I32)]);
+    if freezing {
+        function.instruction(&Instruction::LocalGet(0));
+        array_value::emit_require_mutable(&mut function, gc, array.id);
+    }
     let backing = 2;
     let replacement = 3;
     let length = 4;
@@ -145,7 +179,7 @@ fn compile_push(
             struct_type_index: array_type,
             field_index: array_value::LENGTH_FIELD,
         });
-    array_value::emit_increment_version(&mut function, gc, array.id);
+    array_value::emit_increment_version(&mut function, gc, array.id, freezing);
     function.instruction(&Instruction::End);
     function
 }
@@ -155,6 +189,7 @@ fn compile_remove_at(
     arrays: &[ResolvedArrayType],
     semantics: &crate::semantic::SemanticModel,
     gc: &GcLayout,
+    freezing: bool,
 ) -> Function {
     debug_assert!(array.length.is_none());
     let storage = array_value::storage_id(array.id, arrays, semantics);
@@ -166,6 +201,10 @@ fn compile_remove_at(
 
     // Parameters: array, index. Locals: backing, previous length.
     let mut function = Function::new([(1, storage_ref), (1, ValType::I32)]);
+    if freezing {
+        function.instruction(&Instruction::LocalGet(0));
+        array_value::emit_require_mutable(&mut function, gc, array.id);
+    }
     let backing = 2;
     let length = 3;
     function
@@ -228,7 +267,7 @@ fn compile_remove_at(
             struct_type_index: array_type,
             field_index: array_value::LENGTH_FIELD,
         });
-    array_value::emit_increment_version(&mut function, gc, array.id);
+    array_value::emit_increment_version(&mut function, gc, array.id, freezing);
     function.instruction(&Instruction::End);
     function
 }
@@ -238,6 +277,7 @@ fn compile_clear(
     arrays: &[ResolvedArrayType],
     semantics: &crate::semantic::SemanticModel,
     gc: &GcLayout,
+    freezing: bool,
 ) -> Function {
     debug_assert!(array.length.is_none());
     let storage = array_value::storage_id(array.id, arrays, semantics);
@@ -249,6 +289,10 @@ fn compile_clear(
 
     // Parameter: array. Locals: backing, previous length.
     let mut function = Function::new([(1, storage_ref), (1, ValType::I32)]);
+    if freezing {
+        function.instruction(&Instruction::LocalGet(0));
+        array_value::emit_require_mutable(&mut function, gc, array.id);
+    }
     let backing = 1;
     let length = 2;
     function
@@ -285,7 +329,7 @@ fn compile_clear(
             struct_type_index: array_type,
             field_index: array_value::LENGTH_FIELD,
         });
-    array_value::emit_increment_version(&mut function, gc, array.id);
+    array_value::emit_increment_version(&mut function, gc, array.id, freezing);
     function.instruction(&Instruction::End);
     function
 }

@@ -1571,6 +1571,11 @@ pub(super) fn compile_index_assignment(
     let Type::Array(array_id) = context.expression_type(*receiver) else {
         unreachable!("checked indexed assignment receivers are arrays")
     };
+    if context.array_functions.freezing {
+        // Wasm IR normalizes indexed stores to a receiver temporary.
+        compile_expr(function, *receiver, context);
+        super::array_value::emit_require_mutable(function, context.gc, array_id);
+    }
     compile_expr(function, *receiver, context);
     super::array_value::emit_backing(function, context.gc, array_id);
     compile_expr(function, *index, context);
@@ -3035,7 +3040,10 @@ fn emit_managed_read_at_address(
         .expect("a checked managed field access has a concrete Result layout");
     let value_type = semantic_type(field.value_type, context.semantics);
 
-    if field.read == crate::managed::ManagedFieldRead::Array {
+    if context
+        .managed_decoder_functions
+        .contains_key(&field.value_type)
+    {
         emit_managed_binding_field(function, MANAGED_POINTER_SIZE_FIELD, context);
         emit_managed_read_context(function, context);
         function
@@ -5155,17 +5163,24 @@ fn compile_expr_unconverted(
                         super::array_value::emit_length(function, context.gc, array_id);
                     }
                     IntrinsicId::ArraySet => {
-                        super::array_value::emit_backing(function, context.gc, array_id);
-                        for argument in args {
-                            compile_expr(function, *argument, context);
+                        if let Some(set) = context.array_functions.set(array_id) {
+                            for argument in args {
+                                compile_expr(function, *argument, context);
+                            }
+                            function.instruction(&Instruction::Call(set));
+                        } else {
+                            super::array_value::emit_backing(function, context.gc, array_id);
+                            for argument in args {
+                                compile_expr(function, *argument, context);
+                            }
+                            function.instruction(&Instruction::ArraySet(context.gc.index(
+                                Type::ArrayStorage(super::array_value::storage_id(
+                                    array_id,
+                                    context.arrays,
+                                    context.semantics,
+                                )),
+                            )));
                         }
-                        function.instruction(&Instruction::ArraySet(context.gc.index(
-                            Type::ArrayStorage(super::array_value::storage_id(
-                                array_id,
-                                context.arrays,
-                                context.semantics,
-                            )),
-                        )));
                     }
                     _ => unreachable!(),
                 }

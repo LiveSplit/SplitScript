@@ -814,6 +814,7 @@ fn managed_arrays_compose_strings_and_owned_classes() {
     for source in [
         include_str!("../managed_arrays.split"),
         include_str!("../managed_array_tree.split"),
+        include_str!("../managed_array_freeze.split"),
     ] {
         for profile in [
             splitscript::BuildProfile::Debug,
@@ -888,6 +889,43 @@ fn managed_array_budgets_follow_reachable_child_decoders() {
                 .any(|name| name == "ChargeManagedWork"),
             class_fields
         );
+    }
+}
+
+#[test]
+fn managed_inline_arrays_freeze_without_object_walk_helpers() {
+    let source = r#"
+        image "Assembly-CSharp" { class Probe { static [i32; 2] values; } }
+        state Unity.il2cpp(Il2CppProfile.unity2022_3_0f1X64()) ["game.exe"] {
+            values = Probe.values?;
+        }
+    "#;
+    let checked = splitscript::check(splitscript::parse(source).unwrap()).unwrap();
+    let (wasm, report) = splitscript::compiler::codegen_with_report(
+        &checked,
+        splitscript::CompilerOptions {
+            profile: splitscript::BuildProfile::Release,
+            ..Default::default()
+        },
+    );
+    Validator::new_with_features(WasmFeatures::all())
+        .validate_all(&wasm)
+        .unwrap();
+    assert!(
+        report
+            .functions
+            .iter()
+            .any(|(_, name)| name.contains("::managed::freeze::"))
+    );
+    for helper in ["ChargeManagedBytes", "ChargeManagedElements"] {
+        assert!(report.runtime_helpers.iter().any(|name| name == helper));
+    }
+    for helper in [
+        "EnterManagedObject",
+        "ChargeManagedWork",
+        "ReadManagedString",
+    ] {
+        assert!(!report.runtime_helpers.iter().any(|name| name == helper));
     }
 }
 

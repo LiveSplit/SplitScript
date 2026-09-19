@@ -40,6 +40,7 @@ pub(super) struct FunctionPlan<'a> {
     pub displays: DisplayFunctions,
     pub managed_state_reads: HashMap<ManagedFieldId, u32>,
     pub managed_snapshots: HashMap<ManagedClassId, u32>,
+    pub managed_freezers: HashMap<crate::types::TypeId, u32>,
     pub managed_decoders: HashMap<crate::types::TypeId, u32>,
     pub reads: Vec<u32>,
     pub transforms: Vec<Option<u32>>,
@@ -296,13 +297,25 @@ pub(super) fn encode<'a>(
     };
 
     let mut array_functions = ArrayFunctions::default();
+    array_functions.freezing = reachability.managed_decoders().next().is_some();
     for array in arrays.iter().filter(|array| {
-        reachability.requires_array_push(array.id)
+        reachability.requires_array_set(array.id)
+            || reachability.requires_array_push(array.id)
             || reachability.requires_array_remove_at(array.id)
             || reachability.requires_array_clear(array.id)
     }) {
-        debug_assert!(array.length.is_none());
         let array_type = gc.val_type(Type::Array(array.id));
+        if reachability.requires_array_set(array.id) {
+            let element = gc.val_type(super::try_array_element_type(array.id, semantics).unwrap());
+            array_functions.insert_set(
+                array.id,
+                declarations.declare(
+                    || format!("__splitscript::array#{}::set", array.id.index()),
+                    vec![array_type, ValType::I32, element],
+                    vec![],
+                ),
+            );
+        }
         if reachability.requires_array_push(array.id) {
             let element_type = gc.val_type(
                 super::try_array_element_type(array.id, semantics)
@@ -477,6 +490,17 @@ pub(super) fn encode<'a>(
         );
     }
 
+    let mut managed_freezers = HashMap::new();
+    for value in super::managed_freezers::required(reachability, capabilities, semantics) {
+        managed_freezers.insert(
+            value,
+            declarations.declare(
+                || format!("__splitscript::managed::freeze::{value:?}"),
+                vec![gc.val_type(semantic_type(value, semantics))],
+                vec![],
+            ),
+        );
+    }
     let functions_by_id = program
         .functions
         .iter()
@@ -809,6 +833,7 @@ pub(super) fn encode<'a>(
         managed_state_reads: managed_state_read_functions,
         managed_snapshots: managed_snapshot_functions,
         managed_decoders: managed_decoder_functions,
+        managed_freezers,
         reads,
         transforms,
         actions,

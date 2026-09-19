@@ -1,0 +1,144 @@
+struct Header {
+    values: [i32; 2],
+}
+enum Status: i32 {
+    Ready = 0,
+}
+struct Envelope {
+    header: Header,
+    status: Status,
+}
+let receiverCalls = 0
+fn receiver(values: [i32]) -> [i32] {
+    receiverCalls += 1;
+    return values
+}
+image "Assembly-CSharp" {
+    class ProfileProbe {
+        static i32 operation;
+        static Header staticHeader;
+        static Envelope envelope;
+        static [i32; 2] fixedRoot;
+        static [[i32; 2]; 2] matrix;
+        static ProfileProbe instance;
+        static [String] strings;
+        [[String?]?] nested;
+        [Leaf?] leaves;
+        [i32] numbers;
+        [address] pointers;
+        [[i32; 2]] pairs;
+        [i32; 2] fixed;
+        Header header;
+        [Header] headers;
+    }
+    class Leaf {
+        String text;
+    }
+}
+state Unity ["game.exe"] {
+    envelope = ProfileProbe.envelope?;
+    fixedRoot = ProfileProbe.fixedRoot?;
+    matrix = ProfileProbe.matrix?;
+    operation = ProfileProbe.operation?;
+    inlineRoot = ProfileProbe.staticHeader?;
+    strings = ProfileProbe.strings?;
+    snapshot = ProfileProbe.instance?.snapshot()?;
+}
+whileAttached {
+    setVariable("numbers", current.snapshot.numbers)
+    setVariable("old", old.snapshot.numbers)
+    setVariable("snapshot", current.snapshot)
+    setVariable("oldSnapshot", old.snapshot)
+    setVariable("envelope", current.envelope)
+    setVariable("fixedRoot", current.fixedRoot)
+    setVariable("ready", true)
+    let n = current.operation
+    if n == 1 {
+        let alias = current.snapshot.numbers;
+        alias[0] = 9
+    }
+    if n == 2 {
+        current.snapshot.numbers.set(0, 9)
+    }
+    if n == 3 {
+        current.snapshot.numbers.push(9)
+    }
+    if n == 4 {
+        current.snapshot.numbers.removeAt(0)
+    }
+    if n == 5 {
+        current.snapshot.numbers.clear()
+    }
+    if n == 6 {
+        let row = current.snapshot.nested[0] else return;
+        row.set(0, Some("changed"))
+    }
+    if n == 7 {
+        current.snapshot.pairs[0].set(0, 9)
+    }
+    if n == 8 {
+        current.snapshot.fixed.set(0, 9)
+    }
+    if n == 9 {
+        current.snapshot.header.values.set(0, 9)
+    }
+    if n == 10 {
+        current.inlineRoot.values.set(0, 9)
+    }
+    if n == 11 {
+        old.snapshot.numbers.set(0, 9)
+    }
+    if n == 12 {
+        current.snapshot.numbers.extend([9])
+    }
+    if n == 13 {
+        current.snapshot.numbers[0] += 9
+    }
+    if n == 14 {
+        receiver(current.snapshot.numbers).set(0, 9)
+    }
+    if n == 15 {
+        current.snapshot.headers[0].values.set(0, 9)
+    }
+    if n == 16 {
+        receiver(current.snapshot.numbers)[0] = 9
+    }
+    if n == 17 {
+        current.strings.clear()
+    }
+    if n == 18 {
+        let row = current.snapshot.nested[2] else return;
+        row.clear()
+    }
+    if n == 19 {
+        receiver(current.snapshot.fixed).set(0, 9)
+    }
+    if n == 20 {
+        let local: [i32] = [1, 2, 3]
+        local[0] += 3
+        local.set(1, 5)
+        local.push(6)
+        local.removeAt(2)
+        setVariable("local", local)
+        local.clear()
+        setVariable("empty", local.length())
+        let native = process.read<[i32; 2]>(0x70040) else return
+        native.set(0, 42)
+        setVariable("native", native)
+        receiver(local).push(7)
+        receiver(local)[0] = 8
+        receiver(local).set(0, 9)
+        setVariable("calls", receiverCalls)
+        setVariable("finalLocal", local)
+    }
+    if n == 21 {
+        current.envelope.header.values.set(0, 9)
+    }
+    if n == 22 {
+        current.fixedRoot.set(0, 9)
+    }
+    if n == 23 {
+        current.matrix[0].set(0, 9)
+    }
+    setVariable("completed", n)
+}

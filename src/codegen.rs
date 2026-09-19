@@ -48,6 +48,7 @@ mod global_plan;
 mod imports;
 mod managed_decoders;
 mod managed_demand;
+mod managed_freezers;
 mod managed_snapshots;
 mod managed_state_reads;
 mod memory_plan;
@@ -659,6 +660,7 @@ fn compile_internal(inputs: BackendProgram<'_>, report: Option<&mut CodegenRepor
         managed_state_reads: managed_state_read_functions,
         managed_snapshots: managed_snapshot_functions,
         managed_decoders: managed_decoder_functions,
+        managed_freezers,
         reads: read_functions,
         transforms: transform_functions,
         actions: action_functions,
@@ -729,6 +731,7 @@ fn compile_internal(inputs: BackendProgram<'_>, report: Option<&mut CodegenRepor
         managed_state_read_functions: &managed_state_read_functions,
         managed_snapshot_functions: &managed_snapshot_functions,
         managed_decoder_functions: &managed_decoder_functions,
+        managed_freezers: &managed_freezers,
         enums,
         arrays: array_types,
         memory: memory_layouts,
@@ -941,6 +944,9 @@ fn compile_internal(inputs: BackendProgram<'_>, report: Option<&mut CodegenRepor
     }
     for value in reachability.managed_decoders() {
         codes.push(&managed_decoders::compile(value, capabilities, &lowering));
+    }
+    for value in managed_freezers::required(&reachability, capabilities, semantics) {
+        codes.push(&managed_freezers::compile(value, &lowering));
     }
     for instance in reachability.functions() {
         let function = program

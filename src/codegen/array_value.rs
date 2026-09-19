@@ -4,7 +4,7 @@
 //! storage. This keeps aliases valid when a growable `[T]` needs a larger
 //! capacity while allowing `[T; N]` to retain its exact semantic length.
 
-use wasm_encoder::{Function, Instruction};
+use wasm_encoder::{BlockType, Function, Instruction};
 
 use crate::ast::ArrayTypeId;
 use crate::semantic::SemanticModel;
@@ -15,6 +15,18 @@ use super::{GcLayout, Type, try_array_element_type};
 pub(super) const BACKING_FIELD: u32 = 0;
 pub(super) const LENGTH_FIELD: u32 = 1;
 pub(super) const VERSION_FIELD: u32 = 2;
+pub(super) const FROZEN_VERSION: i32 = -1;
+
+/// Consumes an array and traps before mutation if it belongs to a snapshot.
+pub(super) fn emit_require_mutable(function: &mut Function, gc: &GcLayout, array: ArrayTypeId) {
+    emit_version(function, gc, array);
+    function
+        .instruction(&Instruction::I32Const(FROZEN_VERSION))
+        .instruction(&Instruction::I32Eq)
+        .instruction(&Instruction::If(BlockType::Empty))
+        .instruction(&Instruction::Unreachable)
+        .instruction(&Instruction::End);
+}
 
 /// Returns the general raw storage used by a source wrapper when one exists.
 pub(super) fn storage_id(
@@ -95,7 +107,12 @@ pub(super) fn emit_version(function: &mut Function, gc: &GcLayout, array: ArrayT
 }
 
 /// Increments the structural version of the source array in local zero.
-pub(super) fn emit_increment_version(function: &mut Function, gc: &GcLayout, array: ArrayTypeId) {
+pub(super) fn emit_increment_version(
+    function: &mut Function,
+    gc: &GcLayout,
+    array: ArrayTypeId,
+    freezing: bool,
+) {
     let array_type = gc.index(Type::Array(array));
     function
         .instruction(&Instruction::LocalGet(0))
@@ -106,9 +123,15 @@ pub(super) fn emit_increment_version(function: &mut Function, gc: &GcLayout, arr
             field_index: VERSION_FIELD,
         })
         .instruction(&Instruction::I32Const(1))
-        .instruction(&Instruction::I32Add)
-        .instruction(&Instruction::StructSet {
-            struct_type_index: array_type,
-            field_index: VERSION_FIELD,
-        });
+        .instruction(&Instruction::I32Add);
+    if freezing {
+        // Reserve negative versions for immutable owned values.
+        function
+            .instruction(&Instruction::I32Const(i32::MAX))
+            .instruction(&Instruction::I32And);
+    }
+    function.instruction(&Instruction::StructSet {
+        struct_type_index: array_type,
+        field_index: VERSION_FIELD,
+    });
 }

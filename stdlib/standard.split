@@ -3554,6 +3554,9 @@ capability MemoryReadable: ManagedReadable {}
 /// nullable child classes. Arrays recursively decode managed-readable elements,
 /// including arrays, optional strings, and owned class snapshots. Managed lists,
 /// dictionaries, and sets still require collection-shape support.
+/// Arrays materialized by managed reads are deeply immutable, including inline
+/// fixed-array children. Mutating them through any alias traps. Ordinary local
+/// arrays and arrays returned by [`Process.read`] remain mutable.
 /// [`ManagedReadable`] does not make a type usable with [`Process.read`], which
 /// still requires [`MemoryReadable`].
 ///

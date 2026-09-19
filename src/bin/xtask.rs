@@ -676,6 +676,20 @@ const RUNTIME_FIXTURES: &[RuntimeFixture] = &[
         extra_arguments: &[],
     },
     RuntimeFixture {
+        source: "tests/managed_array_freeze.split",
+        output: "managed_array_freeze.wasm",
+        profile: "release",
+        harness: "tests/managed_array_freeze_runtime.mjs",
+        extra_arguments: &[],
+    },
+    RuntimeFixture {
+        source: "tests/managed_array_freeze.split",
+        output: "managed_array_freeze_debug.wasm",
+        profile: "debug",
+        harness: "tests/managed_array_freeze_runtime.mjs",
+        extra_arguments: &[],
+    },
+    RuntimeFixture {
         source: "tests/managed_arrays.split",
         output: "managed_arrays.wasm",
         profile: "release",

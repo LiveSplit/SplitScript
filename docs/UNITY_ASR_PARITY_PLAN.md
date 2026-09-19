@@ -885,8 +885,8 @@ static storage, memory pages, and section sizes. Declaring an optional type
 sooner can renumber an existing GC type, so binary identity is not the invariant.
 
 This implements vector decoding within Steps 8–10, not their completion.
-Snapshot-owned arrays still need deep mutation protection, including inline
-fixed-array children and aliases. Runtime metadata storage-shape validation,
+Snapshot-owned array mutation protection is implemented in the next entry.
+Runtime metadata storage-shape validation,
 lists, dictionaries, sets, raw UTF-16 projection, and structured nested error
 paths remain open. The reader currently accepts zero-based vectors only.
 
@@ -915,6 +915,52 @@ Scratch remains 10,264 bytes for IL2CPP and 10,248 for Mono. The baseline harnes
 also passed both Lunistice edition scenarios; the live game was not needed for
 this unchanged Lunistice artifact size. The below-30,000-byte completion gate
 remains open.
+
+### Deeply immutable managed arrays
+
+Managed array wrappers now carry a frozen structural version. Indexed stores,
+`set`, `push`, `removeAt`, and `clear` check it before mutation; higher-level
+mutators compose these guarded operations. The frozen marker follows aliases
+and values retained in `old`. Mutation traps, matching other invalid array
+operations. Ordinary local arrays and `Process.read` arrays remain mutable.
+Mutable structural versions cannot increment into the reserved marker.
+
+Inline `MemoryReadable` values containing fixed arrays use demand-driven typed
+freezers. These recursively traverse fixed arrays and struct fields before the
+successful value is returned. Direct fixed-array/struct managed fields use the
+same typed read path as container children, so the ownership guarantee also
+covers standalone reads and class fields. Failed reads do not run a freezer on
+a missing payload. No freezer or mutation guard is emitted in modules without
+these managed reads.
+
+The runtime fixture covers mutation through aliases, nested and empty arrays,
+inline fixed arrays, structs, arrays of structs, nested structs, fixed arrays of
+fixed arrays, `current`, and `old`, across both engines and target widths. After
+a mutation traps, it polls again and compares the retained accepted graph.
+Counterexamples verify ordinary local mutation, native fixed-array reads, and
+single evaluation of effectful mutable receivers. Fixed-array length changes
+remain statically rejected by the existing language rules.
+
+Validation: 440 library tests (one ignored), 663 compiler tests, four baseline
+tests, and the 106-artifact/136-scenario runtime catalog passed. After tightening
+inline-reader helper demand and extending failure coverage, all 31 focused
+managed compiler tests passed; the final Debug/Release runtime rerun passed
+100 freeze cases, 72 array cases, and 44 recursive-tree cases per profile
+(432 cases total). The new failure cases cover unreadable standalone inline
+arrays and invalid enums in structs containing arrays, retaining accepted state
+without freezing a failed payload. Clippy, formatting, and 557 generated
+documentation pages passed.
+
+The four existing managed-array baselines each grow by 21 bytes: 20 bytes in the
+reachable push helper for the mutation guard/version reservation, plus code
+section framing. No helper, GC type, scratch bank, or memory page is added to
+those fixtures. All other 22 baselines stay unchanged, including explicit
+Lunistice at 58,178 bytes and automatic selection at 125,920 bytes. New standalone
+inline-array baselines are 48,082 bytes for IL2CPP and 38,924 for Mono, using
+4,120 and 4,104 bytes of scratch respectively. They retain the inline reader,
+byte/element budgets, and typed freezer, with no object-walk, class-field-work,
+or managed-string helper. The 28-fixture strict gate and Lunistice base/DLC
+runtime checks pass. The live game remains closed.
 
 ## Source map for implementation
 
