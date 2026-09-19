@@ -1648,6 +1648,19 @@ private struct UnityRuntime {
         }
     }
 
+    private fn setLayout(object: address) -> UnityKeyedLayout! {
+        return match self.backend {
+            UnityRuntimeBackend.Il2cpp => {
+                let runtime = self.il2cpp else return Err("missing IL2CPP runtime")
+                runtime.setLayout(object)
+            },
+            UnityRuntimeBackend.Mono => {
+                let runtime = self.mono else return Err("missing Mono runtime")
+                runtime.setLayout(object)
+            },
+        }
+    }
+
     private fn listLayout(object: address) -> UnityListLayout! {
         return match self.backend {
             UnityRuntimeBackend.Il2cpp => {
@@ -3790,8 +3803,9 @@ capability MemoryReadable: ManagedReadable {}
 /// nullable child classes. Arrays recursively decode managed-readable elements,
 /// including arrays, optional strings, and owned class snapshots. [`List<T>`]
 /// storage projects to owned arrays; [`Map`] reads managed dictionaries with
-/// recursively decoded keys and values. Managed sets still require decoder support.
-/// Arrays and maps materialized by managed reads are deeply immutable, including
+/// recursively decoded keys and values. [`Set`] reads managed hash sets with
+/// recursively decoded elements, rejecting collisions under local equality.
+/// Arrays, maps, and sets materialized by managed reads are deeply immutable, including
 /// inline fixed-array children. Mutating them through any alias traps. Ordinary
 /// local collections and arrays returned by [`Process.read`] remain mutable.
 /// [`ManagedReadable`] does not make a type usable with [`Process.read`], which
@@ -4454,6 +4468,11 @@ typeConstructor T..=T {
 /// A set keeps its allocation and contents across ticks. Mutating operations
 /// update the same set value, so a global set can track visited checkpoints
 /// without rebuilding a collection on every update.
+///
+/// In Unity schemas, sets describe managed hash sets. Elements must support
+/// [`ManagedReadable`] and local equality. Reads recursively create owned,
+/// deeply immutable values and share their root's budgets. Distinct game
+/// elements that decode to equal local values make the whole read fail.
 ///
 /// # Example
 ///

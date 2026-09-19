@@ -24,6 +24,7 @@ pub(crate) const PROVIDER_BINDINGS_TYPE: &str = "__splitscript_stdlib_provider_b
 pub(crate) const MANAGED_POINTER_SIZE_FIELD: &str = "__pointer_size";
 pub(crate) const MANAGED_LIST_LAYOUT_FIELD: &str = "__list_layout";
 pub(crate) const MANAGED_MAP_READ_FIELD: &str = "__map_read";
+pub(crate) const MANAGED_SET_READ_FIELD: &str = "__set_read";
 pub(crate) const MANAGED_KEYED_VERIFY_FIELD: &str = "__keyed_verify";
 
 struct SelectedProviderContext {
@@ -292,7 +293,7 @@ fn managed_preparation_source(
     }
     if !classes.is_empty() {
         source.push_str(&format!(
-            "    {MANAGED_MAP_READ_FIELD}: (address, u32, u32, u32, u32, u64) -> UnityKeyedRead!,\n"
+            "    {MANAGED_MAP_READ_FIELD}: (address, u32, u32, u32, u32, u64) -> UnityKeyedRead!,\n    {MANAGED_SET_READ_FIELD}: (address, u32, u32, u32, u32, u64) -> UnityKeyedRead!,\n"
         ));
         source.push_str(&format!(
             "    {MANAGED_KEYED_VERIFY_FIELD}: (UnityKeyedRead) -> bool!,\n"
@@ -437,6 +438,19 @@ fn managed_backend_binding_source(
                          __map_layout_cache.push(layout)\n\
                          return layout.readSlots(object, keyBytes, valueBytes, scanBudget, elementBudget, byteBudget)\n\
                      }}\n\
+"
+    ));
+    source.push_str(&format!(
+        "            let __set_layout_cache: [UnityKeyedLayout] = []\n\
+                     let {MANAGED_SET_READ_FIELD}: (address, u32, u32, u32, u32, u64) -> UnityKeyedRead! = (object, keyBytes, valueBytes, scanBudget, elementBudget, byteBudget) => {{\n\
+                         let class = {module}.collectionClass(object)?\n\
+                         for cached in __set_layout_cache {{ if cached.runtimeClass == class {{ return cached.readSlots(object, keyBytes, valueBytes, scanBudget, elementBudget, byteBudget) }} }}\n\
+                         let layout = {module}.setLayout(object)?\n\
+                         if layout.runtimeClass != class {{ throw \"managed set class changed during discovery\" }}\n\
+                         if __set_layout_cache.length() >= 1024 {{ __set_layout_cache.clear() }}\n\
+                         __set_layout_cache.push(layout)\n\
+                         return layout.readSlots(object, keyBytes, valueBytes, scanBudget, elementBudget, byteBudget)\n\
+                     }}\n\
                      let {MANAGED_KEYED_VERIFY_FIELD}: (UnityKeyedRead) -> bool! = read => read.verify()\n"
     ));
     let mut images = std::collections::HashMap::new();
@@ -505,7 +519,7 @@ fn managed_backend_binding_source(
     source.push_str(&format!("                {MANAGED_POINTER_SIZE_FIELD},\n"));
     source.push_str(&format!("                {MANAGED_LIST_LAYOUT_FIELD},\n"));
     source.push_str(&format!(
-        "                {MANAGED_MAP_READ_FIELD}, {MANAGED_KEYED_VERIFY_FIELD},\n"
+        "                {MANAGED_MAP_READ_FIELD}, {MANAGED_SET_READ_FIELD}, {MANAGED_KEYED_VERIFY_FIELD},\n"
     ));
     for class in classes {
         if instance_classes.contains(&class.class.id) {

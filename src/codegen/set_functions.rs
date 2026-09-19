@@ -1,6 +1,6 @@
 //! Compiler-generated operations for concrete `Set<T>` instantiations.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use wasm_encoder::{BlockType, Function, Instruction, ValType};
 
@@ -60,6 +60,7 @@ pub(super) fn compile(
     equality: &EqualityFunctions,
     string_equality: u32,
     gc: &GcLayout,
+    frozen_sets: &HashSet<TypeApplicationId>,
 ) -> Vec<Function> {
     let mut bodies = Vec::new();
     for set in sets {
@@ -67,6 +68,7 @@ pub(super) fn compile(
             continue;
         };
         let element = set_element_type(set.id, semantics);
+        let frozen = frozen_sets.contains(&set.id);
         if plan.new.is_some() {
             bodies.push(compile_new(set, gc));
         }
@@ -87,13 +89,21 @@ pub(super) fn compile(
                 set,
                 plan.contains.expect("set insertion requires contains"),
                 gc,
+                frozen,
             ));
         }
         if plan.remove.is_some() {
-            bodies.push(compile_remove(set, element, equality, string_equality, gc));
+            bodies.push(compile_remove(
+                set,
+                element,
+                equality,
+                string_equality,
+                gc,
+                frozen,
+            ));
         }
         if plan.clear.is_some() {
-            bodies.push(compile_clear(set, gc));
+            bodies.push(compile_clear(set, gc, frozen));
         }
     }
     bodies
@@ -176,7 +186,7 @@ fn compile_contains(
     function
 }
 
-fn compile_insert(set: &ResolvedSetType, contains: u32, gc: &GcLayout) -> Function {
+fn compile_insert(set: &ResolvedSetType, contains: u32, gc: &GcLayout, frozen: bool) -> Function {
     // Parameters: set, value. Locals: backing, replacement, length, capacity.
     let backing_type = gc.val_type(Type::ArrayStorage(set.backing));
     let mut function = Function::new([(2, backing_type), (2, ValType::I32)]);
@@ -184,6 +194,7 @@ fn compile_insert(set: &ResolvedSetType, contains: u32, gc: &GcLayout) -> Functi
     let replacement = 3;
     let length = 4;
     let capacity = 5;
+    require_mutable(&mut function, set, gc, frozen);
     function
         .instruction(&Instruction::LocalGet(0))
         .instruction(&Instruction::LocalGet(1))
@@ -273,6 +284,7 @@ fn compile_remove(
     equality: &EqualityFunctions,
     string_equality: u32,
     gc: &GcLayout,
+    frozen: bool,
 ) -> Function {
     // Parameters: set, value. Locals: backing, length, index.
     let mut function = Function::new([
@@ -282,6 +294,7 @@ fn compile_remove(
     let backing = 2;
     let length = 3;
     let index = 4;
+    require_mutable(&mut function, set, gc, frozen);
     load_set_state(&mut function, set, backing, length, gc);
     function
         .instruction(&Instruction::Block(BlockType::Empty))
@@ -374,8 +387,9 @@ fn compile_remove(
     function
 }
 
-fn compile_clear(set: &ResolvedSetType, gc: &GcLayout) -> Function {
+fn compile_clear(set: &ResolvedSetType, gc: &GcLayout, frozen: bool) -> Function {
     let mut function = Function::new([]);
+    require_mutable(&mut function, set, gc, frozen);
     function
         .instruction(&Instruction::LocalGet(0))
         .instruction(&Instruction::RefAsNonNull)
@@ -432,4 +446,21 @@ fn load_set_state(
             field_index: LENGTH_FIELD,
         })
         .instruction(&Instruction::LocalSet(length));
+}
+
+fn require_mutable(function: &mut Function, set: &ResolvedSetType, gc: &GcLayout, frozen: bool) {
+    if !frozen {
+        return;
+    }
+    function
+        .instruction(&Instruction::LocalGet(0))
+        .instruction(&Instruction::StructGet {
+            struct_type_index: gc.index(Type::Set(set.id)),
+            field_index: VERSION_FIELD,
+        })
+        .instruction(&Instruction::I32Const(super::array_value::FROZEN_VERSION))
+        .instruction(&Instruction::I32Eq)
+        .instruction(&Instruction::If(BlockType::Empty))
+        .instruction(&Instruction::Unreachable)
+        .instruction(&Instruction::End);
 }

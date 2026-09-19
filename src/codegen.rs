@@ -908,6 +908,16 @@ fn compile_internal(inputs: BackendProgram<'_>, report: Option<&mut CodegenRepor
         gc: &gc,
     });
     let array_bodies = array_functions::compile(array_types, &array_functions, semantics, &gc);
+    let frozen_sets = reachability
+        .managed_decoders()
+        .filter_map(|source| {
+            let output = capabilities.managed_decoder(source).unwrap().output;
+            match semantics.types().kind(output) {
+                crate::types::TypeKind::Set { layout, .. } => Some(*layout),
+                _ => None,
+            }
+        })
+        .collect();
     let set_bodies = set_functions::compile(
         set_types,
         &set_functions,
@@ -917,6 +927,7 @@ fn compile_internal(inputs: BackendProgram<'_>, report: Option<&mut CodegenRepor
             .optional_function(RuntimeHelperId::StringEquality)
             .unwrap_or(0),
         &gc,
+        &frozen_sets,
     );
     for body in helper_bodies {
         codes.push(&body);

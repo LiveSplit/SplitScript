@@ -1,0 +1,33 @@
+image "Assembly-CSharp" {
+    class ProfileProbe {
+        static Set<[String?]> rows;
+        static [Set<[String?]>?] sets;
+        static ProfileProbe instance;
+        Set<[String?]> values;
+        i32 score;
+    }
+}
+state Unity ["game.exe"] {
+    rows = ProfileProbe.rows?;
+    sets = ProfileProbe.sets?;
+    tree = ProfileProbe.instance?.snapshot()?;
+}
+whileAttached {
+    setVariable("rows", current.rows)
+    setVariable("sets", current.sets)
+    setVariable("tree", current.tree)
+    setVariable("old", old.rows)
+    setVariable("result", match ProfileProbe.rows { Ok(_) => "ok", Err(error) => error })
+    let mutation = process.read<i32>(0x6f000) else return
+    if mutation == 1 { current.rows.clear() }
+    if mutation == 2 { current.rows.insert([]) }
+    if mutation == 3 { current.rows.remove([]) }
+    if mutation == 4 { current.rows.remove([Some("absent")]) }
+    if mutation == 5 { for row in current.rows { row.clear() } }
+    if mutation == 6 { current.tree.values.clear() }
+    if mutation == 7 {
+        let local = Set.new<[String?]>()
+        local.insert([Some("okay")])
+        setVariable("local", local.length())
+    }
+}

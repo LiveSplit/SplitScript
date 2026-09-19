@@ -818,6 +818,8 @@ fn managed_arrays_compose_strings_and_owned_classes() {
         include_str!("../managed_lists.split"),
         include_str!("../managed_maps.split"),
         include_str!("../managed_map_inline.split"),
+        include_str!("../managed_sets.split"),
+        include_str!("../managed_set_inline.split"),
     ] {
         for profile in [
             splitscript::BuildProfile::Debug,
@@ -846,6 +848,10 @@ fn managed_maps_project_children_and_compose_with_snapshot_types() {
         "Map<String, Root>",
         "Map<[String?], [i32; 2]>",
         "[Map<String, List<String?>>?]",
+        "Map<String, Set<[String?]>>",
+        "[Set<String>?]",
+        "Set<u8>",
+        "Set<[i32; 2]>",
     ] {
         let source = format!(
             r#"
@@ -1136,6 +1142,7 @@ fn unused_managed_collections_retain_no_reader_or_budget() {
             "static [[String?]?] unused;",
             "static List<[List<String?>?]> unused;",
             "static Map<String, List<Map<i32, [String?]>>> unused;",
+            "static Set<[String?]> unused;",
         ] {
             let (unused, unused_report) = compile(declaration);
             // Declaring String? earlier can renumber an already-reachable option

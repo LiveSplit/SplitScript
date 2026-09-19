@@ -771,7 +771,7 @@ impl BackendDependencies {
         dependencies.require(RuntimeHelperId::ReadManagedMemory);
         if matches!(
             capabilities.managed_decoder(value).unwrap().kind,
-            ManagedDecoderKind::Map { .. }
+            ManagedDecoderKind::Map { .. } | ManagedDecoderKind::Set { .. }
         ) {
             dependencies.require(RuntimeHelperId::ChargeManagedScan);
             dependencies.require(RuntimeHelperId::ChargeManagedWork);
@@ -779,7 +779,8 @@ impl BackendDependencies {
         match capabilities.managed_decoder(value).unwrap().kind {
             ManagedDecoderKind::Array { .. }
             | ManagedDecoderKind::List { .. }
-            | ManagedDecoderKind::Map { .. } => {
+            | ManagedDecoderKind::Map { .. }
+            | ManagedDecoderKind::Set { .. } => {
                 dependencies.require(RuntimeHelperId::EnterManagedObject);
                 dependencies.require(RuntimeHelperId::ChargeManagedBytes);
                 dependencies.require(RuntimeHelperId::ChargeManagedElements);

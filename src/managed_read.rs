@@ -49,6 +49,9 @@ pub(crate) enum ManagedDecoderKind {
         key: TypeId,
         value: TypeId,
     },
+    Set {
+        element: TypeId,
+    },
     Class {
         class: ManagedClassId,
     },
@@ -63,6 +66,7 @@ impl ManagedDecoderKind {
         match self {
             Self::Array { element }
             | Self::List { element }
+            | Self::Set { element }
             | Self::Optional { value: element } => [Some(element), None],
             Self::Map { key, value } => [Some(key), Some(value)],
             _ => [None, None],
@@ -92,6 +96,7 @@ impl ManagedReadTypes {
                     length: None,
                     ..
                 } => ManagedDecoderKind::Array { element: *element },
+                TypeKind::Set { element, .. } => ManagedDecoderKind::Set { element: *element },
                 TypeKind::Application {
                     constructor,
                     arguments,
@@ -117,6 +122,7 @@ impl ManagedReadTypes {
                         TypeKind::Standard(StdlibTypeId::String)
                             | TypeKind::ManagedClass(_)
                             | TypeKind::Array { length: None, .. }
+                            | TypeKind::Set { .. }
                     ) || matches!(semantics.types().kind(*value), TypeKind::Application { constructor, .. }
                         if matches!(*constructor, crate::stdlib::StdlibTypeConstructorId::List | crate::stdlib::StdlibTypeConstructorId::Map)) =>
                 {

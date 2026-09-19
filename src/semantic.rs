@@ -1603,6 +1603,15 @@ impl SemanticModel {
     }
 
     pub(crate) fn try_managed_owned_type(&self, ty: TypeId) -> Option<TypeId> {
+        if let TypeKind::Set { element, .. } = self.types.kind(ty) {
+            let owned = self.try_managed_owned_type(*element)?;
+            if owned == *element {
+                return Some(ty);
+            }
+            return self.types.iter().find_map(|(id, kind)| {
+                matches!(kind, TypeKind::Set { element, .. } if *element == owned).then_some(id)
+            });
+        }
         if let TypeKind::Application {
             constructor,
             arguments,

@@ -191,6 +191,7 @@ impl FailurePayloadDemand {
             if matches!(
                 plan.kind,
                 crate::managed_read::ManagedDecoderKind::Map { .. }
+                    | crate::managed_read::ManagedDecoderKind::Set { .. }
             ) {
                 for dependency in [
                     semantics

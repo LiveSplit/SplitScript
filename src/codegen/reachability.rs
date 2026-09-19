@@ -782,7 +782,9 @@ impl Reachability {
                         .then_some(id)
                 }));
                 pending_decoders.extend(plan.kind.children());
-                if let crate::managed_read::ManagedDecoderKind::Map { key, .. } = plan.kind {
+                if let crate::managed_read::ManagedDecoderKind::Map { key, .. }
+                | crate::managed_read::ManagedDecoderKind::Set { element: key } = plan.kind
+                {
                     let key = capabilities.managed_decoder(key).unwrap().output;
                     reachable.require_equality(key, semantics, standard_library, capabilities);
                 }

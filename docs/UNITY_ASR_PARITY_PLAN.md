@@ -1233,6 +1233,49 @@ size gate and Lunistice base/DLC fixture pass. Lunistice remains 58,178 bytes wi
 the explicit profile and 125,920 bytes with automatic selection. No live game
 was launched.
 
+### Recursive managed set snapshots
+
+`Set<T>` now shares the keyed collection decoder with `Map<K, V>`, while keeping
+separate lazy layout discovery and attachment caches. Set reads decode live
+slot values recursively into frozen ordinary sets. Arrays of nullable sets,
+sets containing nullable-string arrays or inline records, and sets in class
+snapshots follow the same root transaction and shared scan/element/byte/work
+budgets. Duplicate decoded elements fail under local equality. Header checks
+run after child decoding, and collection/backing cycles unwind the active path.
+
+Set insertion, removal, and clearing check the frozen version before any early
+return or write. Guards are generated only for concrete set types produced by
+reachable managed decoders. Ordinary local sets remain mutable, including local
+values of a type that also occurs in a managed snapshot.
+
+Both set and map storage/output projections now traverse their children. Further
+work remains on capability checking against owned projections: source-only
+`List<T>` currently prevents using it directly as a Map key or Set element even
+when its owned array supports equality. Containers whose owned contents cannot
+support local equality also need the planned lossless entry/value projections;
+managed class snapshots currently have no equality implementation, so direct
+`Set<SomeClass>` and class-valued Map keys require that follow-up as well.
+These remaining cases are part of the full nesting requirement, not reasons to
+declare the collection work finished. Remote type/stride compatibility, raw
+UTF-16, structured nested errors, and shared metadata work also remain open.
+
+Validation: 443 library tests (one ignored), 667 compiler tests, and four baseline
+tests pass. The runtime catalog validates 116 artifacts and 146 scenarios,
+including 864 nested-set cases and 160 inline-set cases across Debug and Release.
+Formatting, Clippy with warnings denied, and 558 generated documentation pages
+pass. The compiler suite initially exposed the missing class-snapshot equality
+described above; that case remains an explicit follow-up rather than a claim of
+supported Set storage.
+
+All 32 existing optimized fixtures preserve section sizes, function/type counts,
+sorted function-body sizes, helpers, scratch, and memory metrics. Map-only
+artifacts exclude the hash-set type-name marker and set-only artifacts exclude
+the dictionary marker. The two new set fixtures measure 66,703 bytes for IL2CPP
+and 57,448 bytes for Mono. The baseline refresh otherwise renumbers generated
+internal names and updates build/timing metadata. The strict size gate and
+Lunistice base/DLC fixtures pass; explicit Lunistice remains 58,178 bytes and
+automatic selection 125,920 bytes. No live game was launched.
+
 ## Source map for implementation
 
 Upstream links below are pinned to the reviewed tip; the PR table provides the historical changes.

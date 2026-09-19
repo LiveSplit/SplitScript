@@ -1090,7 +1090,7 @@ impl Checker {
                 }
                 Type::Known(id) => match self.inference.type_store().kind(id) {
                     TypeKind::Option { value, .. } => inner = Type::Known(*value),
-                    TypeKind::Array { length: None, .. } => break,
+                    TypeKind::Array { length: None, .. } | TypeKind::Set { .. } => break,
                     TypeKind::Application { constructor, .. }
                         if matches!(
                             *constructor,
@@ -1102,6 +1102,7 @@ impl Checker {
                     _ => return,
                 },
                 Type::Array(array) if self.inference.array_length(array).is_none() => break,
+                Type::Set(_) => break,
                 Type::Application(application)
                     if matches!(
                         self.inference.application_constructor(application),
@@ -1136,6 +1137,7 @@ impl Checker {
                     pending.extend(self.inference.application_arguments(application));
                 }
                 Type::Array(array) => pending.push(self.inference.array_element(array)),
+                Type::Set(set) => pending.push(self.inference.set_element(set)),
                 Type::Option(option) => pending.push(self.inference.option_value(option)),
                 Type::Known(id) => match self.inference.type_store().kind(id).clone() {
                     TypeKind::Application {
@@ -1143,7 +1145,9 @@ impl Checker {
                         arguments,
                         ..
                     } => pending.extend(arguments.into_iter().map(Type::Known)),
-                    TypeKind::Array { element, .. } => pending.push(Type::Known(element)),
+                    TypeKind::Array { element, .. } | TypeKind::Set { element, .. } => {
+                        pending.push(Type::Known(element))
+                    }
                     TypeKind::Option { value, .. } => pending.push(Type::Known(value)),
                     TypeKind::ManagedClass(class) => {
                         let declaration = self
@@ -2951,6 +2955,22 @@ impl Checker {
     }
 
     pub(super) fn managed_owned_type(&mut self, storage: Type) -> Type {
+        let set_element = match self.inference.shallow(storage) {
+            Type::Set(set) => Some(self.inference.set_element(set)),
+            Type::Known(id) => match self.inference.type_store().kind(id) {
+                TypeKind::Set { element, .. } => Some(Type::Known(*element)),
+                _ => None,
+            },
+            _ => None,
+        };
+        if let Some(element) = set_element {
+            let owned = self.managed_owned_type(element);
+            return if owned == element {
+                storage
+            } else {
+                Type::Set(self.inference.set_type(owned))
+            };
+        }
         let map_arguments = match self.inference.shallow(storage) {
             Type::Application(application)
                 if self.inference.application_constructor(application)

@@ -95,7 +95,7 @@ impl ManagedFieldRead {
             Self::ManagedString { nullable }
         } else if matches!(
             semantics.types().kind(value),
-            TypeKind::Array { length: None, .. }
+            TypeKind::Array { length: None, .. } | TypeKind::Set { .. }
         ) || matches!(semantics.types().kind(value), TypeKind::Application { constructor, .. }
             if *constructor == crate::stdlib::StdlibTypeConstructorId::Map)
         {

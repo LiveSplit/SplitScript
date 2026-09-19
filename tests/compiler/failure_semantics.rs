@@ -2267,6 +2267,7 @@ fn managed_readable_rejects_types_without_implemented_decoders() {
         "[char]",
         "Map<String, char>",
         "Map<char, String>",
+        "Set<char>",
         "Header",
     ] {
         let source = format!(

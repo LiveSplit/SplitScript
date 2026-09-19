@@ -1,4 +1,4 @@
-//! Recursive dictionary materialization using validated, bounded slot scans.
+//! Recursive dictionary and set materialization using validated, bounded slot scans.
 use wasm_encoder::{BlockType, Function, Instruction as I, ValType};
 
 use super::super::{
@@ -17,11 +17,19 @@ use crate::{
 
 pub(super) fn compile(
     source: TypeId,
-    key: TypeId,
+    key: Option<TypeId>,
     value: TypeId,
     l: &EmissionContext<'_>,
     capabilities: &CapabilityAnalysis,
 ) -> Function {
+    let dictionary = key.is_some();
+    let key = key.unwrap_or(value);
+    let read_binding = if dictionary {
+        crate::stdlib::MANAGED_MAP_READ_FIELD
+    } else {
+        crate::stdlib::MANAGED_SET_READ_FIELD
+    };
+    let noun = if dictionary { "dictionary" } else { "set" };
     let output = capabilities.managed_decoder(source).unwrap().output;
     let r = Reader {
         value: output,
@@ -32,33 +40,41 @@ pub(super) fn compile(
         list: true,
     };
     let key_type = semantic_type(r.output(key), l.semantics);
-    let entry = l
-        .semantics
-        .types()
-        .iter()
-        .find_map(|(id, kind)| {
-            matches!(kind, TypeKind::Application { constructor, arguments, .. }
+    let (entry_type, entries, storage) = if dictionary {
+        let entry = l
+            .semantics
+            .types()
+            .iter()
+            .find_map(|(id, kind)| {
+                matches!(kind, TypeKind::Application { constructor, arguments, .. }
         if *constructor == C::MapEntry && arguments.as_slice() == [r.output(key), r.output(value)])
-            .then_some(id)
-        })
-        .unwrap();
-    let entry_type = semantic_type(entry, l.semantics);
-    let entries = l
-        .semantics
-        .types()
-        .iter()
-        .find_map(|(_, kind)| match kind {
-            TypeKind::Array {
-                element,
-                length: None,
-                layout,
-            } if *element == entry => Some(*layout),
-            _ => None,
-        })
-        .unwrap();
-    let storage = super::super::array_value::storage_id(entries, l.arrays, l.semantics);
+                .then_some(id)
+            })
+            .unwrap();
+        let entry_type = semantic_type(entry, l.semantics);
+        let entries = l
+            .semantics
+            .types()
+            .iter()
+            .find_map(|(_, kind)| match kind {
+                TypeKind::Array {
+                    element,
+                    length: None,
+                    layout,
+                } if *element == entry => Some(*layout),
+                _ => None,
+            })
+            .unwrap();
+        let storage = super::super::array_value::storage_id(entries, l.arrays, l.semantics);
+        (Some(entry_type), Some(entries), storage)
+    } else {
+        let TypeKind::Set { backing, .. } = l.semantics.types().kind(output) else {
+            unreachable!()
+        };
+        (None, None, *backing)
+    };
     let storage_index = l.gc.index(Type::ArrayStorage(storage));
-    let (_, _, read_callable) = binding(l, crate::stdlib::MANAGED_MAP_READ_FIELD);
+    let (_, _, read_callable) = binding(l, read_binding);
     let (_, _, verify_callable) = binding(l, crate::stdlib::MANAGED_KEYED_VERIFY_FIELD);
     let read_result = result_for(
         l.semantics
@@ -108,7 +124,10 @@ pub(super) fn compile(
         .instruction(&I::LocalGet(2))
         .instruction(&I::Call(l.runtime_helpers.function(H::ReadManagedMemory)))
         .instruction(&I::I32Eqz);
-    r.fail_if(&mut f, "managed dictionary reference could not be read");
+    r.fail_if(
+        &mut f,
+        &format!("managed {noun} reference could not be read"),
+    );
     read_word(&mut f, l, false);
     f.instruction(&I::LocalSet(1)).instruction(&I::End);
     f.instruction(&I::LocalGet(CONTEXT))
@@ -118,11 +137,15 @@ pub(super) fn compile(
         .instruction(&I::I32Eqz);
     r.fail_if(
         &mut f,
-        "managed dictionary encountered a null object, cycle, or object/depth limit",
+        &format!("managed {noun} encountered a null object, cycle, or object/depth limit"),
     );
-    callback_start(&mut f, l, crate::stdlib::MANAGED_MAP_READ_FIELD, 5);
+    callback_start(&mut f, l, read_binding, 5);
     f.instruction(&I::LocalGet(1));
-    width(&mut f, &r, key);
+    if dictionary {
+        width(&mut f, &r, key);
+    } else {
+        f.instruction(&I::I32Const(0));
+    }
     width(&mut f, &r, value);
     remaining(
         &mut f,
@@ -178,7 +201,10 @@ pub(super) fn compile(
     f.instruction(&I::I64ExtendI32U)
         .instruction(&I::Call(l.runtime_helpers.function(H::ChargeManagedScan)))
         .instruction(&I::I32Eqz);
-    r.fail_if(&mut f, "managed dictionary exceeds the shared scan budget");
+    r.fail_if(
+        &mut f,
+        &format!("managed {noun} exceeds the shared scan budget"),
+    );
     f.instruction(&I::LocalGet(CONTEXT))
         .instruction(&I::LocalGet(17))
         .instruction(&I::I64ExtendI32U)
@@ -188,7 +214,7 @@ pub(super) fn compile(
         .instruction(&I::I32Eqz);
     r.fail_if(
         &mut f,
-        "managed dictionary exceeds the shared element budget",
+        &format!("managed {noun} exceeds the shared element budget"),
     );
     f.instruction(&I::LocalGet(CONTEXT));
     get(
@@ -208,7 +234,10 @@ pub(super) fn compile(
         .instruction(&I::I64Add)
         .instruction(&I::Call(l.runtime_helpers.function(H::ChargeManagedBytes)))
         .instruction(&I::I32Eqz);
-    r.fail_if(&mut f, "managed dictionary exceeds the shared byte budget");
+    r.fail_if(
+        &mut f,
+        &format!("managed {noun} exceeds the shared byte budget"),
+    );
     // Enter each allocated backing object before recursive decoding. Failure
     // unwinds exactly the entries successfully pushed onto the active path.
     get(
@@ -256,7 +285,7 @@ pub(super) fn compile(
         .instruction(&I::I32Eqz);
     r.fail_if(
         &mut f,
-        "managed dictionary backing storage encountered a cycle or object/depth limit",
+        &format!("managed {noun} backing storage encountered a cycle or object/depth limit"),
     );
     increment(&mut f, 15);
     f.instruction(&I::End).instruction(&I::End);
@@ -281,6 +310,9 @@ pub(super) fn compile(
         (key, F::UnityKeyedSlotKey, 11),
         (value, F::UnityKeyedSlotValue, 12),
     ] {
+        if !dictionary && local == 11 {
+            continue;
+        }
         f.instruction(&I::LocalGet(0));
         get(&mut f, l, 20, StdlibTypeId::UnityKeyedSlot, field);
         f.instruction(&I::LocalGet(2))
@@ -290,7 +322,7 @@ pub(super) fn compile(
             .instruction(&I::LocalSet(local));
         r.forward_failure(&mut f, child, local);
     }
-    r.child_field(&mut f, key, 11, 0, key_type);
+    r.child_field(&mut f, key, if dictionary { 11 } else { 12 }, 0, key_type);
     f.instruction(&I::LocalSet(19));
     // Local equality can merge keys that the game's comparer distinguishes.
     // Refuse that loss and bound pair comparisons with the same root work limit.
@@ -307,14 +339,18 @@ pub(super) fn compile(
         .instruction(&I::I32Eqz);
     r.fail_if(
         &mut f,
-        "managed dictionary exceeds the shared comparison work budget",
+        &format!("managed {noun} exceeds the shared comparison work budget"),
     );
     f.instruction(&I::LocalGet(10))
         .instruction(&I::RefAsNonNull)
-        .instruction(&I::LocalGet(18))
-        .instruction(&I::ArrayGet(storage_index))
-        .instruction(&I::RefAsNonNull);
-    emit_typed_struct_get(&mut f, l.gc.index(entry_type), 0, key_type);
+        .instruction(&I::LocalGet(18));
+    if let Some(entry_type) = entry_type {
+        f.instruction(&I::ArrayGet(storage_index))
+            .instruction(&I::RefAsNonNull);
+        emit_typed_struct_get(&mut f, l.gc.index(entry_type), 0, key_type);
+    } else {
+        super::super::emit_array_get(&mut f, storage_index, key_type, l.gc);
+    }
     f.instruction(&I::LocalGet(19));
     super::super::runtime_helpers::emit_value_equality(
         &mut f,
@@ -326,7 +362,11 @@ pub(super) fn compile(
     );
     r.fail_if(
         &mut f,
-        "managed dictionary contains duplicate decoded keys under local equality",
+        if dictionary {
+            "managed dictionary contains duplicate decoded keys under local equality"
+        } else {
+            "managed set contains duplicate decoded values under local equality"
+        },
     );
     increment(&mut f, 18);
     f.instruction(&I::Br(0))
@@ -336,15 +376,17 @@ pub(super) fn compile(
         .instruction(&I::RefAsNonNull)
         .instruction(&I::LocalGet(16))
         .instruction(&I::LocalGet(19));
-    r.child_field(
-        &mut f,
-        value,
-        12,
-        0,
-        semantic_type(r.output(value), l.semantics),
-    );
-    f.instruction(&I::StructNew(l.gc.index(entry_type)))
-        .instruction(&I::ArraySet(storage_index));
+    if let Some(entry_type) = entry_type {
+        r.child_field(
+            &mut f,
+            value,
+            12,
+            0,
+            semantic_type(r.output(value), l.semantics),
+        );
+        f.instruction(&I::StructNew(l.gc.index(entry_type)));
+    }
+    f.instruction(&I::ArraySet(storage_index));
     increment(&mut f, 16);
     f.instruction(&I::Br(0))
         .instruction(&I::End)
@@ -357,11 +399,13 @@ pub(super) fn compile(
     r.leave(&mut f);
     f.instruction(&I::LocalGet(10))
         .instruction(&I::LocalGet(17))
-        .instruction(&I::I32Const(super::super::array_value::FROZEN_VERSION))
-        .instruction(&I::StructNew(l.gc.index(Type::Array(entries))))
-        .instruction(&I::StructNew(
-            l.gc.index(semantic_type(output, l.semantics)),
-        ));
+        .instruction(&I::I32Const(super::super::array_value::FROZEN_VERSION));
+    if let Some(entries) = entries {
+        f.instruction(&I::StructNew(l.gc.index(Type::Array(entries))));
+    }
+    f.instruction(&I::StructNew(
+        l.gc.index(semantic_type(output, l.semantics)),
+    ));
     emit_result_success(&mut f, r.result, l.gc);
     f.instruction(&I::End);
     f

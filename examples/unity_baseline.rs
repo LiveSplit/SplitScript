@@ -53,6 +53,14 @@ fn fixtures() -> BTreeMap<String, String> {
     BTreeMap::from([
         ("native".into(), "state \"game.exe\" {}".into()),
         (
+            "il2cpp-set".into(),
+            schema(selector, "static Set<[String?]> value;"),
+        ),
+        (
+            "mono-set".into(),
+            schema("Unity.mono(MonoVersion.V2)", "static Set<[String?]> value;"),
+        ),
+        (
             "il2cpp-map".into(),
             schema(selector, "static Map<String, [String?]> value;"),
         ),
