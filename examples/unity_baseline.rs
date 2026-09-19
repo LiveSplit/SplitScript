@@ -96,6 +96,10 @@ fn fixtures() -> BTreeMap<String, String> {
             include_str!("../tests/pe_debug_id.split").into(),
         ),
         (
+            "elf-export".into(),
+            include_str!("../tests/elf_export.split").into(),
+        ),
+        (
             "elf-build-id".into(),
             include_str!("../tests/elf_build_id.split").into(),
         ),

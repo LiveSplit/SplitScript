@@ -25,7 +25,7 @@ if revision != PIN:
 changes = subprocess.check_output(
     ["git", "-c", f"safe.directory={ASR.as_posix()}", "-C", str(ASR),
      "diff", "HEAD", "--", "src/game_engine/unity/mono/offsets.rs",
-     "src/game_engine/unity/mono/builds.rs"], text=True
+     "src/game_engine/unity/mono/builds.rs", "src/game_engine/unity/mono/linux_builds.rs"], text=True
 )
 if changes:
     raise SystemExit("The pinned Mono source files have uncommitted changes")
@@ -87,6 +87,21 @@ for match in re.finditer(r'Build \{\s*debug_id: debug_id\("([^"]+)", (\d+)\),\s*
 assert len(builds) == len(re.findall(r"debug_id: debug_id\(", build_text)) and len(builds) > 20
 
 
+linux_fallbacks = []
+for match in re.finditer(r"\(BinaryFormat::ELF(?: \| BinaryFormat::MachO)?, Version::(\w+), PointerSize::Bit64\) => (?:\{\s*)?Some\(&Self \{(.*?)\n\s*\}\)", fallback_text, re.S):
+    version, body = match.groups()
+    linux_fallbacks.append(dict(version=version, width=64, offsets=flatten(body)))
+assert len(linux_fallbacks) == 4
+linux_text = (SOURCE / "linux_builds.rs").read_text(encoding="utf-8").split("#[cfg(")[0]
+linux_layouts = {name: flatten(body) for name, body in re.findall(
+    r"static (UNITY_\w+): MonoOffsets = MonoOffsets \{(.*?)\n\};", linux_text, re.S)}
+linux_builds = []
+for label, identity, width, version, layout in re.findall(
+    r'// ([^\n]+)\n    Build \{\s*build_id: &id::<\d+>\("([^"]+)"\),\s*pointer_size: PointerSize::Bit(\d+),\s*version: Version::(\w+),\s*offsets: &(\w+),', linux_text):
+    linux_builds.append(dict(label=label, build_id=identity, width=int(width), version=version, layout=layout, offsets=linux_layouts[layout]))
+assert len(linux_builds) == 13 and all(row['width'] == 64 for row in linux_builds)
+
+
 def value(raw, optional):
     return "None" if raw is None else f"Some({hex(raw)})" if optional else hex(raw)
 
@@ -113,6 +128,19 @@ lines += ["        return Ok(None)", "    }"]
 for index, row in enumerate(builds):
     lines += ["", f"    // PDB {row['guid']}, age {row['age']}; {row['width']}-bit {row['version']}.",
               f"    private static fn build{index}() -> MonoLayout {{", constructor(row), "    }"]
+lines += ["", "    private static fn forLinuxVersion(version: MonoVersion) -> MonoLayout {"]
+for row in linux_fallbacks[:-1]:
+    lines += [f"        if version == MonoVersion.{row['version']} {{", constructor(row, "            "), "        }"]
+lines += [constructor(linux_fallbacks[-1]), "    }", "", "    private static fn forLinuxBuild(identity: [u8]) -> MonoLayout? {"]
+linux_distinct = list(dict.fromkeys(row['layout'] for row in linux_builds))
+for row in linux_builds:
+    raw = ", ".join(str(byte) for byte in bytes.fromhex(row['build_id']))
+    index = linux_distinct.index(row['layout'])
+    lines += [f"        // {row['label']}", f"        if identity == [{raw}] {{ return Some(MonoLayout.linuxBuild{index}()) }}"]
+lines += ["        return None", "    }"]
+for index, name in enumerate(linux_distinct):
+    row = next(row for row in linux_builds if row['layout'] == name)
+    lines += ["", f"    private static fn linuxBuild{index}() -> MonoLayout {{", constructor(row), "    }"]
 lines += ["    // END GENERATED MONO PROFILES"]
 generated = "\n".join(lines)
 library = ROOT / "stdlib/standard.split"
@@ -131,12 +159,17 @@ else:
     text = text[:start] + "\n".join(fields) + "\n\n" + text[end:]
 destination = ROOT / "tests/fixtures/mono-pe-profiles.json"
 catalog = json.dumps(dict(asr_revision=PIN, fallbacks=fallbacks, builds=builds), indent=2) + "\n"
+linux_destination = ROOT / "tests/fixtures/mono-elf-profiles.json"
+linux_catalog = json.dumps(dict(asr_revision=PIN, fallbacks=linux_fallbacks, builds=linux_builds), indent=2) + "\n"
 if CHECK:
+    if linux_destination.read_text(encoding="utf-8") != linux_catalog:
+        raise SystemExit("Generated Linux Mono profiles differ; rerun without --check")
     if library.read_text(encoding="utf-8") != text or destination.read_text(encoding="utf-8") != catalog:
         raise SystemExit("Generated Mono profiles differ; rerun without --check")
-    print(f"Verified {len(builds)} measured PE profiles and {len(fallbacks)} fallback layouts")
+    print(f"Verified {len(builds)} measured PE profiles and {len(fallbacks)} PE fallbacks; {len(linux_builds)} ELF profiles and {len(linux_fallbacks)} ELF fallbacks")
     raise SystemExit(0)
+linux_destination.write_text(linux_catalog, encoding="utf-8", newline="\n")
 library.write_text(text, encoding="utf-8", newline="\n")
 destination.parent.mkdir(parents=True, exist_ok=True)
 destination.write_text(catalog, encoding="utf-8")
-print(f"Imported {len(builds)} measured PE profiles and {len(fallbacks)} fallback layouts")
+print(f"Imported {len(builds)} measured PE profiles and {len(fallbacks)} PE fallbacks; {len(linux_builds)} ELF profiles and {len(linux_fallbacks)} ELF fallbacks")

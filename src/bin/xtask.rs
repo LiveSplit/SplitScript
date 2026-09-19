@@ -1117,6 +1117,20 @@ const RUNTIME_FIXTURES: &[RuntimeFixture] = &[
         extra_arguments: &[],
     },
     RuntimeFixture {
+        source: "tests/mono_profiles.split",
+        output: "mono_profiles-debug.wasm",
+        profile: "debug",
+        harness: "tests/mono_linux_runtime.mjs",
+        extra_arguments: &[],
+    },
+    RuntimeFixture {
+        source: "tests/mono_profiles.split",
+        output: "mono_profiles.wasm",
+        profile: "release",
+        harness: "tests/mono_linux_runtime.mjs",
+        extra_arguments: &[],
+    },
+    RuntimeFixture {
         source: "tests/mono_profiles_V1.split",
         output: "mono_profiles_V1.wasm",
         profile: "release",

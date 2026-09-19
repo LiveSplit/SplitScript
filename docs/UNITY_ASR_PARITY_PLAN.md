@@ -1577,6 +1577,45 @@ Lunistice remains 58,178 bytes after adding the unused ELF reader. Linux Mono
 attachment/profile selection is not yet connected to this reader; macOS support,
 the remaining metadata work, and the final Lunistice size target remain open.
 
+## Linux Mono automatic attachment (2026-09-19)
+
+Automatic Unity discovery now recognizes `libmono.so` and
+`libmonobdwgc-2.0.so`. It requires a little-endian x86-64 ELF runtime, resolves
+`mono_assembly_foreach`, and scans its bounded function window for the Linux
+assembly-list instruction. Relative displacements are signed; out-of-module
+candidates are skipped. Unsupported architectures or missing instructions wait
+for process closure without continuing metadata reads; pending export lookup
+remains cooperative and can be cancelled.
+
+The pinned importer now generates all 13 ASR Linux build identities, their four
+measured layouts, and four platform-specific fallback layouts. Runtime identity
+always takes precedence, including unknown IDs. The player build ID is consulted
+only when the runtime identity is missing or unreadable. Exact selection bypasses
+player-version scanning. Unknown old runtimes use the image/class probe; modern
+fallbacks scan `UnityPlayer.so` for the upstream version markers. Windows and
+Linux fallback facts remain separate, preserving absent optional measurements.
+
+Independent Linux memory fixtures pass 31 attachment scenarios in each of Debug
+and Release: every build identity, all fallback families, identity precedence,
+malformed identity recovery, signed displacements, false signature candidates,
+unsupported architectures, cancellation, and profile changes on reattachment.
+The Windows attachment path also passes its existing suite: 62 profile,
+32 generic metadata, and 10 metadata cursor scenarios. Import regeneration and
+formatting checks pass. These are synthetic target-memory tests, not native
+Linux game validation. Explicit Linux profile selection and the public profile
+transition remain unfinished, as do macOS attachment and the other full-plan
+requirements.
+
+The reviewed size baseline now includes the standalone ELF export fixture
+(14,867 bytes). All 30 non-automatic existing fixtures retain module/section
+sizes, function/type counts, and function-body size multisets; no Linux discovery
+is emitted in those fixtures. The four automatic-discovery fixtures grow by
+37,999–39,966 bytes for ELF identity/export lookup, measured/fallback Linux
+profiles, and the additional asynchronous attachment paths. Automatic Lunistice
+is 163,919 bytes; explicit Lunistice remains 58,178 bytes. Both Lunistice edition
+fixtures pass. The Windows scanner remains unchanged to avoid retaining extra
+frames or arguments in scripts that do not use Linux discovery.
+
 ## Source map for implementation
 
 Upstream links below are pinned to the reviewed tip; the PR table provides the historical changes.
