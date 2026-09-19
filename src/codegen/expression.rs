@@ -2978,9 +2978,12 @@ pub(super) fn emit_managed_field_read(
     context: &ExprContext<'_>,
 ) -> Type {
     emit_managed_binding_field(function, &managed_field_offset_name(field.index()), context);
-    function
-        .instruction(&Instruction::I64ExtendI32U)
-        .instruction(&Instruction::I64Add);
+    emit_managed_binding_field(function, MANAGED_POINTER_SIZE_FIELD, context);
+    function.instruction(&Instruction::Call(
+        context
+            .runtime_helpers
+            .function(RuntimeHelperId::ManagedFieldAddress),
+    ));
     emit_managed_read_at_address(function, managed_field_binding(field, context), context)
 }
 
@@ -3042,9 +3045,12 @@ fn emit_managed_read_at_address(
     {
         function.instruction(&Instruction::I32Const(context.abi_read.destination(8)));
         emit_managed_binding_field(function, MANAGED_POINTER_SIZE_FIELD, context);
+        emit_managed_binding_field(function, MANAGED_POINTER_SIZE_FIELD, context);
         function
             .instruction(&Instruction::Call(
-                context.abi.function(AbiImportId::ProcessRead),
+                context
+                    .runtime_helpers
+                    .function(RuntimeHelperId::ReadManagedMemory),
             ))
             .instruction(&Instruction::If(BlockType::Result(
                 context.gc.val_type(Type::Result(result)),
@@ -3098,9 +3104,12 @@ fn emit_managed_read_at_address(
             context.semantics,
             context.runtime_globals.process_pointer_size,
         );
+        emit_managed_binding_field(function, MANAGED_POINTER_SIZE_FIELD, context);
         function
             .instruction(&Instruction::Call(
-                context.abi.function(AbiImportId::ProcessRead),
+                context
+                    .runtime_helpers
+                    .function(RuntimeHelperId::ReadManagedMemory),
             ))
             .instruction(&Instruction::If(BlockType::Result(
                 context.gc.val_type(Type::Result(result)),
@@ -5061,6 +5070,16 @@ fn compile_expr_unconverted(
             IntrinsicId::F64ToBits => {
                 compile_receiver(function, target, context);
                 function.instruction(&Instruction::I64ReinterpretF64);
+            }
+            IntrinsicId::ManagedFieldAddress => {
+                for argument in args {
+                    compile_expr(function, *argument, context);
+                }
+                function.instruction(&Instruction::Call(
+                    context
+                        .runtime_helpers
+                        .function(RuntimeHelperId::ManagedFieldAddress),
+                ));
             }
             IntrinsicId::AddressAdd => {
                 compile_receiver(function, target, context);

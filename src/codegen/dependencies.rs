@@ -531,6 +531,9 @@ impl BackendDependencies {
         let value = semantics
             .managed_field_value_type(field)
             .expect("checked managed fields have semantic value types");
+        if !declaration.is_static {
+            self.require(RuntimeHelperId::ManagedFieldAddress);
+        }
         if capabilities
             .memory()
             .depends_on_address_width(value, semantics)
@@ -538,6 +541,7 @@ impl BackendDependencies {
             self.needs_native_pointer_size = true;
         }
         if declaration.max_length.is_none() {
+            self.require(RuntimeHelperId::ReadManagedMemory);
             self.require_memory_read(value, None, semantics, capabilities);
             return;
         }

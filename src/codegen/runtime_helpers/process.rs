@@ -1436,6 +1436,67 @@ pub(super) fn compile_read_managed_string_field(
     function
 }
 
+/// Forms a managed instance-field address without overflowing the target width.
+/// A zero result means failure; both scalar/reference and string field readers
+/// reject it before calling the host, including when low memory is readable.
+pub(super) fn compile_managed_field_address() -> Function {
+    // Parameters: object address, nonnegative metadata offset, pointer width.
+    let mut function = Function::new([]);
+    emit_invalid_managed_span(&mut function, 0, 2, |function| {
+        function
+            .instruction(&Instruction::LocalGet(1))
+            .instruction(&Instruction::I64ExtendI32U)
+            .instruction(&Instruction::I64Const(1))
+            .instruction(&Instruction::I64Add);
+    });
+    function
+        .instruction(&Instruction::LocalGet(1))
+        .instruction(&Instruction::I32Const(0))
+        .instruction(&Instruction::I32LtS)
+        .instruction(&Instruction::I32Or)
+        .instruction(&Instruction::If(BlockType::Result(ValType::I64)))
+        .instruction(&Instruction::I64Const(0))
+        .instruction(&Instruction::Else)
+        .instruction(&Instruction::LocalGet(0))
+        .instruction(&Instruction::LocalGet(1))
+        .instruction(&Instruction::I64ExtendI32U)
+        .instruction(&Instruction::I64Add)
+        .instruction(&Instruction::End)
+        .instruction(&Instruction::End);
+    function
+}
+
+/// Checks the entire target-width span before a managed scalar or reference
+/// read. Empty fixed-layout values still require a valid non-null address.
+pub(super) fn compile_read_managed_memory(abi: &Abi) -> Function {
+    // Parameters: process, address, destination, byte size, pointer width.
+    // The destination is supplied by AbiReadScratch at each generated caller;
+    // forwarding it preserves the caller's checked fixed-layout reservation.
+    let abi_read_destination = 2;
+    let mut function = Function::new([]);
+    emit_invalid_managed_span(&mut function, 1, 4, |function| {
+        function
+            .instruction(&Instruction::I64Const(1))
+            .instruction(&Instruction::LocalGet(3))
+            .instruction(&Instruction::I64ExtendI32U)
+            .instruction(&Instruction::LocalGet(3))
+            .instruction(&Instruction::I32Eqz)
+            .instruction(&Instruction::Select);
+    });
+    function
+        .instruction(&Instruction::If(BlockType::Result(ValType::I32)))
+        .instruction(&Instruction::I32Const(0))
+        .instruction(&Instruction::Else)
+        .instruction(&Instruction::LocalGet(0))
+        .instruction(&Instruction::LocalGet(1))
+        .instruction(&Instruction::LocalGet(abi_read_destination))
+        .instruction(&Instruction::LocalGet(3))
+        .instruction(&Instruction::Call(abi.function(AbiImportId::ProcessRead)))
+        .instruction(&Instruction::End)
+        .instruction(&Instruction::End);
+    function
+}
+
 /// Leaves an invalid-span predicate on the stack. Sizes here are positive and
 /// bounded by the decoder before this helper is called; addresses never wrap
 /// around either the guest's 32-bit limit or the host's 64-bit address space.

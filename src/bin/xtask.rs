@@ -683,6 +683,20 @@ const RUNTIME_FIXTURES: &[RuntimeFixture] = &[
         extra_arguments: &[],
     },
     RuntimeFixture {
+        source: "tests/managed_slot_bounds.split",
+        output: "managed_slot_bounds.wasm",
+        profile: "release",
+        harness: "tests/managed_slot_bounds_runtime.mjs",
+        extra_arguments: &[],
+    },
+    RuntimeFixture {
+        source: "tests/managed_slot_bounds.split",
+        output: "managed_slot_bounds_debug.wasm",
+        profile: "debug",
+        harness: "tests/managed_slot_bounds_runtime.mjs",
+        extra_arguments: &[],
+    },
+    RuntimeFixture {
         source: "tests/managed_deep_snapshot.split",
         output: "managed_deep_snapshot_debug.wasm",
         profile: "debug",

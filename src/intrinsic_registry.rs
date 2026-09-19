@@ -83,6 +83,8 @@ pub(crate) enum RuntimeHelperId {
     Utf8StringFromMemory,
     ReadUtf8String,
     ReadUtf16LeString,
+    ManagedFieldAddress,
+    ReadManagedMemory,
     EnterManagedObject,
     ChargeManagedWork,
     ReadManagedString,
@@ -669,6 +671,7 @@ const fn dependency_roots(id: IntrinsicId) -> &'static [DependencyRoot] {
             HostImport(Host::ProcessGetMemoryRangeFlags),
         ],
         IntrinsicId::ProcessReadRelative32 => &[Helper(Runtime::ReadRelative32)],
+        IntrinsicId::ManagedFieldAddress => &[Helper(Runtime::ManagedFieldAddress)],
         // The dependency walker selects a concrete reader backend from the
         // receiver type. Static roots here would retain every emulator.
         IntrinsicId::MemoryReaderReadUtf8 | IntrinsicId::MemoryReaderReadUtf16Le => &[MemoryReader],
@@ -1515,6 +1518,19 @@ pub(crate) const fn contract(id: IntrinsicId) -> IntrinsicContract {
                 T_ITERATOR_STEP,
             ),
             MUTATES_ALLOCATES,
+            Everywhere,
+            RepresentationPrimitive
+        ),
+        IntrinsicId::ManagedFieldAddress => contract!(
+            ManagedFieldAddress,
+            Function,
+            signature(
+                NO_TYPE_PARAMETERS,
+                None,
+                params![value(ADDRESS), value(U32), value(U32)],
+                ADDRESS
+            ),
+            PURE,
             Everywhere,
             RepresentationPrimitive
         ),

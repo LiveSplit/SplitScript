@@ -1,0 +1,28 @@
+image "Assembly-CSharp" {
+    class ProfileProbe {
+        static ProfileProbe instance;
+        static u64 counter;
+        u64 value;
+        ProfileProbe? next;
+        String text maxLength 8;
+    }
+}
+state Unity ["game.exe"] {
+    liveValue = ProfileProbe.instance?.value?;
+    nextValue = match ProfileProbe.instance?.next? {
+        Some(child) => child.value?, None => 0,
+    };
+    liveText = ProfileProbe.instance?.text?;
+    staticValue = ProfileProbe.counter?;
+    snapshot = ProfileProbe.instance?.snapshot()?;
+}
+whileAttached {
+    setVariable("live", current.liveValue)
+    setVariable("next", current.nextValue)
+    setVariable("text", current.liveText)
+    setVariable("static", current.staticValue)
+    setVariable("snapshot", current.snapshot.value)
+    setVariable("old", old.snapshot.value)
+    let root = ProfileProbe.instance else return
+    setVariable("result", match root.snapshot() { Ok(_) => "ok", Err(error) => error })
+}

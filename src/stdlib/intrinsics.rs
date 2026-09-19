@@ -67,6 +67,7 @@ macro_rules! trusted_intrinsics {
             SetRemove,
             SetClear,
             AddressAdd,
+            ManagedFieldAddress,
             ProcessName,
             ProcessPath,
             ProcessMainModule,

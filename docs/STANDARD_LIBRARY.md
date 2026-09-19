@@ -425,6 +425,12 @@ object address during attachment. Scalar leaves use their declared fixed-width
 type and do not allocate a new GC object. Strings, arrays, explicit class
 snapshots, and completed instance searches materialize owned values.
 
+Field-address addition and complete scalar, reference, and string read spans
+are checked against the target's pointer width before a host read. Overflow is
+a failed read even if the wrapped address would be readable. Static binding
+retries invalid table-plus-offset addresses and rereads the table after yielding,
+so corrected storage can become available without restarting attachment.
+
 The declared class name `T` is an immutable local snapshot, while `T.Ref` is a
 live remote object reference. Each instance-field hop from `T.Ref` is fallible.
 Use postfix `?` to propagate a failed hop to the surrounding state field,

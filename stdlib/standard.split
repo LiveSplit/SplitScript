@@ -1280,6 +1280,11 @@ namespace timer {
 /// }
 /// ```
 namespace Unity {
+    // Shared with generated instance-field reads. Zero denotes an invalid
+    // base/offset/width; callers retry discovery without caching that address.
+    @intrinsic(ManagedFieldAddress)
+    private fn managedFieldAddress(base: address, offset: u32, pointerSize: u32) -> address;
+
     // Builds the provider's backend-independent context after auto-detection.
     private fn providerAuto() -> async UnityRuntime {
         loop {
@@ -8437,7 +8442,16 @@ private struct UnityClass {
             address: field.owner,
             module: self.module,
         }
-        return (await owner.staticTable()).add(field.offset as u64)
+        return await owner.staticSlot(field.offset)
+    }
+
+    private fn staticSlot(offset: u32) -> async address {
+        loop {
+            let table = await self.staticTable()
+            let slot = Unity.managedFieldAddress(table, offset, self.module.pointerSize)
+            if slot != 0 { return slot }
+            await nextTick()
+        }
     }
 
     // Preserves completed absence for conditional schema fields.
@@ -8449,7 +8463,7 @@ private struct UnityClass {
                     address: field.owner,
                     module: self.module,
                 }
-                Some((await owner.staticTable()).add(field.offset as u64))
+                Some(await owner.staticSlot(field.offset))
             },
             None => None,
         }
@@ -11932,8 +11946,16 @@ private struct MonoClass {
     // Resolves static storage against the field's declaring runtime class.
     private fn staticFieldAny(names: [String]) -> async address {
         let field = await self.fieldAny(names)
-        let table = await self.module.staticTableForClass(field.owner)
-        return table.add(field.offset as u64)
+        return await self.staticSlot(field.owner, field.offset)
+    }
+
+    private fn staticSlot(owner: address, offset: u32) -> async address {
+        loop {
+            let table = await self.module.staticTableForClass(owner)
+            let slot = Unity.managedFieldAddress(table, offset, self.module.pointerBytes() as u32)
+            if slot != 0 { return slot }
+            await nextTick()
+        }
     }
 
     // Preserves completed absence for conditional schema fields.
@@ -11941,8 +11963,7 @@ private struct MonoClass {
         let field = await self.probeFieldAny(names)
         return match field {
             Some(field) => {
-                let table = await self.module.staticTableForClass(field.owner)
-                Some(table.add(field.offset as u64))
+                Some(await self.staticSlot(field.owner, field.offset))
             },
             None => None,
         }

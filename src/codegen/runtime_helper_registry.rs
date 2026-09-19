@@ -145,6 +145,8 @@ pub(super) const DESCRIPTORS: &[RuntimeHelperDescriptor] = &[
     helper!(Utf8StringFromMemory, (I32) -> (StringValue), deps [StringFromMemory], imports [], build_utf8_string_from_memory, scratch [NativeUtf8]),
     helper!(ReadUtf8String, (I64, I64, I32) -> (StringValue), deps [Utf8StringFromMemory], imports [ProcessRead], build_read_utf8_string, scratch [NativeUtf8]),
     helper!(ReadUtf16LeString, (I64, I64, I32) -> (StringValue), deps [Utf16LeStringFromMemory], imports [ProcessRead], build_read_utf16_le_string, scratch [Utf16Input]),
+    helper!(ManagedFieldAddress, (I64, I32, I32) -> (I64), deps [], imports [], build_managed_field_address),
+    helper!(ReadManagedMemory, (I64, I64, I32, I32, I32) -> (I32), deps [], imports [ProcessRead], build_read_managed_memory),
     helper!(EnterManagedObject, (Standard(StdlibTypeId::ManagedReadContext), I64) -> (I32), deps [], imports [], build_enter_managed_object),
     helper!(ChargeManagedWork, (Standard(StdlibTypeId::ManagedReadContext)) -> (I32), deps [], imports [], build_charge_managed_work),
     helper!(ReadManagedString, (I64, I64, I32, I32) -> (I32, StringValue), deps [], imports [ProcessRead], build_read_managed_string, scratch [Utf16Input, Utf16Output]),

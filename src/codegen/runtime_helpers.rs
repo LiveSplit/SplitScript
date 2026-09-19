@@ -323,6 +323,14 @@ pub(super) fn build_read_utf16_le_string(inputs: &RuntimeHelperInputs<'_>) -> Fu
     )
 }
 
+pub(super) fn build_managed_field_address(_inputs: &RuntimeHelperInputs<'_>) -> Function {
+    process::compile_managed_field_address()
+}
+
+pub(super) fn build_read_managed_memory(inputs: &RuntimeHelperInputs<'_>) -> Function {
+    process::compile_read_managed_memory(inputs.abi)
+}
+
 pub(super) fn build_read_managed_string(inputs: &RuntimeHelperInputs<'_>) -> Function {
     let scratch = inputs.memory.scratch();
     process::compile_read_managed_string(

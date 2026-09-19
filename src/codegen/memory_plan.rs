@@ -468,10 +468,15 @@ mod tests {
         ] {
             let lines = source.lines().collect::<Vec<_>>();
             for (index, line) in lines.iter().enumerate() {
-                if !line.contains("AbiImportId::ProcessRead") {
+                let forwarded = line.contains("RuntimeHelperId::ReadManagedMemory");
+                if !line.contains("AbiImportId::ProcessRead") && !forwarded {
                     continue;
                 }
-                let start = index.saturating_sub(12);
+                // The managed span-check wrapper forwards the destination;
+                // audit its callers as well as its eventual host call. Typed
+                // reads spell out layout/width arguments between the named
+                // reservation and wrapper invocation.
+                let start = index.saturating_sub(if forwarded { 24 } else { 12 });
                 let prefix = lines[start..index].join("\n");
                 assert!(
                     [

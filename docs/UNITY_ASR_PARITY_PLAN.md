@@ -763,6 +763,60 @@ confirms that all other non-timing fields match. The reviewed report was recorde
 and the strict gate, including base/DLC behavior, passed. The game stayed closed
 throughout this slice. The below-30,000-byte completion requirement is unchanged.
 
+### Checked managed field slots (2026-09-19)
+
+Generated instance-field access and both backend static binders now share one
+checked base-plus-offset operation. It rejects null bases, invalid widths,
+negative metadata offsets, and addition beyond the target address limit before
+forming an address. Scalar and reference field reads validate their complete
+target-width spans before the host call; string field/object readers keep their
+existing checked spans. This closes the wrapped-instance-address gap recorded
+in the recursive snapshot slice above.
+
+Static lookup preserves the matched declaring owner. Invalid table-plus-offset
+addresses yield and rediscover the static table, including conditional-field
+probes; they are never cached as valid wrapped addresses. Both source binding
+and generated value reads use the same field-address helper, retained only for
+reachable operations.
+
+A new fixture covers overflowing additions, scalar/reference/string slots
+crossing the address limit, valid slots ending at the last target byte, invalid
+static-table arithmetic, delayed correction of static storage, and unchanged
+previous snapshots. It deliberately makes low addresses and bytes beyond the
+target limit readable in the mock host, so a failed underlying memory read
+cannot accidentally hide unchecked arithmetic.
+
+The fixture runs 44 cases in each of Debug and Release, including cancellation
+during an invalid static-storage retry and successful attachment after reopening.
+All 100 Wasm artifacts validate and all 130 registered runtime scenarios pass.
+Validation also covers 662 compiler tests, 441 library tests (one ignored),
+106 syntax tests, 29 loader tests, both CLI suites, and four baseline tests.
+The named-scratch audit was extended to check callers of the new forwarding
+helper as well as its host call; its focused rerun passed after the other
+library tests. Clippy, formatting, and 558 generated documentation pages pass.
+
+The optimized size review records explicit Lunistice at 57,522 bytes (+714) and
+automatic at 124,917 (+1,240). In the explicit artifact, the checked address and
+read helpers are 63 and 64 bytes; static-slot retry init/poll bodies add 385;
+snapshot/static callers add 133; update call encodings add four; code framing
+adds five; and type/function sections add 60. No data/import section grows.
+IL2CPP scalar/string grow by 584/501 bytes; Mono scalar/string by 607/524.
+Automatic profiles and nested metadata retain both backend retry helpers and
+grow by 1,248 bytes. Native, local map/set, binary identity, and instance-only
+fixtures retain their previous sizes. Unused string fields still produce the
+corresponding scalar artifact. All 22 scratch capacities, static data bounds,
+and initial page counts are unchanged. The reviewed report was recorded and
+the strict gate, including Lunistice base/DLC behavior, passed.
+
+The final explicit artifact was checked against the demo: 403 accelerated host
+updates, 31,578 process reads, zero failed reads, and Title/Hana/zero counters.
+The game was closed immediately in cleanup and process exit was verified.
+No actual timer actions were sent. The recorded artifact hash matches the
+live-tested artifact; evidence is in `target/managed-slot-live.json`. The
+below-30,000-byte completion requirement remains open, as do recursive
+collections, shared byte/element budgets, structured error paths, and the
+remaining metadata/platform work.
+
 ## Source map for implementation
 
 Upstream links below are pinned to the reviewed tip; the PR table provides the historical changes.
