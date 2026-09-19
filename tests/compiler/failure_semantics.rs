@@ -2262,7 +2262,7 @@ fn managed_readable_accepts_memory_layouts_and_managed_strings() {
 
 #[test]
 fn managed_readable_rejects_types_without_implemented_decoders() {
-    for value_type in ["char", "[String]", "Map<String, String>", "Header"] {
+    for value_type in ["char", "[char]", "Map<String, String>", "Header"] {
         let source = format!(
             r#"
             state Unity ["game.exe"] {{}}

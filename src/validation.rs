@@ -563,7 +563,7 @@ fn validate_remote_memory_layouts(
                 TypeKind::Array { length: None, .. }
             ) {
                 diagnostic = diagnostic.with_note(
-                    "a growable `[T]` does not describe the runtime layout of a managed array or list; managed collections need dedicated schema support",
+                    "every managed array element needs an implemented `ManagedReadable` decoder; live references cannot be retained as owned elements",
                 );
             }
             diagnostics.push(diagnostic);

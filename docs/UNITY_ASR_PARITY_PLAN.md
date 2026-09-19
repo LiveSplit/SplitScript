@@ -182,7 +182,7 @@ For public API changes, the recommended direction is:
 - Add `ManagedReadable` to the existing capability system. Fixed-layout `MemoryReadable` types are its base cases; high-level `String`, arrays, maps, sets, nullable reference values, and declared class snapshots compose it recursively.
 - Prefer ordinary schema value types such as `Map<String, [String]>`, `[[Player?]]`, and `Set<String>` over mandatory `ManagedArray`/`ManagedDictionary` wrappers at every level. Keep remote storage shape separate: a local `[T]` may be backed by a managed vector or a `List<T>`, resolved from field/runtime metadata. Allow explicit storage hints where metadata cannot determine the supported shape; never guess the representation from local value size. Raw UTF-16 remains an explicit opt-in storage projection.
 - Extend `ManagedFieldBinding` to carry declared schema type, live-access type, snapshot type, remote storage description, and recursive decoder-plan identity. Array/list materialization produces sequences, dictionary materialization produces maps, set materialization produces sets, and class materialization produces class snapshots. The live-reference projection is distinct and opt-in where required.
-- Finalize concrete grammar and bound spelling in Step 1, then update parser, type checking, formatting, diagnostics, highlighting, completion, documentation, and fixtures together. No deprecated parallel spellings are needed.
+- Finalize concrete value syntax and storage hints in Step 1, then update parser, type checking, formatting, diagnostics, highlighting, completion, documentation, and fixtures together. No deprecated parallel spellings are needed.
 
 ### Recursive `ManagedReadable` contract
 
@@ -859,6 +859,62 @@ game was immediately closed and process exit verified. Evidence is in
 `target/managed-length-live.json`. Recursive containers, raw UTF-16 projection,
 collection element budgets, remaining metadata/platform work, and the
 below-30,000-byte Lunistice completion requirement remain open.
+
+### Recursive managed vector readers — decoder implementation
+
+Reachable dynamic array reads now build an interned decoder graph that composes
+inline `MemoryReadable` values, strings, nullable references, nested arrays,
+and owned class snapshots. The same readers serve direct managed fields and
+class snapshot fields. Recursive class/array schemas generate finite mutually
+recursive functions; completed repeated children are permitted, while cycles
+on the active object path fail the complete root read.
+
+Each vector validates its header, zero bounds pointer, full target-width length,
+and complete payload span before allocation or element traversal. Inline values
+use their native layouts; reference children consume one target pointer slot.
+All children share the root's depth, object, byte, and element budgets. Inline
+fixed-array materialization also charges owned storage and element work, even
+for zero-byte native layouts. Child errors propagate without publishing a
+partial parent; accepted state retains its previously owned values on failure.
+
+Demand starts at reachable reads, not array declarations. The collection
+counter is appended only in modules using these readers. String arrays omit
+the class-field work helper; arrays containing class snapshots retain it.
+Unused array declarations preserve helper demand, function counts, scratch,
+static storage, memory pages, and section sizes. Declaring an optional type
+sooner can renumber an existing GC type, so binary identity is not the invariant.
+
+This implements vector decoding within Steps 8–10, not their completion.
+Snapshot-owned arrays still need deep mutation protection, including inline
+fixed-array children and aliases. Runtime metadata storage-shape validation,
+lists, dictionaries, sets, raw UTF-16 projection, and structured nested error
+paths remain open. The reader currently accepts zero-based vectors only.
+
+The new matrix covers Mono and IL2CPP at both pointer widths in Debug and
+Release: nested nullability, inline fixed arrays, target pointers, class
+children, remote mutation/replacement, invalid headers/spans/counts, unreadable
+children, shared element exhaustion, and transactional state retention.
+A separate recursive tree fixture exercises shared children, array/class
+cycles, depth and object boundaries, and complete owned traversal independently
+of display depth limits.
+
+Validation: 440 library tests (one ignored), 662 compiler tests, and four
+baseline tests passed; after narrowing helper demand, all four focused array
+compiler tests passed, including the additional demand regression. The full
+runtime catalog passed with 104 artifacts and 134 scenarios. The final array
+rerun passed 72 matrix cases and 44 recursive-tree cases in each build profile
+(232 cases total). Clippy, formatting, and 557 documentation pages passed.
+
+All 22 existing size fixtures remain unchanged, including explicit-profile
+Lunistice at 58,178 bytes and automatic selection at 125,920 bytes. The four new
+Release baselines are IL2CPP string arrays 49,693 bytes, IL2CPP nested nullable
+arrays 50,830 bytes, Mono string arrays 40,535 bytes, and Mono nested nullable
+arrays 41,661 bytes. Their additional code consists of the reachable typed
+readers, shared collection guards, and local formatting/equality dependencies.
+Scratch remains 10,264 bytes for IL2CPP and 10,248 for Mono. The baseline harness
+also passed both Lunistice edition scenarios; the live game was not needed for
+this unchanged Lunistice artifact size. The below-30,000-byte completion gate
+remains open.
 
 ## Source map for implementation
 

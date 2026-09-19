@@ -1560,7 +1560,7 @@ pub(super) fn compile_read_managed_memory(abi: &Abi) -> Function {
 /// Leaves an invalid-span predicate on the stack. Sizes here are positive and
 /// bounded by the decoder before this helper is called; addresses never wrap
 /// around either the guest's 32-bit limit or the host's 64-bit address space.
-fn emit_invalid_managed_span(
+pub(in crate::codegen) fn emit_invalid_managed_span(
     function: &mut Function,
     address: u32,
     pointer_size: u32,

@@ -93,6 +93,14 @@ fn fixtures() -> BTreeMap<String, String> {
             schema(selector, "static String value;"),
         ),
         (
+            "il2cpp-array".into(),
+            schema(selector, "static [String] value;"),
+        ),
+        (
+            "il2cpp-nested-array".into(),
+            schema(selector, "static [[String?]?] value;"),
+        ),
+        (
             "il2cpp-unused-string".into(),
             schema(selector, "static i32 value; static String unused;"),
         ),
@@ -111,6 +119,14 @@ fn fixtures() -> BTreeMap<String, String> {
         (
             "mono-string".into(),
             schema("Unity.mono(MonoVersion.V2)", "static String value;"),
+        ),
+        (
+            "mono-array".into(),
+            schema("Unity.mono(MonoVersion.V2)", "static [String] value;"),
+        ),
+        (
+            "mono-nested-array".into(),
+            schema("Unity.mono(MonoVersion.V2)", "static [[String?]?] value;"),
         ),
         (
             "mono-unused-string".into(),

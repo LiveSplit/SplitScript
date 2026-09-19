@@ -77,6 +77,7 @@ pub(crate) struct ManagedFieldBinding {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum ManagedFieldRead {
     Fixed,
+    Array,
     ManagedString { nullable: bool },
 }
 
@@ -92,6 +93,11 @@ impl ManagedFieldRead {
             TypeKind::Standard(StdlibTypeId::String)
         ) {
             Self::ManagedString { nullable }
+        } else if matches!(
+            semantics.types().kind(value),
+            TypeKind::Array { length: None, .. }
+        ) {
+            Self::Array
         } else {
             Self::Fixed
         }

@@ -31,6 +31,7 @@ pub(super) struct Reachability {
     gc_structs: BTreeSet<StructId>,
     gc_managed_classes: BTreeSet<ManagedClassId>,
     managed_snapshots: BTreeSet<ManagedClassId>,
+    managed_decoders: BTreeSet<TypeId>,
     managed_instances: BTreeSet<ManagedClassId>,
     gc_enums: BTreeSet<EnumId>,
     gc_arrays: BTreeSet<ArrayTypeId>,
@@ -670,28 +671,107 @@ impl Reachability {
         if !program.settings.is_empty() || !reachable.derived_debugs.is_empty() {
             type_roots.push(semantics.types().id_for_standard(StdlibTypeId::String));
         }
-        // A snapshot recursively materializes declared child classes. These
-        // generated calls are not explicit Wasm IR expression roots.
-        let mut pending_snapshots = reachable
+        let mut field_reads = BTreeSet::new();
+        for (owner, id) in reachable.expression_instances() {
+            let expression = wasm_ir.expression(id).unwrap();
+            let members = match &expression.kind {
+                wasm_ir::ExpressionKind::Path { root, members } => {
+                    if let Some(crate::semantic::ResolvedValue::ManagedStatic { field, .. }) = root
+                    {
+                        field_reads.insert(*field);
+                    }
+                    members.as_slice()
+                }
+                wasm_ir::ExpressionKind::Member { members, .. } => members.as_slice(),
+                wasm_ir::ExpressionKind::Call { target, .. } => {
+                    let target = reachable.resolved_call_target(owner.as_ref(), id, target);
+                    if let Some((receiver, _)) = target.receiver_with_type() {
+                        if let Some((
+                            crate::semantic::ResolvedValue::ManagedStatic { field, .. },
+                            _,
+                        )) = receiver.path()
+                        {
+                            field_reads.insert(field);
+                        }
+                        receiver.members()
+                    } else {
+                        &[]
+                    }
+                }
+                _ => &[],
+            };
+            for member in members {
+                if let crate::semantic::ResolvedMember::ManagedField(field) = member {
+                    field_reads.insert(*field);
+                }
+            }
+        }
+        let mut pending_classes = reachable
             .managed_snapshots
             .iter()
             .copied()
             .collect::<Vec<_>>();
-        while let Some(class) = pending_snapshots.pop() {
-            let declaration = program.managed_class(class).expect("snapshot class exists");
-            for field in declaration.all_fields().filter(|field| !field.is_static) {
-                let ty = semantics
-                    .managed_field_snapshot_type(field.id)
-                    .expect("snapshot field type exists");
-                let child_type = match semantics.types().kind(ty) {
-                    TypeKind::Option { value, .. } => *value,
-                    _ => ty,
-                };
-                if let TypeKind::ManagedClass(child) = semantics.types().kind(child_type)
-                    && reachable.managed_snapshots.insert(*child)
+        let mut pending_decoders = Vec::new();
+        for field in field_reads {
+            let value = semantics.managed_field_value_type(field).unwrap();
+            if crate::managed::ManagedFieldRead::for_type(value, semantics)
+                == crate::managed::ManagedFieldRead::Array
+            {
+                pending_decoders.push(value);
+            }
+        }
+        // Interleave class and decoder nodes to close recursive schemas without
+        // retaining readers merely because their types or declarations exist.
+        while !pending_classes.is_empty() || !pending_decoders.is_empty() {
+            while let Some(class) = pending_classes.pop() {
+                for field in program
+                    .managed_class(class)
+                    .unwrap()
+                    .all_fields()
+                    .filter(|field| !field.is_static)
                 {
-                    pending_snapshots.push(*child);
-                    type_roots.push(ty);
+                    let ty = semantics.managed_field_snapshot_type(field.id).unwrap();
+                    let child_type = match semantics.types().kind(ty) {
+                        TypeKind::Option { value, .. } => *value,
+                        _ => ty,
+                    };
+                    if let TypeKind::ManagedClass(child) = semantics.types().kind(child_type)
+                        && reachable.managed_snapshots.insert(*child)
+                    {
+                        pending_classes.push(*child);
+                        type_roots.push(ty);
+                    }
+                    if crate::managed::ManagedFieldRead::for_type(ty, semantics)
+                        == crate::managed::ManagedFieldRead::Array
+                    {
+                        pending_decoders.push(ty);
+                    }
+                }
+            }
+            while let Some(ty) = pending_decoders.pop() {
+                if !reachable.managed_decoders.insert(ty) {
+                    continue;
+                }
+                type_roots.push(ty);
+                type_roots.extend(semantics.types().iter().find_map(|(id, kind)| {
+                    matches!(kind, TypeKind::Result { value, .. } if *value == ty).then_some(id)
+                }));
+                match capabilities
+                    .managed_decoder(ty)
+                    .expect("reachable managed values have decoder nodes")
+                {
+                    crate::managed_read::ManagedDecoder::Array { element } => {
+                        pending_decoders.push(element)
+                    }
+                    crate::managed_read::ManagedDecoder::Optional { value } => {
+                        pending_decoders.push(value)
+                    }
+                    crate::managed_read::ManagedDecoder::Class { class }
+                        if reachable.managed_snapshots.insert(class) =>
+                    {
+                        pending_classes.push(class);
+                    }
+                    _ => {}
                 }
             }
         }
@@ -855,6 +935,10 @@ impl Reachability {
 
     pub fn contains_managed_class_type(&self, class: ManagedClassId) -> bool {
         self.gc_managed_classes.contains(&class)
+    }
+
+    pub fn managed_decoders(&self) -> impl Iterator<Item = TypeId> + '_ {
+        self.managed_decoders.iter().copied()
     }
 
     pub fn managed_snapshots(&self) -> impl Iterator<Item = ManagedClassId> + '_ {

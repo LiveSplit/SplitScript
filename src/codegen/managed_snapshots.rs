@@ -395,7 +395,7 @@ fn leave_object(function: &mut Function, gc: &super::GcLayout) {
         .instruction(&Instruction::ArraySet(array));
 }
 
-fn result_for(
+pub(super) fn result_for(
     value: crate::types::TypeId,
     lowering: &super::context::EmissionContext<'_>,
 ) -> crate::ast::ResultTypeId {

@@ -3551,7 +3551,9 @@ capability MemoryReadable: ManagedReadable {}
 /// nullable strings additionally decode managed object references and own their
 /// resulting text. String schema fields use their stored UTF-16 length and
 /// share a materialization budget. Class snapshots recursively read child classes and
-/// nullable child classes. Managed collection nodes are not yet implemented.
+/// nullable child classes. Arrays recursively decode managed-readable elements,
+/// including arrays, optional strings, and owned class snapshots. Managed lists,
+/// dictionaries, and sets still require collection-shape support.
 /// [`ManagedReadable`] does not make a type usable with [`Process.read`], which
 /// still requires [`MemoryReadable`].
 ///

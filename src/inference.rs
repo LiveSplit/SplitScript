@@ -2975,8 +2975,9 @@ pub(crate) fn type_may_have_capability(
                     TypeKind::Standard(crate::stdlib::StdlibTypeId::String)
                         | TypeKind::Option { .. }
                         | TypeKind::ManagedClass(_)
+                        | TypeKind::Array { .. }
                 ),
-                Type::Option(_) => true,
+                Type::Option(_) | Type::Array(_) => true,
                 _ => false,
             };
     }

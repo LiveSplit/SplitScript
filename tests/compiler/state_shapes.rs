@@ -810,57 +810,143 @@ fn lunistice_shaped_unity_schema_reads_both_editions_without_manual_offsets() {
 }
 
 #[test]
-fn unsupported_managed_value_layouts_are_diagnosed_before_codegen() {
-    let source = r#"
-        image "Assembly-CSharp" {
-            class WorldSaveData {
-                static WorldSaveData instance;
-                [String] coinFlags;
-            }
-        }
-
-        state Unity ["game.exe"] {
-            coinFlags: [String] = WorldSaveData.instance?.coinFlags?;
-        }
-
-        whileAttached {
-            print(current.coinFlags)
-        }
-    "#;
-
-    for profile in [
-        splitscript::BuildProfile::Debug,
-        splitscript::BuildProfile::Release,
+fn managed_arrays_compose_strings_and_owned_classes() {
+    for source in [
+        include_str!("../managed_arrays.split"),
+        include_str!("../managed_array_tree.split"),
     ] {
-        let diagnostics = splitscript::compile_with_options(
-            source,
-            splitscript::CompilerOptions {
-                profile,
-                ..splitscript::CompilerOptions::default()
-            },
-        )
-        .expect_err("unsupported managed collections must stop before code generation");
-        let diagnostic = diagnostics
-            .iter()
-            .find(|diagnostic| {
-                diagnostic.message.contains(
-                    "managed field `WorldSaveData.coinFlags` has no supported managed decoder",
-                )
-            })
-            .expect("the managed field declaration should receive a source diagnostic");
-        assert_eq!(
-            &source[diagnostic.span.start..diagnostic.span.end],
-            "[String]"
+        for profile in [
+            splitscript::BuildProfile::Debug,
+            splitscript::BuildProfile::Release,
+        ] {
+            let wasm = splitscript::compile_with_options(
+                source,
+                splitscript::CompilerOptions {
+                    profile,
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+            Validator::new_with_features(WasmFeatures::all())
+                .validate_all(&wasm)
+                .unwrap();
+        }
+    }
+}
+
+#[test]
+fn managed_array_elements_must_be_owned_managed_readable_values() {
+    let source = r#"image "Assembly-CSharp" {
+        class Player { [Player.Ref] children; }
+    }
+    state Unity ["game.exe"] {}"#;
+    let diagnostics = splitscript::compile(source)
+        .expect_err("live references cannot become owned array elements");
+    assert!(diagnostics.iter().any(|diagnostic| {
+        diagnostic
+            .message
+            .contains("has no supported managed decoder")
+    }));
+}
+
+#[test]
+fn managed_array_budgets_follow_reachable_child_decoders() {
+    for (element, class_fields) in [("String", false), ("Child", true)] {
+        let source = format!(
+            r#"
+            image "Assembly-CSharp" {{
+                class Probe {{ static [{element}] values; }}
+                class Child {{ i32 score; }}
+            }}
+            state Unity.il2cpp(Il2CppProfile.unity2022_3_0f1X64()) ["game.exe"] {{
+                values = Probe.values?;
+            }}
+        "#
         );
-        assert!(diagnostic.labels.iter().any(|label| {
-            label
-                .message
-                .as_deref()
-                .is_some_and(|message| message.contains("must satisfy `ManagedReadable`"))
-        }));
-        assert!(diagnostic.notes.iter().any(|note| {
-            note.contains("managed array or list") && note.contains("dedicated schema support")
-        }));
+        let checked = splitscript::check(splitscript::parse(&source).unwrap()).unwrap();
+        let (wasm, report) = splitscript::compiler::codegen_with_report(
+            &checked,
+            splitscript::CompilerOptions {
+                profile: splitscript::BuildProfile::Release,
+                ..Default::default()
+            },
+        );
+        Validator::new_with_features(WasmFeatures::all())
+            .validate_all(&wasm)
+            .unwrap();
+        for helper in [
+            "EnterManagedObject",
+            "ChargeManagedBytes",
+            "ChargeManagedElements",
+        ] {
+            assert!(report.runtime_helpers.iter().any(|name| name == helper));
+        }
+        assert_eq!(
+            report
+                .runtime_helpers
+                .iter()
+                .any(|name| name == "ChargeManagedWork"),
+            class_fields
+        );
+    }
+}
+
+#[test]
+fn unused_managed_arrays_retain_no_reader_or_budget() {
+    for selector in [
+        "Unity.il2cpp(Il2CppProfile.unity2022_3_0f1X64())",
+        "Unity.mono(MonoVersion.V2)",
+    ] {
+        let compile = |unused: &str| {
+            let source = format!(
+                r#"
+                image "Assembly-CSharp" {{ class Player {{ static i32 score; {unused} }} }}
+                state {selector} ["game.exe"] {{ score = Player.score?; }}
+                whileAttached {{ setVariable("score", current.score) }}
+            "#
+            );
+            let checked = splitscript::check(splitscript::parse(&source).unwrap()).unwrap();
+            splitscript::compiler::codegen_with_report(
+                &checked,
+                splitscript::CompilerOptions {
+                    profile: splitscript::BuildProfile::Release,
+                    ..Default::default()
+                },
+            )
+        };
+        let (plain, plain_report) = compile("");
+        let (unused, unused_report) = compile("static [[String?]?] unused;");
+        // Declaring String? earlier can renumber an already-reachable option
+        // type. Check actual emitted features and section sizes, not type IDs.
+        assert_eq!(plain.len(), unused.len());
+        assert_eq!(plain_report.runtime_helpers, unused_report.runtime_helpers);
+        assert_eq!(plain_report.scratch_bytes, unused_report.scratch_bytes);
+        assert_eq!(
+            plain_report.abi_read_capacity,
+            unused_report.abi_read_capacity
+        );
+        assert_eq!(
+            plain_report.static_data_start,
+            unused_report.static_data_start
+        );
+        assert_eq!(plain_report.static_data_end, unused_report.static_data_end);
+        assert_eq!(
+            plain_report.minimum_memory_pages,
+            unused_report.minimum_memory_pages
+        );
+        assert_eq!(plain_report.functions.len(), unused_report.functions.len());
+        let sections = |wasm: &[u8]| {
+            wasmparser::Parser::new(0)
+                .parse_all(wasm)
+                .filter_map(|payload| {
+                    payload
+                        .unwrap()
+                        .as_section()
+                        .map(|(id, range)| (id, range.len()))
+                })
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(sections(&plain), sections(&unused));
     }
 }
 

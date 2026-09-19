@@ -171,6 +171,25 @@ impl FailurePayloadDemand {
             }
         }
 
+        for ty in reachability.managed_decoders() {
+            let child = match semantics.types().kind(ty) {
+                TypeKind::Array {
+                    element,
+                    length: None,
+                    ..
+                } => Some(*element),
+                TypeKind::Option { value, .. } => Some(*value),
+                _ => None,
+            };
+            if let Some(child) = child {
+                for target in &results[&ty] {
+                    dependencies
+                        .entry(*target)
+                        .or_default()
+                        .extend(&results[&child]);
+                }
+            }
+        }
         // If an outer error is observable, every payload forwarded into it is
         // observable too. Iterate to a fixed point for chains of `?` calls.
         let mut pending = demanded.iter().copied().collect::<Vec<_>>();

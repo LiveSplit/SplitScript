@@ -192,6 +192,7 @@ fn semantic_type_may_have_capability(
                 TypeKind::Standard(crate::stdlib::StdlibTypeId::String)
                     | TypeKind::Option { .. }
                     | TypeKind::ManagedClass(_)
+                    | TypeKind::Array { .. }
             );
     }
     match ty {

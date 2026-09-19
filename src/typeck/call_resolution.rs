@@ -1081,6 +1081,61 @@ impl Checker {
         Some(result)
     }
 
+    fn prepare_managed_array_read(&mut self, value: Type) {
+        let mut inner = self.inference.shallow(value);
+        loop {
+            match inner {
+                Type::Option(option) => {
+                    inner = self.inference.shallow(self.inference.option_value(option))
+                }
+                Type::Known(id) => match self.inference.type_store().kind(id) {
+                    TypeKind::Option { value, .. } => inner = Type::Known(*value),
+                    TypeKind::Array { length: None, .. } => break,
+                    _ => return,
+                },
+                Type::Array(array) if self.inference.array_length(array).is_none() => break,
+                _ => return,
+            }
+        }
+        self.prepare_managed_read_type(value);
+    }
+
+    fn prepare_managed_read_type(&mut self, value: Type) {
+        let mut pending = vec![value];
+        let mut visited = std::collections::HashSet::new();
+        while let Some(value) = pending.pop() {
+            let value = self.inference.shallow(value);
+            if !visited.insert(value) {
+                continue;
+            }
+            self.inference.result_type(value);
+            match value {
+                Type::Array(array) => pending.push(self.inference.array_element(array)),
+                Type::Option(option) => pending.push(self.inference.option_value(option)),
+                Type::Known(id) => match self.inference.type_store().kind(id).clone() {
+                    TypeKind::Array { element, .. } => pending.push(Type::Known(element)),
+                    TypeKind::Option { value, .. } => pending.push(Type::Known(value)),
+                    TypeKind::ManagedClass(class) => {
+                        let declaration = self
+                            .declarations
+                            .managed_classes
+                            .iter()
+                            .find(|candidate| candidate.id == class)
+                            .cloned()
+                            .unwrap();
+                        for field in declaration.all_fields().filter(|field| !field.is_static) {
+                            let live = self.managed_read_value_type(field.ty);
+                            self.inference.result_type(live);
+                            pending.push(self.syntax_type(field.ty));
+                        }
+                    }
+                    _ => {}
+                },
+                _ => {}
+            }
+        }
+    }
+
     #[allow(clippy::too_many_arguments)]
     fn managed_snapshot_call(
         &mut self,
@@ -1126,6 +1181,7 @@ impl Checker {
                 self.inference.result_type(live);
                 let owned = self.syntax_type(field.ty);
                 self.inference.result_type(owned);
+                self.prepare_managed_array_read(owned);
                 let child = match self.inference.shallow(owned) {
                     Type::Option(option) => self.inference.option_value(option),
                     Type::Known(id) => match self.inference.type_store().kind(id) {
@@ -2131,6 +2187,7 @@ impl Checker {
                 return None;
             }
             let value = self.managed_read_value_type(field.ty);
+            self.prepare_managed_array_read(value);
             return Some(PathResolution {
                 ty: Type::Result(self.inference.result_type(value)),
                 value: Some(ResolvedValue::ManagedStatic {
@@ -2804,6 +2861,7 @@ impl Checker {
             && let Some(field) = self.visible_managed_field(*class_id, false, field)
         {
             let value = self.managed_read_value_type(field.ty);
+            self.prepare_managed_array_read(value);
             return Some((
                 Type::Result(self.inference.result_type(value)),
                 ResolvedMember::ManagedField(field.id),

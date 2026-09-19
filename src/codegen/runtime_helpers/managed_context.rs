@@ -66,13 +66,28 @@ pub(super) fn charge_work(gc: &GcLayout) -> Function {
 }
 
 pub(super) fn charge_bytes(gc: &GcLayout) -> Function {
+    charge(
+        gc,
+        crate::managed_read::SNAPSHOT_BYTE_SLOT as i32,
+        crate::managed_read::MAX_MANAGED_READ_BYTES,
+    )
+}
+
+pub(super) fn charge_elements(gc: &GcLayout) -> Function {
+    charge(
+        gc,
+        crate::managed_read::SNAPSHOT_ELEMENT_SLOT as i32,
+        crate::managed_read::MAX_MANAGED_ELEMENTS,
+    )
+}
+
+fn charge(gc: &GcLayout, slot: i32, limit: i64) -> Function {
     let array = gc.standard_index(StdlibTypeId::ManagedReadContext);
-    let slot = crate::managed_read::SNAPSHOT_BYTE_SLOT as i32;
     let mut f = Function::new([]);
     // Compare against remaining capacity before adding, including unsigned
     // rejection of negative/overflowed requests.
     f.instruction(&I::LocalGet(1))
-        .instruction(&I::I64Const(crate::managed_read::MAX_MANAGED_READ_BYTES));
+        .instruction(&I::I64Const(limit));
     get(&mut f, array, slot);
     f.instruction(&I::I64Sub).instruction(&I::I64GtU);
     fail_if(&mut f);

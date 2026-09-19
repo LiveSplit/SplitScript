@@ -28,7 +28,7 @@ mod gcn;
 mod genesis;
 mod managed_context;
 mod md5;
-mod process;
+pub(super) mod process;
 mod provider;
 mod ps1;
 mod ps2;
@@ -329,6 +329,10 @@ pub(super) fn build_managed_field_address(_inputs: &RuntimeHelperInputs<'_>) -> 
 
 pub(super) fn build_read_managed_memory(inputs: &RuntimeHelperInputs<'_>) -> Function {
     process::compile_read_managed_memory(inputs.abi)
+}
+
+pub(super) fn build_charge_managed_elements(inputs: &RuntimeHelperInputs<'_>) -> Function {
+    managed_context::charge_elements(inputs.gc)
 }
 
 pub(super) fn build_charge_managed_bytes(inputs: &RuntimeHelperInputs<'_>) -> Function {

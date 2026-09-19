@@ -8,8 +8,11 @@ pub(crate) const MAX_SNAPSHOT_DEPTH: u32 = 64;
 pub(crate) const MAX_SNAPSHOT_OBJECTS: i64 = 1024;
 pub(crate) const MAX_SNAPSHOT_WORK: i64 = 16_384;
 /// Depth, object visits, field visits, active object path, then byte work.
+/// Collection reads append a shared element counter to this base context.
 pub(crate) const SNAPSHOT_BYTE_SLOT: u32 = 3 + MAX_SNAPSHOT_DEPTH;
 pub(crate) const SNAPSHOT_CONTEXT_SLOTS: u32 = SNAPSHOT_BYTE_SLOT + 1;
+pub(crate) const SNAPSHOT_ELEMENT_SLOT: u32 = SNAPSHOT_CONTEXT_SLOTS;
+pub(crate) const MAX_MANAGED_ELEMENTS: i64 = 16_384;
 /// Combined remote payload and owned storage charged to one materialization.
 pub(crate) const MAX_MANAGED_READ_BYTES: i64 = 1024 * 1024;
 
@@ -27,6 +30,9 @@ pub(crate) enum ManagedDecoder {
     /// implication (`MemoryReadable` itself implies `ManagedReadable`).
     Memory,
     String,
+    Array {
+        element: TypeId,
+    },
     Class {
         class: ManagedClassId,
     },
@@ -51,10 +57,17 @@ impl ManagedReadTypes {
         for (ty, kind) in semantics.types().iter() {
             let node = match kind {
                 TypeKind::Standard(StdlibTypeId::String) => ManagedDecoder::String,
+                TypeKind::Array {
+                    element,
+                    length: None,
+                    ..
+                } => ManagedDecoder::Array { element: *element },
                 TypeKind::Option { value, .. }
                     if matches!(
                         semantics.types().kind(*value),
-                        TypeKind::Standard(StdlibTypeId::String) | TypeKind::ManagedClass(_)
+                        TypeKind::Standard(StdlibTypeId::String)
+                            | TypeKind::ManagedClass(_)
+                            | TypeKind::Array { length: None, .. }
                     ) =>
                 {
                     ManagedDecoder::Optional { value: *value }
@@ -90,7 +103,7 @@ impl ManagedReadTypes {
                 })
                 .collect::<Vec<_>>();
             invalid.extend(nodes.iter().filter_map(|(ty, node)| {
-                matches!(node, ManagedDecoder::Optional { value } if !nodes.contains_key(value))
+                matches!(node, ManagedDecoder::Optional { value } | ManagedDecoder::Array { element: value } if !nodes.contains_key(value))
                     .then_some(*ty)
             }));
             if invalid.is_empty() {
@@ -113,4 +126,43 @@ impl ManagedReadTypes {
             semantics.types().kind(ty),
         ))
     }
+}
+
+/// Conservative owned-storage and element work for an inline base case.
+/// Zero-byte native fields can still construct substantial GC arrays.
+pub(crate) fn inline_materialization_cost(
+    ty: TypeId,
+    memory: &MemoryLayouts,
+    semantics: &SemanticModel,
+) -> (i64, i64) {
+    use crate::memory::{MemoryAddressWidth, MemoryTypeLayout};
+    let (bytes, elements) = match memory
+        .layout(ty, semantics, MemoryAddressWidth::Bit64)
+        .unwrap()
+    {
+        MemoryTypeLayout::Scalar { .. } => (0, 0),
+        MemoryTypeLayout::Enum(_) => (16, 0),
+        MemoryTypeLayout::Struct(layout) => layout.fields.iter().fold(
+            (16 + layout.fields.len() as i64 * 8, 0i64),
+            |(bytes, elements), field| {
+                let (child_bytes, child_elements) =
+                    inline_materialization_cost(field.ty, memory, semantics);
+                (
+                    bytes.saturating_add(child_bytes),
+                    elements.saturating_add(child_elements),
+                )
+            },
+        ),
+        MemoryTypeLayout::FixedArray(layout) => {
+            let (bytes, elements) = inline_materialization_cost(layout.element, memory, semantics);
+            (
+                48i64.saturating_add((8 + bytes).saturating_mul(layout.length as i64)),
+                (1 + elements).saturating_mul(layout.length as i64),
+            )
+        }
+    };
+    (
+        bytes.min(MAX_MANAGED_READ_BYTES + 1),
+        elements.min(MAX_MANAGED_ELEMENTS + 1),
+    )
 }

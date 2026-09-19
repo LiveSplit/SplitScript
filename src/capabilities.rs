@@ -391,6 +391,13 @@ impl CapabilityAnalysis {
         &self.equality
     }
 
+    pub(crate) fn managed_decoder(
+        &self,
+        ty: TypeId,
+    ) -> Option<crate::managed_read::ManagedDecoder> {
+        self.managed.decoder(ty)
+    }
+
     pub fn memory(&self) -> &MemoryLayouts {
         &self.memory
     }

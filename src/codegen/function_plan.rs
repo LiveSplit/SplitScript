@@ -40,6 +40,7 @@ pub(super) struct FunctionPlan<'a> {
     pub displays: DisplayFunctions,
     pub managed_state_reads: HashMap<ManagedFieldId, u32>,
     pub managed_snapshots: HashMap<ManagedClassId, u32>,
+    pub managed_decoders: HashMap<crate::types::TypeId, u32>,
     pub reads: Vec<u32>,
     pub transforms: Vec<Option<u32>>,
     pub actions: HashMap<ActionKind, u32>,
@@ -445,6 +446,37 @@ pub(super) fn encode<'a>(
         );
     }
 
+    let mut managed_decoder_functions = HashMap::new();
+    for value in reachability.managed_decoders() {
+        let result = semantics
+            .types()
+            .iter()
+            .find_map(|(_, kind)| match kind {
+                crate::types::TypeKind::Result {
+                    value: candidate,
+                    layout,
+                } if *candidate == value => Some(*layout),
+                _ => None,
+            })
+            .expect("managed child reads have Result layouts");
+        managed_decoder_functions.insert(
+            value,
+            declarations.declare(
+                || format!("__splitscript::managed::decode::{value:?}"),
+                vec![
+                    ValType::I64,
+                    ValType::I64,
+                    ValType::I32,
+                    gc.val_type(Type::Standard(
+                        crate::stdlib::StdlibTypeId::ManagedReadContext,
+                    )),
+                    ValType::I32,
+                ],
+                vec![gc.val_type(Type::Result(result))],
+            ),
+        );
+    }
+
     let functions_by_id = program
         .functions
         .iter()
@@ -776,6 +808,7 @@ pub(super) fn encode<'a>(
         displays,
         managed_state_reads: managed_state_read_functions,
         managed_snapshots: managed_snapshot_functions,
+        managed_decoders: managed_decoder_functions,
         reads,
         transforms,
         actions,

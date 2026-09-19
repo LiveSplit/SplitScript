@@ -58,21 +58,24 @@ impl BackendDependencies {
             let declaration = program
                 .managed_class(class)
                 .expect("reachable managed classes belong to the program");
-            if declaration
-                .all_fields()
-                .filter(|field| !field.is_static)
-                .any(|field| {
-                    semantics.managed_field_snapshot_type(field.id)
-                        != semantics.managed_field_value_type(field.id)
-                        || semantics
-                            .managed_field_value_type(field.id)
-                            .is_some_and(|value| {
-                                matches!(
-                                    crate::managed::ManagedFieldRead::for_type(value, semantics),
-                                    crate::managed::ManagedFieldRead::ManagedString { .. }
-                                )
-                            })
-                })
+            if reachability.managed_decoders().next().is_some()
+                || declaration
+                    .all_fields()
+                    .filter(|field| !field.is_static)
+                    .any(|field| {
+                        semantics.managed_field_snapshot_type(field.id)
+                            != semantics.managed_field_value_type(field.id)
+                            || semantics
+                                .managed_field_value_type(field.id)
+                                .is_some_and(|value| {
+                                    matches!(
+                                        crate::managed::ManagedFieldRead::for_type(
+                                            value, semantics
+                                        ),
+                                        crate::managed::ManagedFieldRead::ManagedString { .. }
+                                    )
+                                })
+                    })
                 || declaration
                     .all_fields()
                     .filter(|field| !field.is_static)
@@ -90,6 +93,10 @@ impl BackendDependencies {
                     capabilities,
                 );
             }
+        }
+
+        for value in reachability.managed_decoders() {
+            Self::require_decoder(&mut dependencies, value, semantics, capabilities);
         }
 
         if let Some(state) = &program.state {
@@ -549,6 +556,11 @@ impl BackendDependencies {
             self.needs_native_pointer_size = true;
         }
         if crate::managed::ManagedFieldRead::for_type(value, semantics)
+            == crate::managed::ManagedFieldRead::Array
+        {
+            return; // The recursive decoder graph owns this read's dependencies.
+        }
+        if crate::managed::ManagedFieldRead::for_type(value, semantics)
             == crate::managed::ManagedFieldRead::Fixed
         {
             self.require(RuntimeHelperId::ReadManagedMemory);
@@ -747,6 +759,33 @@ impl BackendDependencies {
 
     fn require_import(&mut self, import: AbiImportId) {
         self.host_imports.insert(import);
+    }
+
+    fn require_decoder(
+        dependencies: &mut BackendDependencies,
+        value: TypeId,
+        semantics: &SemanticModel,
+        capabilities: &crate::capabilities::CapabilityAnalysis,
+    ) {
+        use crate::managed_read::ManagedDecoder;
+        dependencies.require(RuntimeHelperId::ReadManagedMemory);
+        dependencies.require(RuntimeHelperId::EnterManagedObject);
+        dependencies.require(RuntimeHelperId::ChargeManagedBytes);
+        dependencies.require(RuntimeHelperId::ChargeManagedElements);
+        dependencies.memory_read_capacity = dependencies.memory_read_capacity.max(16);
+        match capabilities.managed_decoder(value).unwrap() {
+            ManagedDecoder::Memory => {
+                dependencies.require_memory_read(value, None, semantics, capabilities);
+                if capabilities
+                    .memory()
+                    .depends_on_address_width(value, semantics)
+                {
+                    dependencies.needs_native_pointer_size = true;
+                }
+            }
+            ManagedDecoder::String => dependencies.require(RuntimeHelperId::ReadManagedString),
+            _ => {}
+        }
     }
 
     #[cfg(test)]

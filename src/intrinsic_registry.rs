@@ -88,6 +88,7 @@ pub(crate) enum RuntimeHelperId {
     EnterManagedObject,
     ChargeManagedWork,
     ChargeManagedBytes,
+    ChargeManagedElements,
     ReadManagedString,
     ReadManagedStringField,
     ReadOptionalManagedStringField,

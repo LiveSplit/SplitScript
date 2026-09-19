@@ -137,6 +137,7 @@ pub(super) struct ExprContext<'a> {
     /// helpers to share roots without affecting ordinary lifecycle calls.
     pub managed_state_reads: &'a ManagedStateReadCache,
     pub managed_state_read_functions: &'a HashMap<crate::ast::ManagedFieldId, u32>,
+    pub managed_decoder_functions: &'a HashMap<crate::types::TypeId, u32>,
     pub managed_snapshot_functions: &'a HashMap<crate::ast::ManagedClassId, u32>,
     pub enums: &'a [EnumDecl],
     pub arrays: &'a [ResolvedArrayType],
@@ -229,6 +230,7 @@ impl<'a> ExprContext<'a> {
             managed_state_reads: lowering.managed_state_reads,
             managed_state_read_functions: lowering.managed_state_read_functions,
             managed_snapshot_functions: lowering.managed_snapshot_functions,
+            managed_decoder_functions: lowering.managed_decoder_functions,
             enums: lowering.enums,
             arrays: lowering.arrays,
             memory: lowering.memory,
@@ -2990,14 +2992,22 @@ pub(super) fn emit_managed_field_read(
 }
 
 /// Reuses an enclosing snapshot budget or begins an independent root read.
+fn managed_context_slots(context: &ExprContext<'_>) -> i32 {
+    crate::managed_read::SNAPSHOT_CONTEXT_SLOTS as i32
+        + i32::from(
+            context
+                .runtime_helpers
+                .optional_function(RuntimeHelperId::ChargeManagedElements)
+                .is_some(),
+        )
+}
+
 fn emit_managed_read_context(function: &mut Function, context: &ExprContext<'_>) {
     if let Some(local) = context.managed_read_context {
         function.instruction(&Instruction::LocalGet(local));
     } else {
         function
-            .instruction(&Instruction::I32Const(
-                crate::managed_read::SNAPSHOT_CONTEXT_SLOTS as i32,
-            ))
+            .instruction(&Instruction::I32Const(managed_context_slots(context)))
             .instruction(&Instruction::ArrayNewDefault(
                 context.gc.standard_index(StdlibTypeId::ManagedReadContext),
             ));
@@ -3025,6 +3035,16 @@ fn emit_managed_read_at_address(
         .expect("a checked managed field access has a concrete Result layout");
     let value_type = semantic_type(field.value_type, context.semantics);
 
+    if field.read == crate::managed::ManagedFieldRead::Array {
+        emit_managed_binding_field(function, MANAGED_POINTER_SIZE_FIELD, context);
+        emit_managed_read_context(function, context);
+        function
+            .instruction(&Instruction::I32Const(0))
+            .instruction(&Instruction::Call(
+                context.managed_decoder_functions[&field.value_type],
+            ));
+        return Type::Result(result);
+    }
     if let crate::managed::ManagedFieldRead::ManagedString { nullable } = field.read {
         emit_managed_binding_field(function, MANAGED_POINTER_SIZE_FIELD, context);
         emit_managed_read_context(function, context);
@@ -4121,9 +4141,7 @@ fn compile_expr_unconverted(
                     .is_some()
                 {
                     function
-                        .instruction(&Instruction::I32Const(
-                            crate::managed_read::SNAPSHOT_CONTEXT_SLOTS as i32,
-                        ))
+                        .instruction(&Instruction::I32Const(managed_context_slots(context)))
                         .instruction(&Instruction::ArrayNewDefault(
                             context.gc.standard_index(StdlibTypeId::ManagedReadContext),
                         ));

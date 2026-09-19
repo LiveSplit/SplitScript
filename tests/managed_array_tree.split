@@ -1,0 +1,30 @@
+image "Assembly-CSharp" {
+    class ProfileProbe {
+        static ProfileProbe instance;
+        [ProfileProbe?] children;
+        i32 value;
+    }
+}
+fn nodeCount(tree: ProfileProbe) -> i32 {
+    let count = 1
+    for child in tree.children {
+        match child {
+            Some(value) => { count += nodeCount(value) },
+            None => {},
+        }
+    }
+    return count
+}
+state Unity ["game.exe"] {
+    tree = ProfileProbe.instance?.snapshot()?;
+}
+whileAttached {
+    setVariable("tree", current.tree)
+    setVariable("count", nodeCount(current.tree))
+    setVariable("old", old.tree)
+    let root = ProfileProbe.instance else return
+    setVariable("result", match root.snapshot() {
+        Ok(_) => "ok",
+        Err(error) => error,
+    })
+}

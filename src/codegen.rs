@@ -46,6 +46,7 @@ mod gc_layout;
 mod gc_types;
 mod global_plan;
 mod imports;
+mod managed_decoders;
 mod managed_demand;
 mod managed_snapshots;
 mod managed_state_reads;
@@ -657,6 +658,7 @@ fn compile_internal(inputs: BackendProgram<'_>, report: Option<&mut CodegenRepor
         displays: display_functions,
         managed_state_reads: managed_state_read_functions,
         managed_snapshots: managed_snapshot_functions,
+        managed_decoders: managed_decoder_functions,
         reads: read_functions,
         transforms: transform_functions,
         actions: action_functions,
@@ -726,6 +728,7 @@ fn compile_internal(inputs: BackendProgram<'_>, report: Option<&mut CodegenRepor
         managed_state_reads: &managed_state_reads,
         managed_state_read_functions: &managed_state_read_functions,
         managed_snapshot_functions: &managed_snapshot_functions,
+        managed_decoder_functions: &managed_decoder_functions,
         enums,
         arrays: array_types,
         memory: memory_layouts,
@@ -935,6 +938,9 @@ fn compile_internal(inputs: BackendProgram<'_>, report: Option<&mut CodegenRepor
     for class in reachability.managed_snapshots() {
         let body = managed_snapshots::compile(class, &lowering);
         codes.push(&body);
+    }
+    for value in reachability.managed_decoders() {
+        codes.push(&managed_decoders::compile(value, capabilities, &lowering));
     }
     for instance in reachability.functions() {
         let function = program
