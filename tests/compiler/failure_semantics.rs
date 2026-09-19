@@ -2262,7 +2262,13 @@ fn managed_readable_accepts_memory_layouts_and_managed_strings() {
 
 #[test]
 fn managed_readable_rejects_types_without_implemented_decoders() {
-    for value_type in ["char", "[char]", "Map<String, String>", "Header"] {
+    for value_type in [
+        "char",
+        "[char]",
+        "Map<String, char>",
+        "Map<char, String>",
+        "Header",
+    ] {
         let source = format!(
             r#"
             state Unity ["game.exe"] {{}}
@@ -2273,6 +2279,7 @@ fn managed_readable_rejects_types_without_implemented_decoders() {
         "#
         );
         let errors = splitscript::compile(&source)
+            .map(|wasm| wasm.len())
             .expect_err("capability proofs require an implemented decoder for the entire value");
         assert!(
             errors

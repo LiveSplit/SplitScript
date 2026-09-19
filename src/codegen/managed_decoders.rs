@@ -22,12 +22,17 @@ use super::{
 // context, and whether the address has already been dereferenced.
 const CONTEXT: u32 = 3;
 
+mod maps;
+
 pub(super) fn compile(
     source: TypeId,
     capabilities: &CapabilityAnalysis,
     lowering: &EmissionContext<'_>,
 ) -> Function {
     let plan = capabilities.managed_decoder(source).unwrap();
+    if let ManagedDecoderKind::Map { key, value } = plan.kind {
+        return maps::compile(source, key, value, lowering, capabilities);
+    }
     let value = plan.output;
     let node = plan.kind;
     let result = result_for(value, lowering);
@@ -222,6 +227,7 @@ pub(super) fn compile(
             f.instruction(&I::StructNew(lowering.gc.index(Type::Option(*layout))));
             emit_result_success(&mut f, result, lowering.gc);
         }
+        ManagedDecoderKind::Map { .. } => unreachable!(),
         ManagedDecoderKind::Array { element } => reader.array(&mut f, element),
         ManagedDecoderKind::List { element } => {
             reader.list_header(&mut f);

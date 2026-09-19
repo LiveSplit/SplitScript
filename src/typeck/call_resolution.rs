@@ -1092,7 +1092,10 @@ impl Checker {
                     TypeKind::Option { value, .. } => inner = Type::Known(*value),
                     TypeKind::Array { length: None, .. } => break,
                     TypeKind::Application { constructor, .. }
-                        if *constructor == StdlibTypeConstructorId::List =>
+                        if matches!(
+                            *constructor,
+                            StdlibTypeConstructorId::List | StdlibTypeConstructorId::Map
+                        ) =>
                     {
                         break;
                     }
@@ -1100,8 +1103,10 @@ impl Checker {
                 },
                 Type::Array(array) if self.inference.array_length(array).is_none() => break,
                 Type::Application(application)
-                    if self.inference.application_constructor(application)
-                        == StdlibTypeConstructorId::List =>
+                    if matches!(
+                        self.inference.application_constructor(application),
+                        StdlibTypeConstructorId::List | StdlibTypeConstructorId::Map
+                    ) =>
                 {
                     break;
                 }
@@ -1123,21 +1128,21 @@ impl Checker {
             self.inference.result_type(owned);
             match value {
                 Type::Application(application)
-                    if self.inference.application_constructor(application)
-                        == StdlibTypeConstructorId::List =>
+                    if matches!(
+                        self.inference.application_constructor(application),
+                        StdlibTypeConstructorId::List | StdlibTypeConstructorId::Map
+                    ) =>
                 {
-                    pending.push(self.inference.application_arguments(application)[0]);
+                    pending.extend(self.inference.application_arguments(application));
                 }
                 Type::Array(array) => pending.push(self.inference.array_element(array)),
                 Type::Option(option) => pending.push(self.inference.option_value(option)),
                 Type::Known(id) => match self.inference.type_store().kind(id).clone() {
                     TypeKind::Application {
-                        constructor,
+                        constructor: StdlibTypeConstructorId::List | StdlibTypeConstructorId::Map,
                         arguments,
                         ..
-                    } if constructor == StdlibTypeConstructorId::List => {
-                        pending.push(Type::Known(arguments[0]))
-                    }
+                    } => pending.extend(arguments.into_iter().map(Type::Known)),
                     TypeKind::Array { element, .. } => pending.push(Type::Known(element)),
                     TypeKind::Option { value, .. } => pending.push(Type::Known(value)),
                     TypeKind::ManagedClass(class) => {
@@ -2946,6 +2951,45 @@ impl Checker {
     }
 
     pub(super) fn managed_owned_type(&mut self, storage: Type) -> Type {
+        let map_arguments = match self.inference.shallow(storage) {
+            Type::Application(application)
+                if self.inference.application_constructor(application)
+                    == StdlibTypeConstructorId::Map =>
+            {
+                Some(self.inference.application_arguments(application).to_vec())
+            }
+            Type::Known(id) => match self.inference.type_store().kind(id) {
+                TypeKind::Application {
+                    constructor,
+                    arguments,
+                    ..
+                } if *constructor == StdlibTypeConstructorId::Map => {
+                    Some(arguments.iter().copied().map(Type::Known).collect())
+                }
+                _ => None,
+            },
+            _ => None,
+        };
+        if let Some(arguments) = map_arguments {
+            let owned = arguments
+                .iter()
+                .map(|arg| self.managed_owned_type(*arg))
+                .collect::<Vec<_>>();
+            // Map construction is emitted directly; materialize its private
+            // entry/backing layouts even when no local Map constructor is called.
+            let entry = self
+                .inference
+                .application_type(StdlibTypeConstructorId::MapEntry, owned.clone());
+            self.inference.array_type(Type::Application(entry));
+            return if owned == arguments {
+                storage
+            } else {
+                Type::Application(
+                    self.inference
+                        .application_type(StdlibTypeConstructorId::Map, owned),
+                )
+            };
+        }
         let shape = match self.inference.shallow(storage) {
             Type::Application(application)
                 if self.inference.application_constructor(application)

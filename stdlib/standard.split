@@ -1635,6 +1635,19 @@ private struct UnityRuntime {
         }
     }
 
+    private fn dictionaryLayout(object: address) -> UnityKeyedLayout! {
+        return match self.backend {
+            UnityRuntimeBackend.Il2cpp => {
+                let runtime = self.il2cpp else return Err("missing IL2CPP runtime")
+                runtime.dictionaryLayout(object)
+            },
+            UnityRuntimeBackend.Mono => {
+                let runtime = self.mono else return Err("missing Mono runtime")
+                runtime.dictionaryLayout(object)
+            },
+        }
+    }
+
     private fn listLayout(object: address) -> UnityListLayout! {
         return match self.backend {
             UnityRuntimeBackend.Il2cpp => {
@@ -3775,17 +3788,18 @@ capability MemoryReadable: ManagedReadable {}
 /// resulting text. String schema fields use their stored UTF-16 length and
 /// share a materialization budget. Class snapshots recursively read child classes and
 /// nullable child classes. Arrays recursively decode managed-readable elements,
-/// including arrays, optional strings, and owned class snapshots. Managed lists,
-/// dictionaries, and sets still require collection-shape support.
-/// Arrays materialized by managed reads are deeply immutable, including inline
-/// fixed-array children. Mutating them through any alias traps. Ordinary local
-/// arrays and arrays returned by [`Process.read`] remain mutable.
+/// including arrays, optional strings, and owned class snapshots. [`List<T>`]
+/// storage projects to owned arrays; [`Map`] reads managed dictionaries with
+/// recursively decoded keys and values. Managed sets still require decoder support.
+/// Arrays and maps materialized by managed reads are deeply immutable, including
+/// inline fixed-array children. Mutating them through any alias traps. Ordinary
+/// local collections and arrays returned by [`Process.read`] remain mutable.
 /// [`ManagedReadable`] does not make a type usable with [`Process.read`], which
 /// still requires [`MemoryReadable`].
 ///
 /// # Example
 ///
-/// Decode bounded text from a managed field
+/// Decode text from a managed field
 ///
 /// ```splitscript
 /// image "Assembly-CSharp" {
@@ -4658,6 +4672,11 @@ typeConstructor MapEntry<K, V> {
 /// stored value and traps when the key is absent; use [`Map.containsKey`] first
 /// when absence is expected. This keeps maps whose values are themselves
 /// optional unambiguous without adding another lookup operation.
+///
+/// In Unity schemas, maps describe managed dictionaries. Both keys and values
+/// must support [`ManagedReadable`]. Reads produce owned, deeply immutable maps,
+/// sharing the root's budgets with nested strings, arrays, lists, and snapshots.
+/// If distinct game keys decode to equal local keys, the whole read fails.
 ///
 /// # Example
 ///

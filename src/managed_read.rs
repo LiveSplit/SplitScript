@@ -14,6 +14,8 @@ pub(crate) const SNAPSHOT_BYTE_SLOT: u32 = 3 + MAX_SNAPSHOT_DEPTH;
 pub(crate) const SNAPSHOT_CONTEXT_SLOTS: u32 = SNAPSHOT_BYTE_SLOT + 1;
 pub(crate) const SNAPSHOT_ELEMENT_SLOT: u32 = SNAPSHOT_CONTEXT_SLOTS;
 pub(crate) const MAX_MANAGED_ELEMENTS: i64 = 16_384;
+pub(crate) const SNAPSHOT_SCAN_SLOT: u32 = SNAPSHOT_ELEMENT_SLOT + 1;
+pub(crate) const MAX_MANAGED_SCANNED_SLOTS: i64 = 4096;
 /// Combined remote payload and owned storage charged to one materialization.
 pub(crate) const MAX_MANAGED_READ_BYTES: i64 = 1024 * 1024;
 
@@ -43,6 +45,10 @@ pub(crate) enum ManagedDecoderKind {
     List {
         element: TypeId,
     },
+    Map {
+        key: TypeId,
+        value: TypeId,
+    },
     Class {
         class: ManagedClassId,
     },
@@ -53,13 +59,16 @@ pub(crate) enum ManagedDecoderKind {
 }
 
 impl ManagedDecoderKind {
-    pub(crate) fn child(self) -> Option<TypeId> {
+    pub(crate) fn children(self) -> impl Iterator<Item = TypeId> {
         match self {
             Self::Array { element }
             | Self::List { element }
-            | Self::Optional { value: element } => Some(element),
-            _ => None,
+            | Self::Optional { value: element } => [Some(element), None],
+            Self::Map { key, value } => [Some(key), Some(value)],
+            _ => [None, None],
         }
+        .into_iter()
+        .flatten()
     }
 }
 
@@ -92,6 +101,16 @@ impl ManagedReadTypes {
                         element: arguments[0],
                     }
                 }
+                TypeKind::Application {
+                    constructor,
+                    arguments,
+                    ..
+                } if *constructor == crate::stdlib::StdlibTypeConstructorId::Map => {
+                    ManagedDecoderKind::Map {
+                        key: arguments[0],
+                        value: arguments[1],
+                    }
+                }
                 TypeKind::Option { value, .. }
                     if matches!(
                         semantics.types().kind(*value),
@@ -99,7 +118,7 @@ impl ManagedReadTypes {
                             | TypeKind::ManagedClass(_)
                             | TypeKind::Array { length: None, .. }
                     ) || matches!(semantics.types().kind(*value), TypeKind::Application { constructor, .. }
-                        if *constructor == crate::stdlib::StdlibTypeConstructorId::List) =>
+                        if matches!(*constructor, crate::stdlib::StdlibTypeConstructorId::List | crate::stdlib::StdlibTypeConstructorId::Map)) =>
                 {
                     ManagedDecoderKind::Optional { value: *value }
                 }
@@ -140,8 +159,8 @@ impl ManagedReadTypes {
                 .collect::<Vec<_>>();
             invalid.extend(nodes.iter().filter_map(|(ty, node)| {
                 node.kind
-                    .child()
-                    .is_some_and(|child| !nodes.contains_key(&child))
+                    .children()
+                    .any(|child| !nodes.contains_key(&child))
                     .then_some(*ty)
             }));
             if invalid.is_empty() {

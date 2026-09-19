@@ -730,7 +730,7 @@ impl Reachability {
         for field in field_reads {
             let value = semantics.managed_field_value_type(field).unwrap();
             if crate::managed::ManagedFieldRead::for_type(value, semantics)
-                == crate::managed::ManagedFieldRead::Array
+                == crate::managed::ManagedFieldRead::Recursive
                 || super::managed_freezers::contains_array(value, capabilities.memory(), semantics)
             {
                 pending_decoders.push(semantics.managed_field_type(field).unwrap());
@@ -758,7 +758,7 @@ impl Reachability {
                         type_roots.push(ty);
                     }
                     if crate::managed::ManagedFieldRead::for_type(ty, semantics)
-                        == crate::managed::ManagedFieldRead::Array
+                        == crate::managed::ManagedFieldRead::Recursive
                         || super::managed_freezers::contains_array(
                             ty,
                             capabilities.memory(),
@@ -781,14 +781,12 @@ impl Reachability {
                     matches!(kind, TypeKind::Result { value, .. } if *value == plan.output)
                         .then_some(id)
                 }));
+                pending_decoders.extend(plan.kind.children());
+                if let crate::managed_read::ManagedDecoderKind::Map { key, .. } = plan.kind {
+                    let key = capabilities.managed_decoder(key).unwrap().output;
+                    reachable.require_equality(key, semantics, standard_library, capabilities);
+                }
                 match plan.kind {
-                    crate::managed_read::ManagedDecoderKind::Array { element }
-                    | crate::managed_read::ManagedDecoderKind::List { element } => {
-                        pending_decoders.push(element)
-                    }
-                    crate::managed_read::ManagedDecoderKind::Optional { value } => {
-                        pending_decoders.push(value)
-                    }
                     crate::managed_read::ManagedDecoderKind::Class { class }
                         if reachable.managed_snapshots.insert(class) =>
                     {

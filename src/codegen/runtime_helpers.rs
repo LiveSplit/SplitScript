@@ -46,6 +46,10 @@ pub(super) fn build_charge_managed_work(inputs: &RuntimeHelperInputs<'_>) -> Fun
     managed_context::charge_work(inputs.gc)
 }
 
+pub(super) fn build_charge_managed_scan(inputs: &RuntimeHelperInputs<'_>) -> Function {
+    managed_context::charge_scan(inputs.gc)
+}
+
 pub(super) struct RuntimeHelperInputs<'a> {
     pub abi: &'a Abi,
     pub strings: &'a StringPool,

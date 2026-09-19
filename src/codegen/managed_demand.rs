@@ -103,6 +103,16 @@ pub(super) fn prune(
         remove.insert(crate::stdlib::MANAGED_LIST_LAYOUT_FIELD.to_owned());
         remove.insert("__list_layout_cache".to_owned());
     }
+    if !reachable.managed_decoders().any(|ty| {
+        matches!(
+            capabilities.managed_decoder(ty).unwrap().kind,
+            crate::managed_read::ManagedDecoderKind::Map { .. }
+        )
+    }) {
+        remove.insert(crate::stdlib::MANAGED_MAP_READ_FIELD.to_owned());
+        remove.insert(crate::stdlib::MANAGED_KEYED_VERIFY_FIELD.to_owned());
+        remove.insert("__map_layout_cache".to_owned());
+    }
     let mut images = HashMap::new();
     let mut needed_images = HashSet::new();
     for class in &managed.classes {

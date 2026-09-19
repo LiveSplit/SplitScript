@@ -81,6 +81,14 @@ pub(super) fn charge_elements(gc: &GcLayout) -> Function {
     )
 }
 
+pub(super) fn charge_scan(gc: &GcLayout) -> Function {
+    charge(
+        gc,
+        crate::managed_read::SNAPSHOT_SCAN_SLOT as i32,
+        crate::managed_read::MAX_MANAGED_SCANNED_SLOTS,
+    )
+}
+
 fn charge(gc: &GcLayout, slot: i32, limit: i64) -> Function {
     let array = gc.standard_index(StdlibTypeId::ManagedReadContext);
     let mut f = Function::new([]);

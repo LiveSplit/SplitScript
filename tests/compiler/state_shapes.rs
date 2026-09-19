@@ -816,6 +816,8 @@ fn managed_arrays_compose_strings_and_owned_classes() {
         include_str!("../managed_array_tree.split"),
         include_str!("../managed_array_freeze.split"),
         include_str!("../managed_lists.split"),
+        include_str!("../managed_maps.split"),
+        include_str!("../managed_map_inline.split"),
     ] {
         for profile in [
             splitscript::BuildProfile::Debug,
@@ -834,6 +836,61 @@ fn managed_arrays_compose_strings_and_owned_classes() {
                 .unwrap();
         }
     }
+}
+
+#[test]
+fn managed_maps_project_children_and_compose_with_snapshot_types() {
+    for field in [
+        "Map<i32, [String?]>",
+        "Map<String, List<Map<String, List<String?>>>>",
+        "Map<String, Root>",
+        "Map<[String?], [i32; 2]>",
+        "[Map<String, List<String?>>?]",
+    ] {
+        let source = format!(
+            r#"
+            image "Assembly-CSharp" {{
+                class Root {{ static {field} values; i32 score; }}
+            }}
+            state Unity ["game.exe"] {{ values = Root.values?; }}
+            whileAttached {{ setVariable("values", current.values) }}
+        "#
+        );
+        for profile in [
+            splitscript::BuildProfile::Debug,
+            splitscript::BuildProfile::Release,
+        ] {
+            let wasm = splitscript::compile_with_options(
+                &source,
+                splitscript::CompilerOptions {
+                    profile,
+                    ..Default::default()
+                },
+            )
+            .unwrap_or_else(|error| panic!("{field}: {error:?}"));
+            Validator::new_with_features(WasmFeatures::all())
+                .validate_all(&wasm)
+                .unwrap_or_else(|error| panic!("{field}: {error:?}"));
+        }
+    }
+    let source = r#"
+        image "Assembly-CSharp" {
+            class Root { static Map<String, List<Map<i32, List<String?>>>> values; }
+        }
+        state Unity ["game.exe"] { values: Map<String, [Map<i32, [String?]>]> = Root.values?; }
+    "#;
+    let checked = splitscript::check(splitscript::parse(source).unwrap()).unwrap();
+    let semantics = checked.semantics();
+    let field = checked.syntax().managed_class_declarations()[0].fields[0].id;
+    let storage = semantics.managed_field_type(field).unwrap();
+    let owned = semantics.managed_field_snapshot_type(field).unwrap();
+    assert_ne!(storage, owned);
+    assert_eq!(semantics.managed_field_value_type(field), Some(owned));
+    assert!(checked.capabilities().has(
+        storage,
+        splitscript::compiler::stdlib::StdlibCapabilityId::ManagedReadable,
+        semantics
+    ));
 }
 
 #[test]
@@ -1078,6 +1135,7 @@ fn unused_managed_collections_retain_no_reader_or_budget() {
         for declaration in [
             "static [[String?]?] unused;",
             "static List<[List<String?>?]> unused;",
+            "static Map<String, List<Map<i32, [String?]>>> unused;",
         ] {
             let (unused, unused_report) = compile(declaration);
             // Declaring String? earlier can renumber an already-reachable option
@@ -1116,7 +1174,9 @@ fn unused_managed_collections_retain_no_reader_or_budget() {
                     .functions
                     .iter()
                     .all(|(_, name)| !name.contains("ListLayout")
-                        && !name.contains("CollectionClass"))
+                        && !name.contains("CollectionClass")
+                        && !name.contains("Keyed")
+                        && !name.contains("dictionaryLayout"))
             );
         }
     }

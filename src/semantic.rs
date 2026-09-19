@@ -1603,6 +1603,26 @@ impl SemanticModel {
     }
 
     pub(crate) fn try_managed_owned_type(&self, ty: TypeId) -> Option<TypeId> {
+        if let TypeKind::Application {
+            constructor,
+            arguments,
+            ..
+        } = self.types.kind(ty)
+            && *constructor == crate::stdlib::StdlibTypeConstructorId::Map
+        {
+            let owned = arguments
+                .iter()
+                .map(|arg| self.try_managed_owned_type(*arg))
+                .collect::<Option<Vec<_>>>()?;
+            if &owned == arguments {
+                return Some(ty);
+            }
+            return self.types.iter().find_map(|(id, kind)| {
+                matches!(kind, TypeKind::Application { constructor: candidate, arguments, .. }
+                        if candidate == constructor && arguments == &owned)
+                .then_some(id)
+            });
+        }
         let shape = match self.types.kind(ty) {
             TypeKind::Application {
                 constructor,

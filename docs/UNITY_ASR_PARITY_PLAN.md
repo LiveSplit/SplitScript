@@ -1185,6 +1185,54 @@ updates build/timing metadata. The strict gate and Lunistice base/DLC behavior
 pass; explicit Lunistice remains 58,178 bytes and automatic selection 125,920
 bytes. No live game was launched.
 
+### Recursive managed dictionary snapshots
+
+`Map<K, V>` now has a managed decoder with independent key and value child
+plans. Remote `List<T>` values project to owned arrays throughout map arguments;
+nullable maps, arrays of maps, map values containing maps, and maps inside class
+snapshots use the same recursive graph. The decoder creates ordinary local Map
+values with frozen entry storage. A root failure discards the partial result.
+
+Dictionary layouts are discovered lazily and cached by runtime class for the
+attachment. The slot scanner receives the root's remaining budgets. Its work,
+temporary slots, final entries, recursive children, and equality comparisons
+charge the same context. A separate scan counter limits total touched slots
+across nested dictionaries to 4,096. Active collection and backing objects detect
+cycles; repeated sibling backing references enter that path only once. Captured
+class, counts, and backing identities are checked again after child decoding.
+
+Decoded keys are compared under local equality before insertion. A collision
+fails the whole read instead of replacing an entry. Pair comparisons share the
+16,384 work budget; consequently large maps can exhaust work before their scan
+or element allowance. Lossless pair projections remain outstanding.
+
+Runtime coverage includes dictionary values containing nullable string arrays,
+arrays of nullable dictionaries, dictionaries in class snapshots, native keys,
+inline records, deleted slots, empty/shared backing storage, transactional
+rollback, duplicate keys, shared budgets, cached layouts, payload retries, and
+mutation protection. Compiler coverage additionally validates nested map/list
+projections and rejects unsupported child decoders. Unused map declarations
+retain no readers, discovery, scan counter, scratch, or extra Wasm size.
+
+This is the first public map integration. Set decoding, lossless projections,
+full remote element/generic-type compatibility, raw UTF-16, structured nested
+errors, and shared metadata work remain open. The overall Unity goal also still
+includes the profile replacement, platform coverage, and Lunistice size target.
+
+Validation: 443 library tests (one ignored), 667 compiler tests, and four
+baseline tests pass. The runtime catalog validates 112 artifacts and 142
+scenarios, including 864 nested-map cases and 160 inline-map cases across Debug
+and Release. Formatting and Clippy with warnings denied pass.
+
+All 30 existing optimized baseline fixtures retain their section sizes,
+function/type counts, sorted function-body sizes, helpers, scratch, and memory
+metrics. Generated internal names are renumbered in the refreshed report. The
+new explicit-profile map fixtures measure 66,877 bytes for IL2CPP and 57,617
+bytes for Mono; this cost is confined to reachable dictionary reads. The strict
+size gate and Lunistice base/DLC fixture pass. Lunistice remains 58,178 bytes with
+the explicit profile and 125,920 bytes with automatic selection. No live game
+was launched.
+
 ## Source map for implementation
 
 Upstream links below are pinned to the reviewed tip; the PR table provides the historical changes.

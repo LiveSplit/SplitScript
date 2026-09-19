@@ -2998,6 +2998,13 @@ pub(super) fn emit_managed_field_read(
 
 /// Reuses an enclosing snapshot budget or begins an independent root read.
 fn managed_context_slots(context: &ExprContext<'_>) -> i32 {
+    if context
+        .runtime_helpers
+        .optional_function(RuntimeHelperId::ChargeManagedScan)
+        .is_some()
+    {
+        return crate::managed_read::SNAPSHOT_SCAN_SLOT as i32 + 1;
+    }
     crate::managed_read::SNAPSHOT_CONTEXT_SLOTS as i32
         + i32::from(
             context

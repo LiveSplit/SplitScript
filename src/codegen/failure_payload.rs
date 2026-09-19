@@ -188,7 +188,27 @@ impl FailurePayloadDemand {
                         .extend(&results[&layout]);
                 }
             }
-            if let Some(child) = plan.kind.child() {
+            if matches!(
+                plan.kind,
+                crate::managed_read::ManagedDecoderKind::Map { .. }
+            ) {
+                for dependency in [
+                    semantics
+                        .types()
+                        .id_for_standard(crate::stdlib::StdlibTypeId::UnityKeyedRead),
+                    semantics
+                        .types()
+                        .id_for_core(crate::stdlib::CoreTypeId::Bool),
+                ] {
+                    for target in &results[&plan.output] {
+                        dependencies
+                            .entry(*target)
+                            .or_default()
+                            .extend(&results[&dependency]);
+                    }
+                }
+            }
+            for child in plan.kind.children() {
                 let child = capabilities.managed_decoder(child).unwrap().output;
                 for target in &results[&plan.output] {
                     dependencies

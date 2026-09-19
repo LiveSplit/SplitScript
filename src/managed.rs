@@ -77,7 +77,7 @@ pub(crate) struct ManagedFieldBinding {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum ManagedFieldRead {
     Fixed,
-    Array,
+    Recursive,
     ManagedString { nullable: bool },
 }
 
@@ -96,8 +96,10 @@ impl ManagedFieldRead {
         } else if matches!(
             semantics.types().kind(value),
             TypeKind::Array { length: None, .. }
-        ) {
-            Self::Array
+        ) || matches!(semantics.types().kind(value), TypeKind::Application { constructor, .. }
+            if *constructor == crate::stdlib::StdlibTypeConstructorId::Map)
+        {
+            Self::Recursive
         } else {
             Self::Fixed
         }

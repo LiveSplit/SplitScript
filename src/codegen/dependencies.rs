@@ -556,7 +556,7 @@ impl BackendDependencies {
             self.needs_native_pointer_size = true;
         }
         if crate::managed::ManagedFieldRead::for_type(value, semantics)
-            == crate::managed::ManagedFieldRead::Array
+            == crate::managed::ManagedFieldRead::Recursive
         {
             return; // The recursive decoder graph owns this read's dependencies.
         }
@@ -769,8 +769,17 @@ impl BackendDependencies {
     ) {
         use crate::managed_read::ManagedDecoderKind;
         dependencies.require(RuntimeHelperId::ReadManagedMemory);
+        if matches!(
+            capabilities.managed_decoder(value).unwrap().kind,
+            ManagedDecoderKind::Map { .. }
+        ) {
+            dependencies.require(RuntimeHelperId::ChargeManagedScan);
+            dependencies.require(RuntimeHelperId::ChargeManagedWork);
+        }
         match capabilities.managed_decoder(value).unwrap().kind {
-            ManagedDecoderKind::Array { .. } | ManagedDecoderKind::List { .. } => {
+            ManagedDecoderKind::Array { .. }
+            | ManagedDecoderKind::List { .. }
+            | ManagedDecoderKind::Map { .. } => {
                 dependencies.require(RuntimeHelperId::EnterManagedObject);
                 dependencies.require(RuntimeHelperId::ChargeManagedBytes);
                 dependencies.require(RuntimeHelperId::ChargeManagedElements);
