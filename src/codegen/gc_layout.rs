@@ -237,16 +237,19 @@ impl GcLayout {
             ordered.push(ty);
             next += 1;
         }
-        for array in reachable_storage {
-            let element = super::try_array_element_type(array.id, semantics)
-                .expect("reachable array storage has a backend-representable element type");
-            let canonical = canonical_storage
-                .iter()
-                .find(|candidate| {
-                    candidate.length == array.length
-                        && super::try_array_element_type(candidate.id, semantics) == Some(element)
-                })
-                .expect("every raw array shape has canonical storage");
+        // Wrapper/storage selection can name an earlier, unused declaration
+        // of the same physical array shape. Alias it to already-emitted
+        // storage without making that declaration or its readers reachable.
+        for array in arrays {
+            let Some(element) = super::try_array_element_type(array.id, semantics) else {
+                continue;
+            };
+            let Some(canonical) = canonical_storage.iter().find(|candidate| {
+                candidate.length == array.length
+                    && super::try_array_element_type(candidate.id, semantics) == Some(element)
+            }) else {
+                continue;
+            };
             let index = dynamic[&Type::ArrayStorage(canonical.id)];
             dynamic.insert(Type::ArrayStorage(array.id), index);
         }

@@ -1546,3 +1546,27 @@ fn shape_refinement_drives_hover_and_definition_identity() {
     assert_eq!(&source[v8.span.start..v8.span.end], "bike");
     assert_eq!(&source[v9.span.start..v9.span.end], "bike");
 }
+
+#[test]
+fn instance_enumeration_ignores_unused_address_array_declarations() {
+    let source = include_str!("../managed_instances_runtime.split");
+    let unused = format!("fn unusedAddresses() -> [address] {{ return [] }}\n{source}");
+    for profile in [
+        splitscript::BuildProfile::Debug,
+        splitscript::BuildProfile::Release,
+    ] {
+        for source in [source, unused.as_str()] {
+            let wasm = splitscript::compile_with_options(
+                source,
+                splitscript::CompilerOptions {
+                    profile,
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+            Validator::new_with_features(WasmFeatures::all())
+                .validate_all(&wasm)
+                .unwrap();
+        }
+    }
+}

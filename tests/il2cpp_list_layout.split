@@ -1,0 +1,22 @@
+// Compiler-owned private adapter probe; compiled by managed_collection_layout_tests.
+state "game.exe" {}
+onAttach { await __splitscript_stdlib_collection_probe() }
+fn __splitscript_stdlib_collection_probe() {
+    let module = retry { process.loadedModule("GameAssembly.dll") else throw "waiting for runtime" }
+    let width = retry module.pointerSize()
+    let runtime = await Unity.il2cpp(if width == PointerSize.Bit32 { Il2CppProfile.unity2022_3_0f1X86() } else { Il2CppProfile.unity2022_3_0f1X64() })
+    while true {
+        let object = (process.read<u64>(0x60000) else 0) as address
+        match runtime.listLayout(object) {
+            Ok(layout) => {
+                setVariable("class", layout.runtimeClass)
+                setVariable("owner", layout.declaringClass)
+                setVariable("items", layout.items)
+                setVariable("size", layout.size)
+                setVariable("result", "ok")
+            },
+            Err(error) => setVariable("result", error),
+        }
+        await nextTick()
+    }
+}

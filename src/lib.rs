@@ -1196,3 +1196,6 @@ mod compiler_context_tests {
         assert!(!codegen(&checked).is_empty());
     }
 }
+
+#[cfg(test)]
+mod managed_collection_layout_tests;

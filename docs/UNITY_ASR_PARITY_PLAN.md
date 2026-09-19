@@ -962,6 +962,59 @@ byte/element budgets, and typed freezer, with no object-walk, class-field-work,
 or managed-string helper. The 28-fixture strict gate and Lunistice base/DLC
 runtime checks pass. The live game remains closed.
 
+### List metadata adapters — schema integration pending
+
+Both private runtime adapters now resolve `UnityListLayout` from a live object.
+IL2CPP reads the class directly from the object header; Mono follows the vtable's
+class pointer. A shared bounded walk selects the genuine
+``System.Collections.Generic.List`1`` ancestor, then reads `_items` and `_size`
+only from that ancestor. Derived shadows cannot replace those fields, and an
+unrelated lookalike is rejected. Mono retains the inflated class's field array
+while obtaining its count from the generic definition.
+
+The descriptor identifies the concrete runtime class, declaring generic-list
+class, backing-array slot, and signed live-count slot. Checked target-width
+address arithmetic covers every metadata pointer/span. Null or unreadable
+metadata, cycles, excessive ancestry/field work, missing/duplicate fields,
+negative/header-relative offsets, and overlapping slots fail synchronously.
+The adapter has no implicit cache or attachment wait; it can succeed on a later
+poll after a collection appears or changes runtime class.
+
+A compiler-owned probe exercises these private adapters without exposing manual
+runtime traversal as a public API. Its Rust test validates emitted Wasm and
+runs the Node fixture at both widths in Debug and Release. This is the metadata
+foundation for Step 10, not a complete list reader. Lazy per-attachment caching,
+live-size/backing-capacity validation, recursive element materialization, and
+schema integration remain open.
+
+The next integration must keep decoder storage identity separate from its owned
+output type: a managed vector and a `List<T>` can both materialize an array, but
+must retain distinct plans when nested. Using only that array's local `TypeId`
+to choose a reader would lose the distinction or force array-only scripts to
+retain list discovery. The existing immutable array result machinery can be
+shared after the source representation has supplied the correct element slots.
+
+Validation: 441 library tests (one ignored), 665 compiler tests, and four
+baseline tests passed. The private adapter probe passes 64 Mono V2 and 54
+IL2CPP cases in each build profile, 236 cases total, including full-width address
+and field-span overflow checks that assert no overflowing host request occurs.
+The ordinary 106-artifact/136-scenario runtime catalog also passes. Clippy,
+formatting, and 557 documentation pages passed.
+
+Adding the private helper exposed a backing-array alias bug: an unused earlier
+`[address]` declaration could name the canonical backing type without a matching
+GC index, breaking instance enumeration. The GC map now aliases equivalent
+source declarations to already-emitted storage without adding reachable types
+or readers; a focused Debug/Release compiler regression covers this case.
+
+All 28 optimized baseline artifacts retain exactly the same module and section
+sizes, function/type counts, runtime helpers, scratch, static storage bounds,
+and memory pages. List-layout functions and metadata names are absent. The
+baseline refresh only accounts for renumbered compiler-generated diagnostic
+names. Explicit Lunistice remains 58,178 bytes; automatic selection remains
+125,920 bytes. The strict gate and base/DLC behavior checks pass. No live game
+launch was needed.
+
 ## Source map for implementation
 
 Upstream links below are pinned to the reviewed tip; the PR table provides the historical changes.

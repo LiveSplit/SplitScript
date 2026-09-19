@@ -1818,6 +1818,65 @@ private struct UnityFields {
     /// Field-entry stride in bytes.
     private stride: u64,
 
+    // A collection's layout belongs to the corlib ancestor, never a derived
+    // class that happens to shadow its implementation fields.
+    private fn corlibClass(class: address, expected: String) -> address! {
+        let current = class
+        let visited: [address] = []
+        while current != 0 {
+            if visited.length() >= 128 || visited.contains(current) {
+                throw "Unity collection inheritance is cyclic or exceeds the metadata work limit"
+            }
+            visited.push(current)
+            if self.names.text(current, self.names.name)? == expected
+                && self.names.text(current, self.names.namespace)? == "System.Collections.Generic" {
+                return Ok(current)
+            }
+            current = self.names.pointer(current, self.parent)?
+        }
+        throw "Unity object has no matching generic collection ancestor"
+    }
+
+    private fn listLayout(class: address, readCount: (address) -> i32!) -> UnityListLayout! {
+        let owner = self.corlibClass(class, "List`1")?
+        let count = (readCount)(owner)?
+        if count < 0 || count > 4096 { throw "Unity collection field count exceeds the metadata work limit" }
+        let fields = self.names.pointer(owner, self.fields)?
+        if fields == 0 { throw "Unity collection field array is not initialized" }
+        let items: u32? = None
+        let size: u32? = None
+        let index: u32 = 0
+        while index < (count as u32) {
+            let field = self.names.member(fields, (index as u64) * self.stride, self.stride)?
+            index += 1
+            let namePointer = self.names.pointer(field, self.fieldName)?
+            if namePointer == 0 { continue }
+            let name = process.readUtf8(self.names.member(namePointer, 0, 256)?, 256)?
+            if name == "_items" || name == "_size" {
+                let offset = process.read<i32>(self.names.member(field, self.fieldValue, 4)?)?
+                if offset < 0 || (offset as u64) < 2 * self.names.width {
+                    throw "Unity list field does not use supported instance storage"
+                }
+                if name == "_items" {
+                    if items != None { throw "Unity list metadata contains duplicate items fields" }
+                    items = Some(offset as u32)
+                } else {
+                    if size != None { throw "Unity list metadata contains duplicate size fields" }
+                    size = Some(offset as u32)
+                }
+            }
+        }
+        let itemsOffset = items else throw "Unity list items field is missing"
+        let sizeOffset = size else throw "Unity list size field is missing"
+        let itemsEnd = (itemsOffset as u64) + self.names.width
+        let sizeEnd = (sizeOffset as u64) + 4
+        if (itemsOffset as u64) < sizeEnd && (sizeOffset as u64) < itemsEnd {
+            throw "Unity list fields overlap"
+        }
+        return Ok(UnityListLayout { runtimeClass: class, declaringClass: owner,
+            items: itemsOffset, size: sizeOffset })
+    }
+
     private fn step(cursor: UnityFieldCursor, aliases: [String], readCount: (address) -> i32!) -> UnityFieldCursor! {
         let current = cursor.current
         let fields = cursor.fields
@@ -8104,6 +8163,25 @@ private struct UnityModule {
         return await self.imageNamed(name)
     }
 
+    // Resolve collection storage on demand. Failed metadata is an ordinary
+    // read error; callers control retry and attachment-scoped caching.
+    private fn listLayout(
+        // Address of a non-null managed list object.
+        object: address,
+    ) -> UnityListLayout! {
+        let names = UnityClassNames { width: self.pointerSize as u64,
+            name: self.profile.className, namespace: self.profile.classNamespace, declaring: None }
+        if object == 0 { throw "Unity list object is null" }
+        let header = names.pointer(object, 0)?
+        if header == 0 { throw "Unity object header is null" }
+        let class = header
+        if class == 0 { throw "Unity object class is null" }
+        let fields = UnityFields { names, parent: self.profile.classParent,
+            fields: self.profile.classFields, fieldName: self.profile.fieldName,
+            fieldValue: self.profile.fieldValue, stride: self.profile.fieldStride }
+        return fields.listLayout(class, current => self.fieldCount(current, names))
+    }
+
     // Checked target address arithmetic is shared by the metadata readers.
     private fn member(base: address, offset: u64) -> address! {
         if base == 0 || (base as u64) > !0 - offset { throw "IL2CPP metadata address overflows" }
@@ -8579,6 +8657,78 @@ private struct UnityField {
     /// let declaringClass = field.owner
     /// ```
     owner: address,
+}
+
+/// Resolved instance-field offsets for a managed `List<T>`.
+///
+/// The layout identifies both the actual object class and its generic-list
+/// ancestor. Reuse it only for the same runtime class within one attachment.
+/// This describes storage; materializing list elements is a separate operation.
+///
+/// # Example
+///
+/// Inspect a managed list's storage
+///
+/// ```splitscript
+/// let runtime = await Unity.mono(MonoVersion.V2)
+/// let listLayout = runtime.listLayout(0x10000) else return
+/// print(listLayout.items)
+/// ```
+@representation(gcStruct, nullable)
+@valueUsage(structField, enumPayload, stateField, localVariable, globalVariable)
+private struct UnityListLayout {
+    /// Actual runtime class read from the object header.
+    ///
+    /// # Example
+    ///
+    /// Inspect the resolved layout
+    ///
+    /// ```splitscript
+    /// let runtime = await Unity.mono(MonoVersion.V2)
+    /// let layout = runtime.listLayout(0x10000) else return
+    /// print(layout.runtimeClass)
+    /// ```
+    runtimeClass: address,
+
+    /// Genuine generic-list ancestor that owns these fields.
+    ///
+    /// # Example
+    ///
+    /// Inspect the resolved layout
+    ///
+    /// ```splitscript
+    /// let runtime = await Unity.mono(MonoVersion.V2)
+    /// let layout = runtime.listLayout(0x10000) else return
+    /// print(layout.declaringClass)
+    /// ```
+    declaringClass: address,
+
+    /// Instance offset of the backing-array reference slot.
+    ///
+    /// # Example
+    ///
+    /// Inspect the resolved layout
+    ///
+    /// ```splitscript
+    /// let runtime = await Unity.mono(MonoVersion.V2)
+    /// let layout = runtime.listLayout(0x10000) else return
+    /// print(layout.items)
+    /// ```
+    items: u32,
+
+    /// Instance offset of the signed live element count.
+    ///
+    /// # Example
+    ///
+    /// Inspect the resolved layout
+    ///
+    /// ```splitscript
+    /// let runtime = await Unity.mono(MonoVersion.V2)
+    /// let layout = runtime.listLayout(0x10000) else return
+    /// print(layout.size)
+    /// ```
+    size: u32,
+
 }
 
 /// Describes where an IL2CPP image stores its first type index.
@@ -11496,8 +11646,26 @@ private struct MonoModule {
         return Ok(pointer)
     }
 
-    // Reads a pointer without rejecting the null sentinel used by metadata
-    // linked lists and inheritance chains.
+    // Resolve collection storage on demand. Failed metadata is an ordinary
+    // read error; callers control retry and attachment-scoped caching.
+    private fn listLayout(
+        // Address of a non-null managed list object.
+        object: address,
+    ) -> UnityListLayout! {
+        let names = UnityClassNames { width: self.pointerBytes(),
+            name: self.layout.className, namespace: self.layout.classNamespace, declaring: None }
+        if object == 0 { throw "Unity list object is null" }
+        let header = names.pointer(object, 0)?
+        if header == 0 { throw "Unity object header is null" }
+        let class = names.pointer(header, 0)?
+        if class == 0 { throw "Unity object class is null" }
+        let fields = UnityFields { names, parent: self.layout.classParent,
+            fields: self.layout.classFields, fieldName: self.layout.fieldName,
+            fieldValue: self.layout.fieldValue, stride: self.layout.fieldStride }
+        return fields.listLayout(class, current => self.fieldCount(current, names))
+    }
+
+    // Reads a pointer without rejecting metadata null sentinels.
     private fn readNullablePointer(address: address) -> address! {
         return match self.pointerSize {
             PointerSize.Bit32 => process.read<u32>(address)? as address,
