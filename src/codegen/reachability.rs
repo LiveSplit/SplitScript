@@ -1317,6 +1317,36 @@ mod tests {
     use crate::{stdlib::StdlibTypeId, types::TypeKind};
 
     #[test]
+    fn explicit_unity_backends_exclude_opposite_runtime_types() {
+        for (provider, excluded) in [
+            ("Unity.il2cpp(2020)", StdlibTypeId::MonoModule),
+            ("Unity.mono(MonoVersion.V2)", StdlibTypeId::UnityModule),
+        ] {
+            let source = format!(
+                "image \"Assembly-CSharp\" {{ class Probe {{ static i32 value; }} }}\n\
+                 state {provider} [\"game.exe\"] {{ value = Probe.value?; }}"
+            );
+            let checked = crate::check(crate::parse(&source).unwrap()).unwrap();
+            let backend = crate::lower_wasm_with_options(
+                &checked,
+                crate::CompilerOptions {
+                    profile: crate::BuildProfile::Release,
+                    ..Default::default()
+                },
+            );
+            let reachable = Reachability::analyze(
+                &backend.program,
+                &backend.semantics,
+                &backend.wasm_ir,
+                &backend.standard_library,
+                backend.capabilities,
+                [],
+            );
+            assert!(!reachable.contains_standard_type(excluded), "{provider}");
+        }
+    }
+
+    #[test]
     fn identity_types_and_their_fields_follow_reachable_reads() {
         for (source, pe, elf, guid) in [
             ("state \"game.exe\" {}", false, false, false),

@@ -346,7 +346,7 @@ fn managed_preparation_source(
     }
     match managed_backend {
         Some(ManagedRuntimeBackend::Il2Cpp) => {
-            source.push_str("    let __module = __runtime.il2cpp else await process.closed()\n");
+            source.push_str("    let __module = __runtime\n");
             source.push_str("    return {\n");
             source.push_str(&managed_backend_binding_source(
                 &classes,
@@ -359,7 +359,7 @@ fn managed_preparation_source(
             source.push_str("    }\n");
         }
         Some(ManagedRuntimeBackend::Mono) => {
-            source.push_str("    let __module = __runtime.mono else await process.closed()\n");
+            source.push_str("    let __module = __runtime\n");
             source.push_str("    return {\n");
             source.push_str(&managed_backend_binding_source(
                 &classes,
@@ -1091,7 +1091,8 @@ mod tests {
             Some(ManagedRuntimeBackend::Il2Cpp),
             &[],
         );
-        assert!(source.contains("let __module = __runtime.il2cpp"));
+        assert!(source.contains("let __module = __runtime\n"));
+        assert!(!source.contains("__runtime.il2cpp"));
         assert!(source.contains("await __module.image(\"Assembly-CSharp\")"));
         assert!(!source.contains("__runtime.mono"));
     }

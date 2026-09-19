@@ -1333,7 +1333,14 @@ impl StandardLibrary {
 
             let preparations = provider
                 .preparation
-                .map(|item| (format!("state provider `{}`", provider.name), item, &[][..]))
+                .map(|item| {
+                    (
+                        format!("state provider `{}`", provider.name),
+                        item,
+                        &[][..],
+                        false,
+                    )
+                })
                 .into_iter()
                 .chain(provider.selectors.iter().map(|selector| {
                     (
@@ -1343,6 +1350,7 @@ impl StandardLibrary {
                         ),
                         selector.preparation,
                         selector.parameters,
+                        selector.managed_backend.is_some(),
                     )
                 }))
                 .collect::<Vec<_>>();
@@ -1353,7 +1361,7 @@ impl StandardLibrary {
                 ));
             }
             let mut preparation_result = None;
-            for (owner, preparation_id, expected_parameters) in preparations {
+            for (owner, preparation_id, expected_parameters, specialized_backend) in preparations {
                 let preparation = self.item(preparation_id);
                 let parameters_match = preparation.signature.parameters.len()
                     == expected_parameters.len()
@@ -1378,7 +1386,7 @@ impl StandardLibrary {
                     ));
                 }
                 if let Some(expected) = preparation_result {
-                    if expected != preparation.signature.result {
+                    if !specialized_backend && expected != preparation.signature.result {
                         errors.push(format!(
                             "{owner} preparation returns a different runtime context type"
                         ));

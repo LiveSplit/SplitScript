@@ -2,7 +2,7 @@ const encoder = new TextEncoder();
 
 export function createMonoV2Fixture({ className, fields, parent }) {
     const moduleBase = 0x1000n;
-    const assemblyList = 0x8000n;
+    const assemblyList = moduleBase + 0x700n;
     const link = 0x8100n;
     const assembly = 0x8200n;
     const assemblyName = 0x8300n;
@@ -44,7 +44,14 @@ export function createMonoV2Fixture({ className, fields, parent }) {
 
     const memory = new Map();
     const writeBytes = (address, bytes) => {
-        bytes.forEach((value, index) => memory.set(address + BigInt(index), value));
+        bytes.forEach((value, index) => {
+            const target = address + BigInt(index);
+            if (target >= moduleBase && target < moduleBase + BigInt(moduleImage.length)) {
+                moduleImage[Number(target - moduleBase)] = value;
+            } else {
+                memory.set(target, value);
+            }
+        });
     };
     const writeNumber = (address, size, write) => {
         const buffer = new ArrayBuffer(size);

@@ -1,6 +1,6 @@
 # Unity support: ASR research and SplitScript implementation plan
 
-Status: researched on 2026-09-18; the measurement gate, reachable binding/scratch allocation, and Step 3 binary identity readers are implemented. Runtime profile integration and recursive managed readers remain planned. See [implementation progress](#implementation-progress).
+Status: researched on 2026-09-18; the measurement gate, reachable binding/scratch allocation, binary identities, and Windows Mono profile integration are implemented. IL2CPP profiles and recursive managed readers remain in progress/planned. See [implementation progress](#implementation-progress).
 
 ## Objective and baseline
 
@@ -53,7 +53,19 @@ The fourth slice adds the binary identities needed by measured runtime profiles 
 - The first size check exposed unconditional emission of standard-library GC types and their constructed field types. Fixed type planning to retain only reachable declarations and their transitive fields, including dependencies of runtime-helper signatures, intrinsic scratch state, result error strings, settings refresh, and derived formatting. Regression coverage distinguishes PE identity and ELF segment types from their shared GUID array layout, including unused function parameters.
 - Final size comparison: all 14 existing fixtures shrink, with no new runtime helpers or functions and no scratch/page growth. Empty native Wasm is **615 bytes** (previously 1,005); Lunistice is **27,204 bytes** explicit / **50,575 bytes** automatic (previously 27,677 / 51,354). The new complete identity fixtures are **7,135 bytes PE**, **7,718 bytes ELF**, and **4,308 bytes Mach-O**. Comparisons against the previous and initial reports require review only for these new fixtures and generated numeric-name shifts; the rolling gate now covers 17 artifacts.
 - Validation on 2026-09-19: **442 library tests**, **653 compiler integration tests**, and **101 runtime scenarios** pass, including all 196 identity cases and Lunistice base/DLC. Formatting, Clippy with warnings denied, documentation validation, and the reviewed size gate pass. No live-game validation was performed.
-- Exact Mono/IL2CPP profile selection is not wired to these readers yet. Linux/macOS Unity discovery and live-game validation also remain separate work.
+- This slice supplies identities; the next slice wires Mono selection to them. Linux/macOS Unity discovery and live-game validation remain separate work.
+
+The fifth slice implements Windows Mono profile selection and attachment (Steps 2/4):
+
+- Imported all 26 final measured Windows Mono profiles and eight PE fallback layouts from the pinned source. The reproducible importer verifies the revision and rejects modified input files; the checked-in data preserves absent metadata facts instead of guessing offsets.
+- Automatic attachment matches GUID **and age**, rejects a matching identity with the wrong target width, and uses the measured image-relative assembly name. Unknown, absent, and unreadable identities report distinct fallback diagnostics. Explicit Mono family selectors omit the PDB reader and measured-build table.
+- Added `mono.dll`, old V1/V1Cattrs detection without UnityPlayer, both PE32 assembly-list signatures, bounded PE64 signature discovery, and old vtable static storage. Invalid instruction candidates are skipped; truncated or missing instructions terminate discovery for that attachment. Pending metadata and rejected attachments cancel on process exit.
+- Mono's four families remain intentional fallback selectors: the final ASR source retains them. The removal of version buckets in #160 applies to IL2CPP; its numeric-year API is still scheduled for replacement by complete profiles.
+- Independent synthetic memory fixtures cover all 26 measured builds, all eight explicit family/width combinations, modern/old fallbacks, wrong ages, malformed identities, conflicting player versions, false signatures, module edges, rejection, cancellation, and replacement. The profile JSON supplies test identities, not the memory offsets being tested.
+- The first size check found 39–45 bytes of new Mono GC metadata in explicit IL2CPP scripts, retained through the shared runtime wrapper. Explicit selector preparation now returns its concrete backend directly; only automatic selection constructs the shared wrapper. A type-reachability regression covers both directions.
+- The remaining generic/nested metadata operations will consume the newly imported descriptor facts in later slices. This does not yet add width-correct managed string payloads or recursive collections.
+- Final size review: native/local-collection/identity fixtures are unchanged. Explicit IL2CPP Lunistice shrinks from **27,204 to 23,141 bytes**, and IL2CPP scalar/string fixtures shrink by 894 bytes. Mono scalar/string fixtures grow by **4,057 bytes** for the additional fallback descriptors, x86/old-runtime discovery, image-name routing, and static-storage variants. Automatic Lunistice grows from **50,575 to 72,974 bytes**, including exact identity reading and all measured profile factories. Scratch reservations and initial pages are unchanged. The gate now covers 19 artifacts.
+- Validation on 2026-09-19: **443 library tests**, **654 compiler integration tests**, and **106 runtime scenarios** pass, including **70 Mono profile cases**, inherited statics, instances, and Lunistice base/DLC. Clippy, formatting, 510-page documentation validation, importer reproducibility, and the reviewed size gate pass. Automatic Lunistice remains size-only; no live-game validation was performed.
 
 Step 1 is **in progress**, not complete: executable contracts for new profile/read APIs and recursive acceptance examples still need implementation. No new managed collection or recursive snapshot support is claimed by these slices. Live game validation has not been performed.
 
@@ -243,7 +255,7 @@ Each step is a reviewable change with its own acceptance gate **and the mandator
 
 ### 1. Lock down the new contract and baseline fixtures
 
-1. Record the pinned upstream revision and a per-PR checklist in the implementation issue/PR. Preserve provenance and MIT/Apache attribution for copied code, layouts, and fixtures.
+1. Record the pinned upstream revision and a per-PR checklist in the implementation issue/PR. Preserve measurement provenance for imported layouts and fixtures; no additional ASR license annotations are needed for this work by the same authors.
 2. Specify the profile selector, `ManagedReadable` rules, remote storage hints, live/snapshot type projections, nested nullability, root budgets, per-field limits, and process-lifetime constraints. Include raw UTF-16 as a separate opt-in decoder and nested map/array/class examples as acceptance targets.
 3. Specify finite metadata/collection work limits and typed error versus pending behavior. Unloaded modules/uninitialized metadata may retry; unavailable profile capabilities or malformed layout descriptions need a useful diagnostic, not indefinite retries.
 4. Extend `tests/support/splitscript_host.mjs` only where needed for read accounting, module identities, mapped ranges, and failures. Generalize `tests/support/mono_v2_fixture.mjs` and factor reusable IL2CPP fixtures from `tests/lunistice_runtime.mjs`.
@@ -416,8 +428,8 @@ Avoid a huge blind Cartesian product: test every profile's data/selection invari
 
 The implementation is complete when all 14 PRs have an outcome in this checklist:
 
-- [ ] #142 identities and equivalent generated-Wasm test infrastructure.
-- [ ] #143 Windows Mono exact profiles and image-name routing.
+- [x] #142 identities and equivalent generated-Wasm test infrastructure.
+- [x] #143 Windows Mono exact profiles and image-name routing.
 - [ ] #144 measured IL2CPP layouts, x86 discovery, and corrected reads; superseded selection intentionally omitted.
 - [ ] #145 shared metadata operations with SplitScript-specific scheduling/ambiguity semantics.
 - [ ] #146 nested/generic handling and owner-aware static regression coverage.

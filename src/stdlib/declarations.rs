@@ -100,8 +100,8 @@ pub struct StateProviderSelector {
     pub name: &'static str,
     pub parameters: &'static [StateProviderSelectorParameter],
     /// Selector-specific preparation callable. Its parameters exactly match
-    /// this selector and its result matches the provider's default
-    /// preparation result.
+    /// this selector. A managed backend specialization may return its own
+    /// context; otherwise the result matches the default preparation.
     pub preparation: StdlibItemId,
     /// Optional managed-runtime specialization known from this selector.
     ///

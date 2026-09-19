@@ -339,9 +339,19 @@ state Unity ["game.exe"] {
 `state Unity` automatically distinguishes supported Mono and IL2CPP backends.
 Prefer this form unless the exact target layout is already known and automatic
 detection is inappropriate. Such a target may select
+`Unity.mono(MonoVersion.V1)`, `Unity.mono(MonoVersion.V1Cattrs)`,
 `Unity.mono(MonoVersion.V2)`, `Unity.mono(MonoVersion.V3)`, or an IL2CPP layout
 such as `Unity.il2cpp(2020)` in the state header. These selectors configure the
 provider; they are not callable discovery functions.
+
+On Windows, automatic Mono selection first matches the runtime DLL's PDB GUID
+and age against 26 measured profiles and verifies its pointer width. Missing,
+unknown, or unreadable identities fall back to family detection: class metadata
+distinguishes the two old `mono.dll` families, and the UnityPlayer file version
+distinguishes modern V2/V3. Selection reports its route in the runtime log.
+Explicit Mono selectors skip PDB discovery and the measured-build table. All four
+families support 32-bit and 64-bit metadata and static fields; managed string
+payloads still require the forthcoming width-aware reader migration.
 
 The same provider exposes `unity: UnityContext` as a read-only,
 attachment-scoped value. Its [`UnityContext.scenes`](field@UnityContext.scenes)

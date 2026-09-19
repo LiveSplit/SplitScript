@@ -194,6 +194,45 @@ baseline records all 17 fixtures; the initial baseline remains unchanged.
 All 101 runtime scenarios pass, including 196 identity cases and Lunistice
 base/DLC. Automatic Lunistice remains size-only in this gate.
 
+### Windows Mono profiles and discovery (2026-09-19)
+
+Imported 26 measured PE profiles and eight family/width fallbacks. Exact build
+selection is reachable only through automatic Unity detection. Explicit selectors
+now return their concrete backend directly; the former shared runtime wrapper
+retained opposite-backend GC types and would have added 39–45 unused bytes to
+explicit IL2CPP scripts when Mono's descriptor expanded.
+
+| Fixture | Previous bytes | Current bytes | Delta |
+| --- | ---: | ---: | ---: |
+| Native | 615 | 615 | 0 |
+| IL2CPP scalar | 14,576 | 13,682 | -894 |
+| IL2CPP string | 15,294 | 14,400 | -894 |
+| Mono scalar | 19,909 | 23,966 | +4,057 |
+| Mono string | 20,615 | 24,672 | +4,057 |
+| Mono inherited static | 20,797 | 24,629 | +3,832 |
+| Mono instances | 17,149 | 21,008 | +3,859 |
+| Lunistice explicit | 27,204 | 23,141 | -4,063 |
+| Lunistice automatic | 50,575 | 72,974 | +22,399 |
+| Mono old explicit fixture | New | 24,241 | New |
+| Mono automatic profile fixture | New | 60,488 | New |
+
+Local map/set and the three identity-only fixtures are unchanged. Scratch and
+initial memory pages are unchanged for every existing fixture. Scalar and
+unused-string schemas remain byte-identical on both backends.
+
+Explicit Mono growth comes from the eight fallback constructors, bounded x86/x64
+discovery, old runtime selection, image-relative assembly names, and old static
+storage. Automatic selection additionally retains the PE identity reader, GUID
+comparisons, all 26 measured factories, and old-family detection. Small changes
+in existing automatic function bodies follow shifted indices. Explicit Mono
+contains no PDB reader or measured-build table, and explicit IL2CPP contains no
+Mono module type. No managed collection reader or resolver is added by this step.
+
+The reviewed rolling baseline covers 19 fixtures. All 106 runtime scenarios pass,
+including 70 Mono profile cases and Lunistice base/DLC. Automatic Lunistice has
+size coverage; synthetic Mono attachment has runtime coverage. No live-game
+validation is claimed.
+
 ## 2026-09-12 source-path suggestion indexing
 
 Source baseline: `d741ef4`. Intervening work changed process readers, pointer

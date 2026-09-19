@@ -92,6 +92,14 @@ fn fixtures() -> BTreeMap<String, String> {
             schema("Unity.mono(MonoVersion.V2)", "static i32 value;"),
         ),
         (
+            "mono-profiles-auto".into(),
+            include_str!("../tests/mono_profiles.split").into(),
+        ),
+        (
+            "mono-old".into(),
+            include_str!("../tests/mono_profiles_V1.split").into(),
+        ),
+        (
             "mono-string".into(),
             schema(
                 "Unity.mono(MonoVersion.V2)",

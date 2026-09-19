@@ -16,6 +16,35 @@ fn release_emission(source: &str) -> (Vec<u8>, splitscript::compiler::CodegenRep
 }
 
 #[test]
+fn explicit_mono_families_exclude_build_identity_discovery() {
+    for family in ["V1", "V1Cattrs", "V2", "V3"] {
+        let source = include_str!("../mono_profiles.split").replace(
+            "state Unity",
+            &format!("state Unity.mono(MonoVersion.{family})"),
+        );
+        let (wasm, report) = release_emission(&source);
+        Validator::new_with_features(WasmFeatures::all())
+            .validate_all(&wasm)
+            .unwrap();
+        for (_, name) in &report.functions {
+            assert!(
+                !name.contains("MonoLayoutForBuild")
+                    && !name.contains("MonoLayoutBuild")
+                    && !name.contains("ModulePeDebugId"),
+                "explicit {family} retained {name}"
+            );
+        }
+    }
+    let (_, report) = release_emission(include_str!("../mono_profiles.split"));
+    assert!(
+        report
+            .functions
+            .iter()
+            .any(|(_, name)| name.contains("MonoLayoutForBuild"))
+    );
+}
+
+#[test]
 fn binary_identity_readers_follow_the_requested_format() {
     let readers = ["ModulePeDebugId", "ModuleElfBuildId", "ModuleMachUuid"];
     for (source, expected) in [
@@ -329,9 +358,7 @@ fn release_managed_report_excludes_unused_strings_and_opposite_backend() {
             ordinary.0 == unused.0,
             "unused managed metadata changed Release Wasm for {provider}"
         );
-        // Metadata binding currently still visits unread declarations. The
-        // paired size fixtures record that gap; decoder retention is already
-        // operation-driven and must not regress while binding is reworked.
+        // Unread declarations retain neither metadata binding nor decoders.
         assert_eq!(ordinary.1.runtime_helpers, unused.1.runtime_helpers);
         assert_eq!(ordinary.1.scratch_bytes, unused.1.scratch_bytes);
         assert!(
