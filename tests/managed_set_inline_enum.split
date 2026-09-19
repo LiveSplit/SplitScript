@@ -1,7 +1,13 @@
+struct ShortRecord { values: [i32; 2], }
+struct LongRecord { values: [i32; 6], }
 enum Value: i32 { Negative = -1, Zero = 0, One = 1, Two = 2, Ten = 10, Eleven = 11, Twelve = 12, Thirteen = 13, Changed = 99 }
 struct Record { values: [Value; 4], }
 image "Assembly-CSharp" {
-    class ProfileProbe { static Set<Record> rows; }
+    class ProfileProbe {
+        static Set<Record> rows;
+        static Set<ShortRecord> shortRows;
+        static Set<LongRecord> longRows;
+    }
 }
 state Unity ["game.exe"] { rows = ProfileProbe.rows?; }
 whileAttached {
@@ -9,5 +15,7 @@ whileAttached {
     setVariable("old", old.rows)
     setVariable("result", match ProfileProbe.rows { Ok(_) => "ok", Err(error) => error })
     let mutation = process.read<i32>(0x6f000) else return
+    if mutation == 2 { setVariable("wrong", match ProfileProbe.shortRows { Ok(_) => "ok", Err(error) => error }) }
+    if mutation == 3 { setVariable("wrong", match ProfileProbe.longRows { Ok(_) => "ok", Err(error) => error }) }
     if mutation == 1 { for row in current.rows { row.values[0] = Value.Changed } }
 }

@@ -1521,6 +1521,37 @@ collection element metadata, exact value-type and generic-instance layout,
 generic argument identity, and recursive array/list element compatibility are
 still required by the full plan. These checks do not claim that work complete.
 
+## Mono inline value-type widths (2026-09-19)
+
+For a Mono `VALUETYPE` member, discovery now follows the type-data class
+pointer and obtains its unboxed width from the measured class instance size,
+subtracting the target object header exactly once. The cached member records
+whether metadata proves an exact width. Each schema read checks its own storage
+plan against that width, so a cached 16-byte struct cannot be read through an
+8-byte or 24-byte declaration. Discovery also validates the full width against
+entry bounds and neighboring fields. Null, unreadable, overflowing, zero-size,
+and oversized metadata fails without payload reads and can recover after repair.
+
+The private slot adapter passes 2,888 cases across Debug and Release, including
+168 additional malformed-width/metadata and recovery cases. All 24 collection
+artifacts validate and their runtime scenarios pass, including 72 additional
+cached short/long struct schema checks on Mono across both widths. Existing
+inline enum, nested collection, class snapshot, and rollback cases remain valid.
+The reviewed size gate and both Lunistice edition fixtures pass. The common
+Map/Set validator grows 228 bytes for each Mono baseline and 229 for each IL2CPP
+baseline; the shared metadata reader includes the conditional Mono value-class
+route. No functions or types are added; static data grows 41 bytes, with unchanged
+scratch and memory-page requirements. The other 30 baselines retain normalized
+code/emission metrics. Explicit Lunistice remains 58,178 bytes.
+
+Generic instances, IL2CPP value-type indices/handles, and parallel-array element
+metadata still require additional resolution. Research of Unity's
+[Mono generic descriptor](https://github.com/Unity-Technologies/mono/blob/unity-main/mono/metadata/class-internals.h)
+confirms that the definition, generic context, and cached inflated class are
+separate members. The existing generic-definition route must not be reused as
+proof of an instantiated value's size or arguments; additional profile facts
+need validation before that route is implemented.
+
 ## Source map for implementation
 
 Upstream links below are pinned to the reviewed tip; the PR table provides the historical changes.

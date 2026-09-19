@@ -41,6 +41,10 @@ export function createKeyedCollectionFixture({family='V2', width=64, dictionary=
     number(elementType+BigInt(bytes+2),1,0x15);ptr(elementType,(0x36000n + base));ptr((0x36000n + base)+BigInt(3*bytes),entry);
     number(intType+BigInt(bytes+2),1,0x08);number(hashType+BigInt(bytes+2),1,0x09);
     number(valueType+BigInt(bytes+2),1,inline?0x11:0x0e);number(keyType+BigInt(bytes+2),1,inline?0x05:0x0e);
+    if(mono&&inline){
+        ptr(valueType,0x3a000n+base);
+        number(0x3a000n+base+BigInt(wide?0x1c:0x10),4,header+16);
+    }
     const keyBytes=inline?1:bytes, valueBytes=inline?16:bytes;
     const names=parallel ? dictionary?['table','linkSlots','keySlots','valueSlots','touchedSlots','count']:['table','links','slots','touched','count']
         : dictionary?['_buckets','_entries','_count','_freeCount']:['_buckets','_slots','_count','_lastIndex'];

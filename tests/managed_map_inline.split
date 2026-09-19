@@ -1,6 +1,12 @@
+struct ShortRecord { values: [i32; 2], }
+struct LongRecord { values: [i32; 6], }
 struct Record { values: [i32; 4], }
 image "Assembly-CSharp" {
-    class ProfileProbe { static Map<u8, Record> rows; }
+    class ProfileProbe {
+        static Map<u8, Record> rows;
+        static Map<u8, ShortRecord> shortRows;
+        static Map<u8, LongRecord> longRows;
+    }
 }
 state Unity ["game.exe"] { rows = ProfileProbe.rows?; }
 whileAttached {
@@ -8,5 +14,7 @@ whileAttached {
     setVariable("old", old.rows)
     setVariable("result", match ProfileProbe.rows { Ok(_) => "ok", Err(error) => error })
     let mutation = process.read<i32>(0x6f000) else return
+    if mutation == 2 { setVariable("wrong", match ProfileProbe.shortRows { Ok(_) => "ok", Err(error) => error }) }
+    if mutation == 3 { setVariable("wrong", match ProfileProbe.longRows { Ok(_) => "ok", Err(error) => error }) }
     if mutation == 1 { current.rows[255].values[0] = 99 }
 }

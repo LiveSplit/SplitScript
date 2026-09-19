@@ -10,17 +10,22 @@ const layouts = {
 };
 let cases = 0;
 for (const family of Object.keys(layouts)) for (const width of [32, 64])
-for (const parallel of [false, true]) for (const mode of ['seed', 'mutate', 'duplicate', 'unreadable', 'freeze']) {
+for (const parallel of [false, true]) for (const mode of ['seed', 'mutate', 'duplicate', 'unreadable', 'freeze', 'short schema', 'long schema']) {
+    if (mode.endsWith('schema') && (parallel || family === 'il2cpp')) continue;
     const f = createKeyedCollectionFixture({family, width, parallel, inline: true});
     const {number, ptr, memory, object, outer, bytes, stride, hash, next, key, value} = f;
     const mono = family !== 'il2cpp', wide = width === 64, [fields, count] = layouts[family][width];
     ptr(0x14000n + BigInt(fields), 0x58000n);
-    number(0x14000n + BigInt(count), mono ? 4 : 2, 1);
-    ptr(0x58000n + BigInt(mono ? bytes : 0), 0x59000n);
-    const name = new Uint8Array(256); name.set(new TextEncoder().encode('rows'));
-    name.forEach((byte, i) => memory.set(0x59000n + BigInt(i), byte));
-    number(0x58000n + BigInt(wide ? 0x18 : 0xc), 4, 0x10);
-    ptr((mono ? 0x18000n : 0x16000n) + 0x10n, object);
+    number(0x14000n + BigInt(count), mono ? 4 : 2, 3);
+    ['rows', 'shortRows', 'longRows'].forEach((text, i) => {
+        const field = 0x58000n + BigInt(i * (wide ? 32 : mono ? 16 : 20));
+        const textAt = 0x59000n + BigInt(i * 256), offset = 0x10 + i * bytes;
+        ptr(field + BigInt(mono ? bytes : 0), textAt);
+        const name = new Uint8Array(256); name.set(new TextEncoder().encode(text));
+        name.forEach((byte, j) => memory.set(textAt + BigInt(j), byte));
+        number(field + BigInt(wide ? 0x18 : 0xc), 4, offset);
+        ptr((mono ? 0x18000n : 0x16000n) + BigInt(offset), object);
+    });
     number(object + BigInt(outer.at(-2)[1]), 4, 2);
     number(object + BigInt(outer.at(-1)[1]), 4, parallel ? 2 : 0);
     const arrays = [0x80000n, 0x120000n, 0x180000n];
@@ -51,10 +56,12 @@ for (const parallel of [false, true]) for (const mode of ['seed', 'mutate', 'dup
         number(0x6f000n, 4, 1);
         assert.throws(() => host.update(), WebAssembly.RuntimeError, label); cases++; continue;
     }
+    if (mode.endsWith('schema')) number(0x6f000n, 4, mode === 'short schema' ? 2 : 3);
     host.update();
+    if (mode.endsWith('schema')) assert.match(host.variables.get('wrong'), /width is incompatible/, label);
     assert.equal(normalize(host.variables.get('old')), before, label);
     assert.equal(normalize(host.variables.get('rows')), mode === 'mutate' ? before.replace('-1', '99') : before, label);
-    assert.equal(host.variables.get('result') === 'ok', ['seed', 'mutate'].includes(mode), label);
+    assert.equal(host.variables.get('result') === 'ok', ['seed', 'mutate', 'short schema', 'long schema'].includes(mode), label);
     cases++;
 }
 console.log(JSON.stringify({managedInlineMapCases: cases}));

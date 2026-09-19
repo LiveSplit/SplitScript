@@ -1965,7 +1965,8 @@ private struct UnityFields {
                     let kind = types.kind(typeAddress)?
                     found[slot] = Some(UnityCollectionMember {
                         offset: (offset as u32) - header, typeAddress,
-                        kind, minimumWidth: types.minimumWidth(kind)? })
+                        kind, minimumWidth: types.minimumWidth(typeAddress, kind)?,
+                        exactWidth: kind != 0x15 && (kind != 0x11 || types.mono) })
                 }
                 slot += 1
             }
@@ -13913,9 +13914,15 @@ private struct UnityCollectionTypes {
         return ((size as u64) - header) as u32
     }
 
-    // Minimum storage justified by the type tag. Value types need their child
-    // decoder's exact layout checked before payload materialization.
-    private fn minimumWidth(kind: u8) -> u32! {
+    // Mono's non-generic value types name their class directly. Other value
+    // types and generic instances still need further class/argument metadata.
+    private fn minimumWidth(typeAddress: address, kind: u8) -> u32! {
+        if self.mono && kind == 0x11 {
+            let offset = self.data else throw "Unity profile lacks type data metadata"
+            let class = self.names.pointer(typeAddress, offset)?
+            if class == 0 { throw "Unity collection value type class is null" }
+            return self.stride(class)
+        }
         return match kind {
             0x02 | 0x04 | 0x05 => 1,
             0x03 | 0x06 | 0x07 => 2,
@@ -13947,16 +13954,17 @@ private struct UnityCollectionMember {
     private typeAddress: address,
     /// Remote type tag retained with the discovered shape.
     private kind: u8,
-    /// Minimum remote width justified by the field type tag.
+    /// Minimum remote width justified by the field's type metadata.
     private minimumWidth: u32,
+    /// Whether metadata proves an exact width rather than a lower bound.
+    private exactWidth: bool,
 
-    // Value types and generic instances need further class/argument metadata
-    // to prove their exact layout. Primitive and reference tags have exact widths.
+    // Check the child storage plan against each width proven during discovery.
     private fn validateStorage(bytes: u32, kinds: u32) -> bool! {
         if self.kind >= 32 || (kinds & (1 << (self.kind as u32))) == 0 {
             throw "Unity collection member type is incompatible with its schema"
         }
-        if self.kind != 0x11 && self.kind != 0x15 && bytes != self.minimumWidth {
+        if self.exactWidth && bytes != self.minimumWidth {
             throw "Unity collection member width is incompatible with its runtime type"
         }
         return true
