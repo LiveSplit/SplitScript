@@ -171,6 +171,22 @@ fn unity_context_exposes_immutable_scene_snapshots() {
 
 #[test]
 fn private_standard_library_helpers_are_checked_but_not_user_visible() {
+    let diagnostics = splitscript::compile(
+        r#"
+        state Unity ["game.exe"] {}
+        onAttach {
+            let probe = () => unity.scenes.snapshot(0x1000)
+            probe()
+        }
+    "#,
+    )
+    .expect_err("user closures must not inherit library access from a called method");
+    assert!(
+        diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.message.contains("has no method `snapshot`")),
+        "{diagnostics:#?}"
+    );
     let library = StandardLibrary::new();
     let layout = library.type_decl(StdlibTypeId::MonoLayout);
     assert_eq!(layout.visibility, TypeVisibility::LibraryPrivate);

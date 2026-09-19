@@ -71,7 +71,8 @@ On 2026-09-19, the demo at `C:\Games\Lunistice-Demo` reported Unity
 `2022.3.13f1`, with binary file version `2022.3.13.37029`. Its x64 modules
 successfully attached using both the explicit `unity2022_3_0f1X64()` profile and
 automatic selection, which logged `UNITY_2022_3_0F1_X86_64`. Both runs completed
-in 126 accelerated host updates with no failed process reads and exposed
+in 122 accelerated host updates after the shared field-cursor migration, with
+no failed process reads (30,173 explicit; 30,190 automatic), and exposed
 `Scene = Title`, `Character = Hana`, points, resets, and level time. This checks
 real attachment, metadata binding, snapshots, and managed-string decoding;
 gameplay transitions remain covered by the synthetic timer scenarios.

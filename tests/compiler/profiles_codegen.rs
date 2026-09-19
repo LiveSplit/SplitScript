@@ -36,6 +36,55 @@ fn release_emission(source: &str) -> (Vec<u8>, splitscript::compiler::CodegenRep
 }
 
 #[test]
+fn flat_schema_names_omit_nested_matching_and_unused_nested_declarations() {
+    for provider in [
+        "Unity",
+        "Unity.mono(MonoVersion.V2)",
+        "Unity.il2cpp(Il2CppProfile.unity2022_3_0f1X64())",
+    ] {
+        let source = format!(
+            r#"
+            image "Assembly-CSharp" {{ class Probe {{ static i32 value; }} }}
+            state {provider} ["game.exe"] {{ value = Probe.value?; }}
+        "#
+        );
+        let (wasm, report) = release_emission(&source);
+        assert!(
+            report
+                .functions
+                .iter()
+                .any(|(_, name)| name.ends_with("UnityClassNamesMatchesFlat"))
+        );
+        assert!(
+            !report
+                .functions
+                .iter()
+                .any(|(_, name)| name.ends_with("UnityClassNamesMatches"))
+        );
+        assert!(
+            !wasm
+                .windows(b"Unity profile lacks nested class metadata".len())
+                .any(|bytes| bytes == b"Unity profile lacks nested class metadata")
+        );
+        let unused = format!(
+            "{source}\nimage \"Unused\" {{ class Nested from \"Other.Outer+Leaf\" {{ static i32 value; }} }}"
+        );
+        assert_eq!(wasm, release_emission(&unused).0);
+        let nested = source.replace("class Probe {", "class Probe from \"Game.Outer+Probe\" {");
+        let (wasm, report) = release_emission(&nested);
+        assert!(
+            report
+                .functions
+                .iter()
+                .any(|(_, name)| name.ends_with("UnityClassNamesMatches"))
+        );
+        Validator::new_with_features(WasmFeatures::all())
+            .validate_all(&wasm)
+            .unwrap();
+    }
+}
+
+#[test]
 fn explicit_mono_families_exclude_build_identity_discovery() {
     for family in ["V1", "V1Cattrs", "V2", "V3"] {
         let source = include_str!("../mono_profiles.split").replace(

@@ -429,8 +429,17 @@ fn managed_backend_binding_source(
             .collect::<Vec<_>>()
             .join(", ");
         let class_local = format!("__class_{}", class.class.id.index());
+        let class_lookup = if class
+            .class
+            .metadata_name_candidates()
+            .any(|(name, _)| name.contains('+'))
+        {
+            "classAny"
+        } else {
+            "classAnyFlat"
+        };
         source.push_str(&format!(
-            "            let {class_local} = await __image_{image_index}.classAny([{candidates}])\n"
+            "            let {class_local} = await __image_{image_index}.{class_lookup}([{candidates}])\n"
         ));
         if instance_classes.contains(&class.class.id) {
             let await_prefix = if instance_header_is_async {
@@ -977,7 +986,7 @@ mod tests {
 
         let source = managed_preparation_source(&program, "__prepare", "", None, &[]);
         assert!(source.contains("await __runtime.image(\"Assembly-CSharp\")"));
-        assert!(source.contains("await __image_0.classAny([\"GameManager\"])"));
+        assert!(source.contains("await __image_0.classAnyFlat([\"GameManager\"])"));
         assert!(source.contains("__runtime.pointerBytes()"));
         assert!(!source.contains("__runtime.il2cpp"));
         assert!(!source.contains("__runtime.mono"));

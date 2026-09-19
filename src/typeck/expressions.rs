@@ -1455,9 +1455,17 @@ impl Checker {
                         label: format!("closure is declared to return `{result}`"),
                     }
                 });
+                // A closure lexically inside an injected library body keeps
+                // access to its private implementation operations. Ordinary
+                // user closures still enter the unprivileged closure context.
+                let closure_context = if self.is_library_function() {
+                    super::context::CallableContext::CompilerGenerated
+                } else {
+                    super::context::CallableContext::Closure
+                };
                 self.with_return_type_source(return_type_source.clone(), |checker| {
                     checker.with_callable_context(
-                        super::context::CallableContext::Closure,
+                        closure_context,
                         completion,
                         failure,
                         |checker| {

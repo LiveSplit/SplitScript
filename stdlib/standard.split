@@ -1651,7 +1651,7 @@ private struct UnityRuntime {
 /// state Unity ["game.exe"] {}
 /// ```
 @representation(gcStruct, nullable)
-@valueUsage(localVariable)
+@valueUsage(structField, localVariable)
 private struct UnityClassNames {
     /// Target pointer width in bytes.
     private width: u64,
@@ -1662,21 +1662,39 @@ private struct UnityClassNames {
     /// Offset of the enclosing class pointer, when measured.
     private declaring: u64?,
 
-    private fn pointer(base: address, offset: u64) -> address! {
+    private fn member(base: address, offset: u64, bytes: u64) -> address! {
         let limit: u64 = if self.width == 4 { 0xffffffff } else { !0 }
         if (base as u64) > limit || offset > limit - (base as u64)
-            || self.width - 1 > limit - (base as u64) - offset {
+            || bytes == 0 || bytes - 1 > limit - (base as u64) - offset {
             throw "Unity metadata address overflows the target pointer width"
         }
+        return Ok(base.add(offset))
+    }
+
+    private fn pointer(base: address, offset: u64) -> address! {
+        let slot = self.member(base, offset, self.width)?
         return Ok(if self.width == 4 {
-            process.read<u32>(base.add(offset))? as address
-        } else { process.read<u64>(base.add(offset))? as address })
+            process.read<u32>(slot)? as address
+        } else { process.read<u64>(slot)? as address })
     }
 
     private fn text(base: address, offset: u64) -> String! {
         let pointer = self.pointer(base, offset)?
         if pointer == 0 { throw "Unity metadata name pointer is null" }
-        return process.readUtf8(pointer, 256)
+        return process.readUtf8(self.member(pointer, 0, 256)?, 256)
+    }
+
+    private fn matchesFlat(class: address, candidate: String, requested: String) -> bool! {
+        let dot = requested.lastIndexOf(".")
+        let expected = match dot {
+            Some(index) => requested.slice(index + 1, requested.byteLength()) else "",
+            None => requested,
+        }
+        if candidate != expected { return Ok(false) }
+        return match dot {
+            Some(index) => Ok(self.text(class, self.namespace)? == (requested.slice(0, index) else "")),
+            None => Ok(true),
+        }
     }
 
     private fn matches(class: address, candidate: String, requested: String) -> bool! {
@@ -1730,6 +1748,161 @@ private struct UnityClassNames {
     }
 }
 
+/// One bounded field-walk continuation, owned by an attachment operation.
+///
+/// # Example
+///
+/// Bind a field through the shared metadata walk
+///
+/// ```splitscript
+/// image "Assembly-CSharp" { class Player { static i32 score; } }
+/// state Unity ["game.exe"] { score = Player.score?; }
+/// ```
+@representation(gcStruct, nullable)
+@valueUsage(localVariable)
+private struct UnityFieldCursor {
+    /// Class currently being scanned; zero marks completion.
+    private current: address,
+    /// Current class's field array.
+    private fields: address,
+    /// Validated field count; negative means the class has not been entered.
+    private count: i32,
+    /// Next metadata field index.
+    private index: u32,
+    /// Number of classes entered in the inheritance chain.
+    private depth: u32,
+    /// Total metadata entries visited in this root search.
+    private visited: u32,
+    /// The unique field found so far.
+    private selected: UnityField?,
+    /// A structural rejection that must not be retried within this attachment.
+    private error: String?,
+
+    private fn reject(message: String) -> UnityFieldCursor {
+        return UnityFieldCursor { current: 0, fields: 0, count: 0, index: 0,
+            depth: self.depth, visited: self.visited, selected: None, error: Some(message) }
+    }
+}
+
+/// Shared field matching and bounded inheritance traversal.
+///
+/// The selected backend supplies only its count operation. Static storage
+/// remains with the returned field's declaring backend class.
+///
+/// # Example
+///
+/// Bind aliases through either Unity backend
+///
+/// ```splitscript
+/// image "Assembly-CSharp" { class Player { static i32 score from ["score", "_score"]; } }
+/// state Unity ["game.exe"] { score = Player.score?; }
+/// ```
+@representation(gcStruct, nullable)
+@valueUsage(localVariable)
+private struct UnityFields {
+    /// Checked pointer/name reads and class-name offsets.
+    private names: UnityClassNames,
+    /// Parent-class pointer offset.
+    private parent: u64,
+    /// Field-array pointer offset.
+    private fields: u64,
+    /// Name-pointer offset in each field entry.
+    private fieldName: u64,
+    /// Signed value offset in each field entry.
+    private fieldValue: u64,
+    /// Field-entry stride in bytes.
+    private stride: u64,
+
+    private fn step(cursor: UnityFieldCursor, aliases: [String], readCount: (address) -> i32!) -> UnityFieldCursor! {
+        let current = cursor.current
+        let fields = cursor.fields
+        let count = cursor.count
+        let index = cursor.index
+        let depth = cursor.depth
+        let visited = cursor.visited
+        let selected = cursor.selected
+        let work: u32 = 0
+        while current != 0 && work < 64 {
+            if visited >= 1048576 { return Ok(cursor.reject("Unity field traversal exceeds the metadata work limit")) }
+            if count < 0 {
+                if depth >= 128 { return Ok(cursor.reject("Unity inheritance is cyclic or exceeds the metadata work limit")) }
+                let name = self.names.text(current, self.names.name)?
+                if name == "MonoBehaviour" || name == "Object" {
+                    let namespace = self.names.text(current, self.names.namespace)?
+                    if name == "MonoBehaviour" && namespace == "UnityEngine"
+                        || name == "Object" && namespace == "System" {
+                        current = 0
+                        break
+                    }
+                }
+                count = (readCount)(current)?
+                if count < 0 || count > 65535 { return Ok(cursor.reject("Unity field count is invalid or exceeds the metadata work limit")) }
+                fields = if count == 0 { 0 as address } else {
+                    let pointer = self.names.pointer(current, self.fields)?
+                    if pointer == 0 { throw "Unity field array is not initialized" }
+                    pointer
+                }
+                index = 0
+                depth += 1
+            } else if index >= (count as u32) {
+                current = self.names.pointer(current, self.parent)?
+                count = -1
+            } else {
+                let field = self.names.member(fields, (index as u64) * self.stride, self.stride)?
+                let namePointer = self.names.pointer(field, self.fieldName)?
+                // A null-name entry is an empty slot. An unreadable slot is
+                // pending metadata and cannot prove absence or uniqueness.
+                if namePointer != 0 {
+                    let candidate = process.readUtf8(self.names.member(namePointer, 0, 256)?, 256)?
+                    let matches = false
+                    for alias in aliases {
+                        if candidate == alias { matches = true; break }
+                    }
+                    if matches {
+                        let offset = process.read<i32>(self.names.member(field, self.fieldValue, 4)?)?
+                        if offset < 0 { return Ok(cursor.reject("Unity field uses unsupported thread-static storage")) }
+                        match selected {
+                            Some(previous) if previous.owner != current || previous.offset != (offset as u32) => {
+                                return Ok(cursor.reject("multiple Unity fields match metadata names"))
+                            },
+                            Some(_) => {},
+                            None => { selected = Some(UnityField { owner: current, offset: offset as u32, index }) },
+                        }
+                    }
+                }
+                index += 1
+            }
+            work += 1
+            visited += 1
+        }
+        return Ok(UnityFieldCursor { current, fields, count, index, depth, visited, selected, error: None })
+    }
+
+    private fn find(class: address, names: [String], readCount: (address) -> i32!) -> async UnityField? {
+        if names.length() > 256 {
+            print("Unity field aliases exceed the metadata work limit")
+            await process.closed()
+        }
+        let aliases: [String] = []
+        for name in names {
+            aliases.push(name)
+            aliases.push(`<{name}>k__BackingField`)
+        }
+        let cursor = UnityFieldCursor { current: class, fields: 0, count: -1,
+            index: 0, depth: 0, visited: 0, selected: None, error: None }
+        loop {
+            cursor = retry self.step(cursor, aliases, readCount)
+            match cursor.error {
+                Some(error) => { print(`{error}: {names}`); await process.closed() },
+                None => {},
+            }
+            if cursor.current == 0 { return cursor.selected }
+            await nextTick()
+        }
+        return None
+    }
+}
+
 /// Backend-neutral image used only by generated Unity schema binding.
 ///
 /// # Example
@@ -1771,6 +1944,27 @@ private struct UnityMetadataImage {
                     backend: self.backend,
                     il2cpp: None,
                     mono: await image.classAny(names),
+                }
+            },
+        }
+    }
+    // Finds exactly one source-declared class through the selected backend.
+    private fn classAnyFlat(names: [String]) -> async UnityMetadataClass {
+        return match self.backend {
+            UnityRuntimeBackend.Il2cpp => {
+                let image = self.il2cpp else await process.closed()
+                UnityMetadataClass {
+                    backend: self.backend,
+                    il2cpp: await image.classAnyFlat(names),
+                    mono: None,
+                }
+            },
+            UnityRuntimeBackend.Mono => {
+                let image = self.mono else await process.closed()
+                UnityMetadataClass {
+                    backend: self.backend,
+                    il2cpp: None,
+                    mono: await image.classAnyFlat(names),
                 }
             },
         }
@@ -7943,19 +8137,7 @@ private struct UnityModule {
 
     // A readable complete table distinguishes absence from pending metadata.
     // Null entries are sparse slots and do not end the table.
-    private fn probeClasses(image: address, names: [String]) -> async UnityClass? {
-        let matcher = UnityClassNames {
-            width: self.pointerSize as u64,
-            name: self.profile.className,
-            namespace: self.profile.classNamespace,
-            declaring: self.profile.classDeclaring,
-        }
-        for name in names {
-            if name.indexOf("+") != None && self.profile.classDeclaring == None {
-                print("Unity profile lacks nested class metadata")
-                await process.closed()
-            }
-        }
+    private fn probeClasses(image: address, names: [String], matches: (address, String, String) -> bool!) -> async UnityClass? {
         let count = retry self.readU32Member(image, self.profile.imageTypeCount)
         if count > 1048576 {
             print("IL2CPP type table exceeds the metadata work limit")
@@ -7979,7 +8161,7 @@ private struct UnityModule {
             if class != 0 {
                 let candidate = retry self.readName(class, self.profile.className)
                 for name in names {
-                    if retry matcher.matches(class, candidate, name) {
+                    if retry (matches)(class, candidate, name) {
                         if selected != 0 && selected != class {
                             return Some(UnityClass { address: 0, module: self })
                         }
@@ -7993,76 +8175,20 @@ private struct UnityModule {
         return if selected == 0 { None } else { Some(UnityClass { address: selected, module: self }) }
     }
 
-    private fn probeNamedField(class: address, name: String) -> async UnityField? {
-        let current = class
-        let depth: u32 = 0
-        let backing = `<{name}>k__BackingField`
-        while current != 0 {
-            if depth >= 128 {
-                print("IL2CPP inheritance is cyclic or exceeds the metadata work limit")
-                await process.closed()
-            }
-            let className = retry self.readName(current, self.profile.className)
-            if className == "MonoBehaviour" || className == "Object" {
-                let namespace = retry self.readName(current, self.profile.classNamespace)
-                if namespace == "UnityEngine" || namespace == "System" { return None }
-            }
-            let rawCount = retry self.readU16Member(current, self.profile.classFieldCount)
-            let count: u32 = if rawCount == 65535 { 0 } else { rawCount as u32 }
-            let fields = if count == 0 { 0 as address } else {
-                retry self.readPointerMember(current, self.profile.classFields)
-            }
-            let index: u32 = 0
-            let selected: UnityField? = None
-            while index < count {
-                let field = retry self.member(fields, (index as u64) * self.profile.fieldStride)
-                let fieldIndex = index
-                index += 1
-                if index % 64 == 0 { await nextTick() }
-                // Individual unreadable field slots are holes; structural
-                // reads and the offsets of named matches still retry.
-                let candidate = self.readName(field, self.profile.fieldName) else continue
-                if candidate == name || candidate == backing {
-                    let offset = retry self.readI32Member(field, self.profile.fieldValue)
-                    if offset < 0 {
-                        print("IL2CPP field uses unsupported thread-static storage")
-                        await process.closed()
-                    }
-                    match selected {
-                        Some(previous) if previous.offset != (offset as u32) => {
-                            return Some(UnityField { offset: 0, index: !0, owner: current })
-                        },
-                        None => { selected = Some(UnityField { offset: offset as u32, index: fieldIndex, owner: current }) },
-                        _ => {},
-                    }
-                }
-            }
-            match selected { Some(_) => return selected, None => {} }
-            current = retry self.readNullableMember(current, self.profile.classParent)
-            depth += 1
-            await nextTick()
-        }
-        return None
+    private fn fieldCount(class: address, memory: UnityClassNames) -> i32! {
+        let count = process.read<u16>(memory.member(class, self.profile.classFieldCount, 2)?)?
+        return Ok(if count == 65535 { 0 } else { count as i32 })
     }
 
     private fn probeFields(class: address, names: [String]) -> async UnityField? {
-        let selected: UnityField? = None
-        for name in names {
-            let candidate = await self.probeNamedField(class, name)
-            match candidate {
-                Some(field) => {
-                    if field.index == !0 { return candidate }
-                    match selected {
-                        Some(previous) if previous.owner != field.owner || previous.offset != field.offset => {
-                            return Some(UnityField { offset: 0, index: !0, owner: class })
-                        },
-                        _ => { selected = candidate },
-                    }
-                },
-                None => {},
-            }
+        let fields = UnityFields {
+            names: UnityClassNames { width: self.pointerSize as u64,
+                name: self.profile.className, namespace: self.profile.classNamespace, declaring: None },
+            parent: self.profile.classParent, fields: self.profile.classFields,
+            fieldName: self.profile.fieldName, fieldValue: self.profile.fieldValue,
+            stride: self.profile.fieldStride,
         }
-        return selected
+        return await fields.find(class, names, current => self.fieldCount(current, fields.names))
     }
 
     private fn statics(class: address) -> async address {
@@ -8122,15 +8248,33 @@ private struct UnityImage {
         return await self.classAny([name])
     }
 
-    // Completes one readable metadata probe for all schema aliases. A class
-    // with address zero is the compiler-private ambiguity sentinel.
-    private fn probeClassAny(names: [String]) -> async UnityClass? {
-        return await self.module.probeClasses(self.address, names)
+    private fn classNames() -> UnityClassNames {
+        return UnityClassNames {
+            width: self.module.pointerSize as u64,
+            name: self.module.profile.className,
+            namespace: self.module.profile.classNamespace,
+            declaring: self.module.profile.classDeclaring,
+        }
     }
 
-    // Resolves exactly one runtime class for a source schema declaration.
     private fn classAny(names: [String]) -> async UnityClass {
-        let candidate = await self.probeClassAny(names)
+        let matcher = self.classNames()
+        for name in names {
+            if name.indexOf("+") != None && matcher.declaring == None {
+                print("Unity profile lacks nested class metadata")
+                await process.closed()
+            }
+        }
+        return await self.classMatching(names, (class, candidate, name) => matcher.matches(class, candidate, name))
+    }
+
+    private fn classAnyFlat(names: [String]) -> async UnityClass {
+        let matcher = self.classNames()
+        return await self.classMatching(names, (class, candidate, name) => matcher.matchesFlat(class, candidate, name))
+    }
+
+    private fn classMatching(names: [String], matches: (address, String, String) -> bool!) -> async UnityClass {
+        let candidate = await self.module.probeClasses(self.address, names, matches)
         let class = candidate else {
             print(`no Unity class matches metadata names {names}`)
             await process.closed()
@@ -8141,6 +8285,7 @@ private struct UnityImage {
         }
         return class
     }
+
 }
 
 /// Describes a Unity runtime class.
@@ -11389,19 +11534,7 @@ private struct MonoModule {
     }
 
     // Owns the raw-address traversal exposed through MonoImage.class().
-    private fn classAnyInImage(image: address, names: [String]) -> async MonoClass {
-        let matcher = UnityClassNames {
-            width: self.pointerBytes(),
-            name: self.layout.className,
-            namespace: self.layout.classNamespace,
-            declaring: self.layout.classDeclaring,
-        }
-        for name in names {
-            if name.indexOf("+") != None && self.layout.classDeclaring == None {
-                print("Unity profile lacks nested class metadata")
-                await process.closed()
-            }
-        }
+    private fn classAnyInImage(image: address, names: [String], matches: (address, String, String) -> bool!) -> async MonoClass {
         while true {
             let selectedClass: address = 0
             let ambiguous = false
@@ -11433,7 +11566,7 @@ private struct MonoModule {
                         let candidateIndex: u32 = 0
                         while candidateIndex < names.length() {
                             let name = names[candidateIndex]
-                            if retry matcher.matches(classAddress, candidateName, name) {
+                            if retry (matches)(classAddress, candidateName, name) {
                                 if selectedClass != 0 && selectedClass != classAddress {
                                     ambiguous = true
                                 }
@@ -11482,104 +11615,35 @@ private struct MonoModule {
     // Inflated classes own their field array, but the generic definition owns
     // its count. An unreadable/null descriptor must retry rather than silently
     // falling back to the instance's unrelated count word.
-    private fn fieldCount(class: address) -> i32! {
+    private fn fieldCount(class: address, memory: UnityClassNames) -> i32! {
         let counted = class
         match self.layout.classKind {
             Some(kindOffset) => {
-                let kind = process.read<u8>(class.add(kindOffset))?
+                let kind = process.read<u8>(memory.member(class, kindOffset, 1)?)?
                 if kind & 7 == 3 {
                     let genericOffset = self.layout.genericClass else throw "Mono profile lacks generic class metadata"
                     let containerOffset = self.layout.genericContainer else throw "Mono profile lacks generic definition metadata"
-                    let generic = self.readPointer(class.add(genericOffset))?
-                    counted = self.readPointer(generic.add(containerOffset))?
+                    let generic = memory.pointer(class, genericOffset)?
+                    if generic == 0 { throw "Mono generic class metadata is not initialized" }
+                    counted = memory.pointer(generic, containerOffset)?
+                    if counted == 0 { throw "Mono generic definition metadata is not initialized" }
                 }
             },
             None => {},
         }
-        return process.read<i32>(counted.add(self.layout.classFieldCount))
+        return process.read<i32>(memory.member(counted, self.layout.classFieldCount, 4)?)
     }
 
-    // Completes after one fully readable traversal, preserving absence.
-    private fn probeFieldAnyInClass(
-        classAddress: address,
-        names: [String],
-    ) -> async UnityField? {
-        let current = classAddress
-        let selectedOffset: u32? = None
-        let selectedIndex: u32 = 0
-        let selectedOwner: address = 0
-        let ambiguous = false
-        let depth: u32 = 0
-        while current != 0 {
-            if depth >= 128 {
-                print("Mono inheritance is cyclic or exceeds the metadata work limit")
-                await process.closed()
-            }
-            let count = retry self.fieldCount(current)
-            if count < 0 || count > 65535 {
-                print("Mono field count is invalid or exceeds the metadata work limit")
-                await process.closed()
-            }
-            if count > 0 {
-                let fields = retry self.readPointer(
-                    current.add(self.layout.classFields),
-                )
-                let index: i32 = 0
-                while index < count {
-                    let field = fields.add((index as u64) * self.layout.fieldStride)
-                    let namePointer = retry self.readPointer(
-                        field.add(self.layout.fieldName),
-                    )
-                    let candidate = retry process.readUtf8(namePointer, 256)
-                    let candidateIndex: u32 = 0
-                    let matchingIndex: u32? = None
-                    while candidateIndex < names.length() {
-                        let name = names[candidateIndex]
-                        if candidate == name || candidate == `<{name}>k__BackingField` {
-                            matchingIndex = Some(candidateIndex)
-                            break
-                        }
-                        candidateIndex += 1
-                    }
-                    match matchingIndex {
-                        Some(candidateIndex) => {
-                            let offset = retry process.read<u32>(
-                                field.add(self.layout.fieldValue),
-                            )
-                            match selectedOffset {
-                                Some(previous) if previous != offset || selectedOwner != current => {
-                                    ambiguous = true
-                                },
-                                Some(_) => {},
-                                None => {
-                                    selectedOffset = Some(offset)
-                                    selectedIndex = candidateIndex
-                                    selectedOwner = current
-                                },
-                            }
-                        },
-                        None => {},
-                    }
-                    index += 1
-                    if index % 64 == 0 { await nextTick() }
-                }
-            }
-            current = retry self.readNullablePointer(current.add(self.layout.classParent))
-            depth += 1
-            if depth % 8 == 0 { await nextTick() }
+    // The common cursor owns matching, owner propagation, and scheduling.
+    private fn probeFieldAnyInClass(classAddress: address, names: [String]) -> async UnityField? {
+        let fields = UnityFields {
+            names: UnityClassNames { width: self.pointerBytes(),
+                name: self.layout.className, namespace: self.layout.classNamespace, declaring: None },
+            parent: self.layout.classParent, fields: self.layout.classFields,
+            fieldName: self.layout.fieldName, fieldValue: self.layout.fieldValue,
+            stride: self.layout.fieldStride,
         }
-        if ambiguous {
-            print(`multiple Unity fields match metadata names {names}`)
-            await process.closed()
-        }
-        return match selectedOffset {
-            Some(offset) => Some(UnityField {
-                offset,
-                index: selectedIndex,
-                owner: selectedOwner,
-            }),
-            None => None,
-        }
+        return await fields.find(classAddress, names, current => self.fieldCount(current, fields.names))
     }
 
     // Resolves exactly one runtime field while traversing one class hierarchy.
@@ -11711,12 +11775,33 @@ private struct MonoImage {
         /// Simple class name or namespace-qualified managed class name.
         name: String,
     ) -> async MonoClass {
-        return await self.module.classAnyInImage(self.address, [name])
+        return await self.classAny([name])
     }
 
     // Resolves exactly one class matching the schema's metadata aliases.
+    private fn classNames() -> UnityClassNames {
+        return UnityClassNames {
+            width: self.module.pointerBytes(),
+            name: self.module.layout.className,
+            namespace: self.module.layout.classNamespace,
+            declaring: self.module.layout.classDeclaring,
+        }
+    }
+
     private fn classAny(names: [String]) -> async MonoClass {
-        return await self.module.classAnyInImage(self.address, names)
+        let matcher = self.classNames()
+        for name in names {
+            if name.indexOf("+") != None && matcher.declaring == None {
+                print("Unity profile lacks nested class metadata")
+                await process.closed()
+            }
+        }
+        return await self.module.classAnyInImage(self.address, names, (class, candidate, name) => matcher.matches(class, candidate, name))
+    }
+
+    private fn classAnyFlat(names: [String]) -> async MonoClass {
+        let matcher = self.classNames()
+        return await self.module.classAnyInImage(self.address, names, (class, candidate, name) => matcher.matchesFlat(class, candidate, name))
     }
 }
 

@@ -530,11 +530,11 @@ This advances Steps 6/7 without completing them: field matching, engine boundary
 policy, and backend-independent field cursors still need consolidation. IL2CPP
 type-to-class/generic-argument routes and recursive managed decoding remain
 unfinished. The new nested-name artifact joins the rolling size gate.
-The current shared matcher is general-purpose: flat schema bindings also retain
-its nested-name branch, although they do not read declaring metadata. When
-consolidating the class cursors, separate the statically known flat/nested
-matching policies so flat bindings can omit that branch. The final unused-feature
-criterion remains unchecked; a smaller total module would not prove this pruning.
+At this checkpoint the shared matcher was general-purpose: flat schema bindings also retained
+its nested-name branch without reading declaring metadata. The subsequent shared
+field-cursor slice separates flat/nested matching policies and verifies this
+pruning directly. The final unused-feature criterion remains unchecked until all
+managed reader features are implemented and audited.
 
 Validation passed all 656 compiler integration tests, 114 runtime scenarios,
 84 distinct Wasm artifact validations, and the library/CLI/syntax/loader/example
@@ -559,6 +559,71 @@ earlier recording attempt reported a nonzero Node exit after the DLC fixture
 printed its completed success summary; direct replay and both subsequent
 record/strict runs exited successfully. No fixture assertion was removed or
 relaxed in response.
+
+## Shared field cursor and matching policies (2026-09-19)
+
+Mono and IL2CPP now share a synchronous field-cursor step with a small async
+driver. Each step scans at most 64 metadata entries before publishing a new
+continuation; failed reads retry that chunk without accepting partial results.
+The cursor bounds total work, validates target-width arithmetic, counts and
+inheritance, and retains declaring owners. Backing-field aliases are expanded
+once per operation. Backend count callbacks retain Mono's inflated-definition
+route and IL2CPP's generic-definition sentinel without linking the opposite
+backend into explicit scripts.
+
+The common policy scans all supported ancestors and rejects distinct matching
+owners/offsets. It stops before exactly `UnityEngine.MonoBehaviour` and
+`System.Object`. This fixes IL2CPP's earlier first-ancestor behavior and its
+overbroad name/namespace combinations. Mono now follows the same boundary policy.
+Null-name entries are holes on both backends; unreadable entries retry rather
+than proving absence or uniqueness. Negative offsets reject thread-static
+storage. The returned field index is the metadata index on both backends.
+
+Class enumeration accepts a matching callback. Generated schema binding selects
+the flat callback when all requested names are flat; general/dynamic lookup keeps
+the nested matcher. Reachability tests verify that flat Wasm contains neither the
+nested matcher nor its unsupported-profile diagnostic, and that adding an unused
+nested declaration produces identical bytes. Library closures now retain their
+lexical access to private library methods; a user-closure regression verifies
+that this does not expose those methods to scripts.
+
+The new shared-field fixture covers 72 cases per build profile across both
+backends and widths: aliases, backing fields, holes, same-slot aliases, inherited
+statics, shadowed fields, exact engine boundaries, pending reads, rejected
+thread statics, bounded polls and reattachment. IL2CPP x86's independently
+specified 20-byte field stride is exercised with multi-entry tables.
+
+Live validation used the supplied demo with the final Release artifacts for
+both explicit and automatic profiles. Each reached the expected title-screen
+state in 122 accelerated host updates, with zero failed reads (30,173 reads
+explicit; 30,190 automatic). Automatic selection again chose
+`UNITY_2022_3_0F1_X86_64` for binary version `2022.3.13.37029`. No actual timer
+actions were sent. The demo was closed in the probe's cleanup block and its
+process exit was verified. This covers live attachment and metadata/string
+reads, not gameplay transitions.
+
+Validation passed 657 compiler integration tests, 116 runtime scenarios,
+86 distinct Wasm validations, and the library/CLI/syntax/loader/example suites.
+The shared-field cases run in both Debug and Release. Clippy, formatting,
+557 generated documentation pages, and both pinned-source importer checks passed.
+
+The optimized 22-fixture report compares against `d5cc416`: explicit Lunistice
+shrinks from 74,926 to 56,641 bytes; automatic Lunistice from 148,062 to 123,510;
+Mono scalar from 42,000 to 38,010; and the nested-metadata fixture from 133,486
+to 110,583. The shared step is about 2.3 KB and its async driver about 1.6 KB,
+replacing the duplicated field polls. Remaining positive body deltas come from
+the selected matching/count callbacks, checked count-read spans, and their
+wrappers. No whole artifact grows. Native, local map/set, and all identity-only
+fixtures remain byte-identical. Scratch and page counts are unchanged; unused
+string fields still produce exactly the corresponding scalar module. Flat
+matching pruning is verified independently of these total byte reductions.
+The reviewed baseline was recorded and its strict comparison, including
+Lunistice base/DLC behavior, passed.
+
+Remaining work includes shared assembly-name routing, broader class-cursor
+hardening, type-to-class/collection-shape operations, platform attachment,
+recursive managed readers and deep snapshots. These are not marked complete by
+this field-cursor integration.
 
 ## Source map for implementation
 

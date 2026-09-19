@@ -676,6 +676,20 @@ const RUNTIME_FIXTURES: &[RuntimeFixture] = &[
         extra_arguments: &[],
     },
     RuntimeFixture {
+        source: "tests/unity_field_cursor.split",
+        output: "unity_field_cursor.wasm",
+        profile: "release",
+        harness: "tests/unity_field_cursor_runtime.mjs",
+        extra_arguments: &[],
+    },
+    RuntimeFixture {
+        source: "tests/unity_field_cursor.split",
+        output: "unity_field_cursor_debug.wasm",
+        profile: "debug",
+        harness: "tests/unity_field_cursor_runtime.mjs",
+        extra_arguments: &[],
+    },
+    RuntimeFixture {
         source: "tests/unity_nested_metadata.split",
         output: "unity_nested_metadata.wasm",
         profile: "release",

@@ -1,0 +1,7 @@
+image "Assembly-CSharp" {
+    class ProfileProbe {
+        static i32 value from ["first", "second"];
+    }
+}
+state Unity ["game.exe"] { value = ProfileProbe.value?; }
+whileAttached { print(current.value) }
