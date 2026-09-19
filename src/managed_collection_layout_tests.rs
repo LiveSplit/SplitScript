@@ -5,10 +5,30 @@ use crate::*;
 
 #[test]
 fn managed_collection_layout_runtime() {
-    for (backend, source) in [
-        ("mono", include_str!("../tests/mono_list_layout.split")),
-        ("il2cpp", include_str!("../tests/il2cpp_list_layout.split")),
-    ] {
+    run_layout_fixtures(
+        "list",
+        "tests/managed_list_layout_runtime.mjs",
+        [
+            ("mono", include_str!("../tests/mono_list_layout.split")),
+            ("il2cpp", include_str!("../tests/il2cpp_list_layout.split")),
+        ],
+    );
+}
+
+#[test]
+fn managed_keyed_collection_layout_runtime() {
+    run_layout_fixtures(
+        "keyed",
+        "tests/managed_keyed_layout_runtime.mjs",
+        [
+            ("mono", include_str!("../tests/mono_keyed_layout.split")),
+            ("il2cpp", include_str!("../tests/il2cpp_keyed_layout.split")),
+        ],
+    );
+}
+
+fn run_layout_fixtures(kind: &str, harness: &str, fixtures: [(&str, &str); 2]) {
+    for (backend, source) in fixtures {
         let mut parsed = parse(source).unwrap();
         // This fixture deliberately occupies the same reserved namespace as
         // generated binders. No user-source restriction changes in production.
@@ -31,11 +51,11 @@ fn managed_collection_layout_runtime() {
                 .unwrap();
             let output = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
                 .join("target")
-                .join(format!("{backend}-list-layout-{profile:?}.wasm"));
+                .join(format!("{backend}-{kind}-layout-{profile:?}.wasm"));
             std::fs::write(&output, wasm).unwrap();
             let result = std::process::Command::new("node")
                 .current_dir(env!("CARGO_MANIFEST_DIR"))
-                .arg("tests/managed_list_layout_runtime.mjs")
+                .arg(harness)
                 .arg(output)
                 .arg(backend)
                 .output()

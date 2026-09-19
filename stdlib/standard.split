@@ -1903,6 +1903,143 @@ private struct UnityFields {
             items: itemsOffset, size: sizeOffset })
     }
 
+    // Read every required field on the exact corlib/entry owner. A missing or
+    // unreadable entry cannot prove a unique, complete shape.
+    private fn collectionMembers(class: address, wanted: [[String]], types: UnityCollectionTypes,
+        readCount: (address) -> i32!, header: u32) -> [UnityCollectionMember]! {
+        let count = (readCount)(class)?
+        if count < 0 || count > 4096 { throw "Unity collection field count exceeds the metadata work limit" }
+        let fields = self.names.pointer(class, self.fields)?
+        if fields == 0 { throw "Unity collection field array is not initialized" }
+        let found: [UnityCollectionMember?] = []
+        for _ in wanted { found.push(None) }
+        let index: u32 = 0
+        while index < (count as u32) {
+            let field = self.names.member(fields, (index as u64) * self.stride, self.stride)?
+            index += 1
+            let namePointer = self.names.pointer(field, self.fieldName)?
+            if namePointer == 0 { continue }
+            let name = process.readUtf8(self.names.member(namePointer, 0, 256)?, 256)?
+            let slot: u32 = 0
+            for aliases in wanted {
+                if aliases.contains(name) {
+                    match found[slot] {
+                        Some(_) => throw "Unity collection metadata has duplicate required fields",
+                        None => {},
+                    }
+                    let offset = process.read<i32>(self.names.member(field, self.fieldValue, 4)?)?
+                    if offset < 0 || (offset as u32) < header {
+                        throw "Unity collection field does not use supported instance storage"
+                    }
+                    found[slot] = Some(UnityCollectionMember {
+                        offset: (offset as u32) - header, typeAddress: types.fieldTypeAddress(field)? })
+                }
+                slot += 1
+            }
+        }
+        let result: [UnityCollectionMember] = []
+        for member in found { result.push(member else throw "Unity collection shape is incomplete") }
+        return result
+    }
+
+    private fn validateMembers(members: [UnityCollectionMember], types: UnityCollectionTypes, extent: u64) -> bool! {
+        let i: u32 = 0
+        while i < members.length() {
+            let start = members[i].offset as u64
+            let end = start + (types.minimumWidth(members[i].typeAddress)? as u64)
+            if end > extent { throw "Unity collection member exceeds its storage span" }
+            let j: u32 = 0
+            while j < i {
+                let other = members[j].offset as u64
+                if start < other + (types.minimumWidth(members[j].typeAddress)? as u64) && other < end {
+                    throw "Unity collection members overlap"
+                }
+                j += 1
+            }
+            i += 1
+        }
+        return Ok(true)
+    }
+
+    private fn entryLayout(class: address, owner: address, fields: [[String]], members: [[String]],
+        types: UnityCollectionTypes, readCount: (address) -> i32!) -> UnityKeyedLayout! {
+        let outer = self.collectionMembers(owner, fields, types, readCount, 0)?
+        let header = (2 * self.names.width) as u32
+        for field in outer { if field.offset < header { throw "Unity collection field overlaps its object header" } }
+        if types.kind(outer[0].typeAddress)? != 0x1d || types.kind(outer[1].typeAddress)? != 0x1d
+            || types.kind(outer[2].typeAddress)? != 0x08 || types.kind(outer[3].typeAddress)? != 0x08 {
+            throw "Unity collection has invalid backing or count field types"
+        }
+        self.validateMembers(outer, types, 0x80000000)?
+        let entry = types.arrayElementClass(outer[1].typeAddress)?
+        let stride = types.stride(entry)?
+        let inner = self.collectionMembers(entry, members, types, readCount, header)?
+        let hashKind = types.kind(inner[0].typeAddress)?
+        if (hashKind != 0x08 && hashKind != 0x09) || types.kind(inner[1].typeAddress)? != 0x08 {
+            throw "Unity collection hash and next fields must be integers"
+        }
+        self.validateMembers(inner, types, stride as u64)?
+        return UnityKeyedLayout { runtimeClass: class, declaringClass: owner,
+            parallel: false, fields: outer, stride, members: inner }
+    }
+
+    private fn parallelLayout(class: address, owner: address, fields: [[String]],
+        types: UnityCollectionTypes, readCount: (address) -> i32!) -> UnityKeyedLayout! {
+        let outer = self.collectionMembers(owner, fields, types, readCount, 0)?
+        let header = (2 * self.names.width) as u32
+        let index: u32 = 0
+        for field in outer {
+            if field.offset < header { throw "Unity collection field overlaps its object header" }
+            let count = index >= outer.length() - 2
+            if types.kind(field.typeAddress)? != (if count { 0x08 as u8 } else { 0x1d as u8 }) {
+                throw "Unity parallel collection has invalid array or count field types"
+            }
+            index += 1
+        }
+        self.validateMembers(outer, types, 0x80000000)?
+        let link = types.arrayElementClass(outer[1].typeAddress)?
+        let stride = types.stride(link)?
+        if stride != 8 { throw "Unity collection Link must contain exactly two integers" }
+        let inner = self.collectionMembers(link, [["HashCode"], ["Next"]], types, readCount, header)?
+        let hashKind = types.kind(inner[0].typeAddress)?
+        if (hashKind != 0x08 && hashKind != 0x09) || types.kind(inner[1].typeAddress)? != 0x08 {
+            throw "Unity collection Link members must be integers"
+        }
+        self.validateMembers(inner, types, 8)?
+        return UnityKeyedLayout { runtimeClass: class, declaringClass: owner,
+            parallel: true, fields: outer, stride, members: inner }
+    }
+
+    private fn dictionaryLayout(class: address, types: UnityCollectionTypes,
+        readCount: (address) -> i32!) -> UnityKeyedLayout! {
+        let owner = self.corlibClass(class, "Dictionary`2")?
+        // Each complete shape proves itself; malformed partial shapes cannot
+        // produce a descriptor through the alternative route.
+        let entries = self.entryLayout(class, owner,
+            [["_buckets", "buckets"], ["_entries", "entries"], ["_count", "count"], ["_freeCount", "freeCount"]],
+            [["hashCode"], ["next"], ["key"], ["value"]], types, readCount)
+        match entries {
+            Ok(layout) => return layout,
+            Err(_) => {},
+        }
+        return self.parallelLayout(class, owner,
+            [["table"], ["linkSlots"], ["keySlots"], ["valueSlots"], ["touchedSlots"], ["count"]], types, readCount)
+    }
+
+    private fn setLayout(class: address, types: UnityCollectionTypes,
+        readCount: (address) -> i32!) -> UnityKeyedLayout! {
+        let owner = self.corlibClass(class, "HashSet`1")?
+        let slots = self.entryLayout(class, owner,
+            [["_buckets", "m_buckets"], ["_slots", "m_slots"], ["_count", "m_count"], ["_lastIndex", "m_lastIndex"]],
+            [["hashCode"], ["next"], ["value"]], types, readCount)
+        match slots {
+            Ok(layout) => return layout,
+            Err(_) => {},
+        }
+        return self.parallelLayout(class, owner,
+            [["table"], ["links"], ["slots"], ["touched"], ["count"]], types, readCount)
+    }
+
     private fn step(cursor: UnityFieldCursor, aliases: [String], readCount: (address) -> i32!) -> UnityFieldCursor! {
         let current = cursor.current
         let fields = cursor.fields
@@ -8217,6 +8354,28 @@ private struct UnityModule {
         return class
     }
 
+    private fn keyedLayout(object: address, resolve: (UnityFields, address, UnityCollectionTypes, (address) -> i32!) -> UnityKeyedLayout!) -> UnityKeyedLayout! {
+        let names = UnityClassNames { width: self.pointerSize as u64,
+            name: self.profile.className, namespace: self.profile.classNamespace, declaring: None }
+        let class = self.collectionClass(object)?
+        let fields = UnityFields { names, parent: self.profile.classParent,
+            fields: self.profile.classFields, fieldName: self.profile.fieldName,
+            fieldValue: self.profile.fieldValue, stride: self.profile.fieldStride }
+        let types = UnityCollectionTypes { names, mono: false,
+            data: self.profile.typeData, kindOffset: self.profile.typeKind,
+            cached: self.profile.genericCachedClass,
+            instanceSize: self.profile.classInstanceSize, fieldType: self.profile.fieldType }
+        return (resolve)(fields, class, types, current => self.fieldCount(current, names))
+    }
+
+    private fn dictionaryLayout(object: address) -> UnityKeyedLayout! {
+        return self.keyedLayout(object, (fields, class, types, count) => fields.dictionaryLayout(class, types, count))
+    }
+
+    private fn setLayout(object: address) -> UnityKeyedLayout! {
+        return self.keyedLayout(object, (fields, class, types, count) => fields.setLayout(class, types, count))
+    }
+
     private fn listLayout(object: address) -> UnityListLayout! {
         let names = UnityClassNames { width: self.pointerSize as u64,
             name: self.profile.className, namespace: self.profile.classNamespace, declaring: None }
@@ -11704,6 +11863,28 @@ private struct MonoModule {
         return class
     }
 
+    private fn keyedLayout(object: address, resolve: (UnityFields, address, UnityCollectionTypes, (address) -> i32!) -> UnityKeyedLayout!) -> UnityKeyedLayout! {
+        let names = UnityClassNames { width: self.pointerBytes(),
+            name: self.layout.className, namespace: self.layout.classNamespace, declaring: None }
+        let class = self.collectionClass(object)?
+        let fields = UnityFields { names, parent: self.layout.classParent,
+            fields: self.layout.classFields, fieldName: self.layout.fieldName,
+            fieldValue: self.layout.fieldValue, stride: self.layout.fieldStride }
+        let types = UnityCollectionTypes { names, mono: true,
+            data: self.layout.typeData, kindOffset: self.layout.typeKind,
+            cached: None,
+            instanceSize: self.layout.classInstanceSize, fieldType: self.layout.fieldType }
+        return (resolve)(fields, class, types, current => self.fieldCount(current, names))
+    }
+
+    private fn dictionaryLayout(object: address) -> UnityKeyedLayout! {
+        return self.keyedLayout(object, (fields, class, types, count) => fields.dictionaryLayout(class, types, count))
+    }
+
+    private fn setLayout(object: address) -> UnityKeyedLayout! {
+        return self.keyedLayout(object, (fields, class, types, count) => fields.setLayout(class, types, count))
+    }
+
     private fn listLayout(object: address) -> UnityListLayout! {
         let names = UnityClassNames { width: self.pointerBytes(),
             name: self.layout.className, namespace: self.layout.classNamespace, declaring: None }
@@ -13598,4 +13779,133 @@ struct CatalogSuspensionProbe {
     static fn waitThroughHelper() -> async None {
         await CatalogSuspensionProbe.waitOneTick()
     }
+}
+
+/// Checked type facts used only when discovering keyed collection storage.
+///
+/// # Example
+///
+/// Declare a schema independently of collection metadata
+///
+/// ```splitscript
+/// image "Assembly-CSharp" { class CollectionOwner {} }
+/// state Unity ["game.exe"] {}
+/// ```
+@representation(gcStruct, nullable)
+@valueUsage(localVariable)
+private struct UnityCollectionTypes {
+    /// Target-width checked metadata reads.
+    private names: UnityClassNames,
+    /// Whether array type data directly names its element class.
+    private mono: bool,
+    /// Type data pointer offset, if measured.
+    private data: u64?,
+    /// Type kind byte offset, if measured.
+    private kindOffset: u64?,
+    /// IL2CPP generic descriptor's cached class offset, if measured.
+    private cached: u64?,
+    /// Boxed instance size offset, if measured.
+    private instanceSize: u64?,
+    /// Type pointer offset in a field entry, if measured.
+    private fieldType: u64?,
+
+    private fn kind(typeAddress: address) -> u8! {
+        if typeAddress == 0 { throw "Unity collection field type is null" }
+        let offset = self.kindOffset else throw "Unity profile lacks type kind metadata"
+        return process.read<u8>(self.names.member(typeAddress, offset, 1)?)
+    }
+
+    private fn fieldTypeAddress(field: address) -> address! {
+        let offset = self.fieldType else throw "Unity profile lacks field type metadata"
+        let typeAddress = self.names.pointer(field, offset)?
+        if typeAddress == 0 { throw "Unity collection field type is null" }
+        return typeAddress
+    }
+
+    // An array's inflated element class is the metadata owner of entry fields.
+    // Plain IL2CPP class/value-type indices are deliberately not pointer-cast.
+    private fn arrayElementClass(typeAddress: address) -> address! {
+        if self.kind(typeAddress)? != 0x1d { throw "Unity collection backing field is not a vector" }
+        let dataOffset = self.data else throw "Unity profile lacks type data metadata"
+        let data = self.names.pointer(typeAddress, dataOffset)?
+        if data == 0 { throw "Unity collection array element metadata is null" }
+        if self.mono { return data }
+        if self.kind(data)? != 0x15 { throw "Unity collection entry type is not an inflated generic instance" }
+        let generic = self.names.pointer(data, dataOffset)?
+        if generic == 0 { throw "Unity collection generic descriptor is null" }
+        let cached = self.cached else throw "Unity profile lacks cached generic class metadata"
+        let class = self.names.pointer(generic, cached)?
+        if class == 0 { throw "Unity collection generic class is not initialized" }
+        return class
+    }
+
+    private fn stride(class: address) -> u32! {
+        let offset = self.instanceSize else throw "Unity profile lacks instance size metadata"
+        let size = process.read<i32>(self.names.member(class, offset, 4)?)?
+        let header = 2 * self.names.width
+        if size < 0 || (size as u64) <= header || (size as u64) - header > 1024 {
+            throw "Unity collection entry size is invalid or exceeds 1024 bytes"
+        }
+        return ((size as u64) - header) as u32
+    }
+
+    // Minimum storage justified by the type tag. Value types need their child
+    // decoder's exact layout checked before payload materialization.
+    private fn minimumWidth(typeAddress: address) -> u32! {
+        return match self.kind(typeAddress)? {
+            0x02 | 0x04 | 0x05 => 1,
+            0x03 | 0x06 | 0x07 => 2,
+            0x08 | 0x09 | 0x0c => 4,
+            0x0a | 0x0b | 0x0d => 8,
+            0x0e | 0x12 | 0x18 | 0x19 | 0x1c | 0x1d => self.names.width as u32,
+            0x11 | 0x15 => 1,
+            _ => throw "Unity collection member has an unsupported type kind",
+        }
+    }
+}
+
+/// One selected field of a keyed collection's validated metadata shape.
+///
+/// # Example
+///
+/// Keep collection storage discovery internal to the provider
+///
+/// ```splitscript
+/// image "Assembly-CSharp" { class KeyedOwner {} }
+/// state Unity ["game.exe"] {}
+/// ```
+@representation(gcStruct, nullable)
+@valueUsage(structField, localVariable)
+private struct UnityCollectionMember {
+    /// Instance offset, normalized to an unboxed offset for entry members.
+    private offset: u32,
+    /// Remote metadata type address.
+    private typeAddress: address,
+}
+
+/// A dictionary or set shape, discovered without reading its payload.
+///
+/// # Example
+///
+/// Bind a class independently of its keyed collection layout
+///
+/// ```splitscript
+/// image "Assembly-CSharp" { class KeyedSnapshot {} }
+/// state Unity ["game.exe"] {}
+/// ```
+@representation(gcStruct, nullable)
+@valueUsage(structField, enumPayload, localVariable)
+private struct UnityKeyedLayout {
+    /// Actual runtime class for attachment-scoped cache selection.
+    private runtimeClass: address,
+    /// Genuine corlib ancestor that owns collection fields.
+    private declaringClass: address,
+    /// Whether storage uses old corlib's parallel arrays.
+    private parallel: bool,
+    /// Collection fields in the selected shape's declared order.
+    private fields: [UnityCollectionMember],
+    /// Unboxed entry or Link stride.
+    private stride: u32,
+    /// Entry members, or the two Link members, in declared order.
+    private members: [UnityCollectionMember],
 }

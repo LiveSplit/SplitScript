@@ -1,0 +1,45 @@
+// Compiler-owned private adapter probe; compiled by managed_collection_layout_tests.
+state "game.exe" {}
+onAttach { await __splitscript_stdlib_collection_probe() }
+fn __splitscript_stdlib_collection_probe() {
+    let module = retry { process.loadedModule("GameAssembly.dll") else throw "waiting for runtime" }
+    let width = retry module.pointerSize()
+    let runtime = await Unity.il2cpp(if width == PointerSize.Bit32 { Il2CppProfile.unity2022_3_0f1X86() } else { Il2CppProfile.unity2022_3_0f1X64() })
+    let missing = process.read<u8>(0x60009) else 0
+    while true {
+        let object = (process.read<u64>(0x60000) else 0) as address
+        let dictionary = (process.read<u8>(0x60008) else 0) == 0
+        let result = if missing != 0 {
+            runtime.keyedLayout(object, (fields, class, types, count) => {
+                let altered = UnityCollectionTypes { names: types.names, mono: types.mono,
+                    data: if missing == 2 { None } else { types.data },
+                    kindOffset: if missing == 1 { None } else { types.kindOffset },
+                    cached: if missing == 5 { None } else { types.cached },
+                    instanceSize: if missing == 4 { None } else { types.instanceSize },
+                    fieldType: if missing == 3 { None } else { types.fieldType } }
+                if dictionary { fields.dictionaryLayout(class, altered, count) }
+                    else { fields.setLayout(class, altered, count) }
+            })
+        }
+            else if dictionary { runtime.dictionaryLayout(object) } else { runtime.setLayout(object) }
+        match result {
+            Ok(layout) => {
+                setVariable("class", layout.runtimeClass)
+                setVariable("owner", layout.declaringClass)
+                setVariable("parallel", layout.parallel)
+                setVariable("stride", layout.stride)
+                let offsets: [u32] = []
+                for field in layout.fields { offsets.push(field.offset) }
+                setVariable("fields", offsets)
+                let members: [u32] = []
+                let types: [address] = []
+                for member in layout.members { members.push(member.offset); types.push(member.typeAddress) }
+                setVariable("members", members)
+                setVariable("types", types)
+                setVariable("result", "ok")
+            },
+            Err(error) => setVariable("result", error),
+        }
+        await nextTick()
+    }
+}

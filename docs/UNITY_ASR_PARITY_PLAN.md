@@ -1088,6 +1088,51 @@ remains 58,178 bytes, with automatic selection at 125,920 bytes. Returning the
 explicit build below 30,000 bytes remains required before completing the Unity
 work. No live game launch was needed.
 
+### Dictionary and set storage discovery
+
+Both backend adapters now resolve dictionary and hash-set layouts from a genuine
+corlib ancestor. Separate reachable methods select dictionary versus set names;
+shared code validates the selected fields and entry metadata. Entry/slot arrays
+support both upstream naming generations. Old parallel-array shapes resolve
+their links, key/value or slot arrays, touched index, and live count separately.
+
+Backing types must be vectors. Mono follows the vector's inflated element class;
+IL2CPP follows its element type and generic descriptor's cached class, rejecting
+plain type indices, nested array types, and absent profile facts. Entry stride
+and member offsets remove the boxed two-pointer header exactly once. Strides
+must be positive and at most 1024 bytes; Link layouts must be exactly eight
+bytes with integer HashCode/Next fields in either order. Discovery checks
+required-field uniqueness, signed offsets, field kinds, minimum member room,
+overlap, bounded counts, and target-width address spans. Modern Mono gets field
+counts from the generic definition while retaining the inflated field array.
+
+Descriptors retain remote member type addresses for the next decoder stage.
+Minimum widths are not proof of a schema value type's exact unboxed layout:
+that verification remains required before payload decoding. The descriptors
+also do not yet implement scanning, live tallies, attachment caches, local
+equality/collision checks, immutable Map/Set construction, or recursive child
+decoding. Steps 11 and 12 therefore remain incomplete.
+
+The private adapter fixtures exercise Debug and Release with independently
+specified memory layouts: Mono V1Cattrs, V2, and V3 plus IL2CPP 2022.3, at both
+pointer widths. Coverage includes derived classes, impostors, both naming
+families, both Link-member orders, the 1024-byte stride boundary, malformed
+counts/offsets/types, missing profile facts, incomplete generic metadata,
+overflow before host reads, and successful retry after metadata appears.
+
+Validation: 442 library tests (one ignored), 666 compiler tests, and four baseline
+tests passed. After simplifying width validation, the private adapter tests
+passed again: 3,104 keyed-layout cases and the existing 236 list-layout cases
+across Debug and Release. The final runtime catalog passes all 108 artifacts
+and 138 scenarios. Clippy, formatting, and 558 documentation pages pass.
+
+All 30 optimized baseline fixtures retain exactly their previous module and
+section sizes, type/function counts, helpers, scratch, storage bounds, and memory
+pages. No dictionary/set resolver is retained. The baseline refresh changes
+compiler-generated diagnostic names only, apart from build identity and timing.
+The strict gate and Lunistice base/DLC behavior checks pass; explicit Lunistice
+remains 58,178 bytes and automatic selection 125,920 bytes. No game was launched.
+
 ## Source map for implementation
 
 Upstream links below are pinned to the reviewed tip; the PR table provides the historical changes.
