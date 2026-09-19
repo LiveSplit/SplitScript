@@ -13,7 +13,7 @@ const modes = ['seed', 'mutate', 'empty', 'large spare capacity', 'null empty ba
     'list field overflow', 'backing bounds', 'runtime class replacement', 'cached layout',
     'reattach', 'retry discovery', 'freeze outer', 'freeze nested', 'freeze snapshot',
     'local arrays mutable', 'freeze inline', 'depth boundary', 'depth overflow', 'object boundary', 'object overflow',
-    'torn size', 'torn backing'];
+    'torn size', 'torn backing', 'replacement items type', 'replacement size type'];
 let cases = 0;
 // Independent ABI facts: name, namespace, fields, field count, generic kind,
 // and inflated generic descriptor. Older Mono classes store their count directly.
@@ -51,6 +51,11 @@ for (const backend of [...Object.keys(monoLayouts), 'il2cpp']) for (const width 
             const textAddress = 0x60000n + BigInt(nameIndex++ * 256);
             ptr(field + BigInt(mono ? bytes : 0), textAddress); name(textAddress, text);
             number(field + BigInt(wide ? 0x18 : 0xc), 4, offset);
+            if (text === '_items' || text === '_size') {
+                const type = 0x55000n + (text === '_items' ? 0n : 0x100n);
+                ptr(field + BigInt(mono ? 0 : bytes), type);
+                number(type + BigInt(bytes + 2), 1, text === '_items' ? 0x1d : 0x08);
+            }
         });
     };
     fields(0x14000n, 0x50000n, [['rows', 0x10], ['vectors', 0x18], ['nested', 0x20], ['instance', 0x28],
@@ -171,7 +176,7 @@ for (const backend of [...Object.keys(monoLayouts), 'il2cpp']) for (const width 
         memory.delete(0x40000n); memory.delete(0x51000n); success = true;
     }
     if (mode === 'reattach') success = true;
-    if (mode === 'runtime class replacement' || mode === 'retry discovery') {
+    if (mode === 'runtime class replacement' || mode === 'retry discovery' || mode.startsWith('replacement ')) {
         const replacement = 0x36000n;
         for (let i = 0n; i < 0x200n; i++) memory.set(replacement + i, memory.get(listClass + i) ?? 0);
         fields(replacement, 0x52000n, [['_items', 0x40], ['_size', 0x48]]);
@@ -179,6 +184,12 @@ for (const backend of [...Object.keys(monoLayouts), 'il2cpp']) for (const width 
         ptr(rows + 0x40n, rowsArray); number(rows + 0x48n, 4, 0);
         success = mode === 'runtime class replacement';
         if (mode === 'retry discovery') memory.delete(0x52000n + BigInt(wide ? 0x18 : 0xc));
+        if (mode.startsWith('replacement ')) {
+            const slot = mode === 'replacement items type' ? 0 : 1;
+            const field = 0x52000n + BigInt(slot * (wide ? 32 : mono ? 16 : 20));
+            ptr(field + BigInt(mono ? 0 : bytes), 0x55200n);
+            number(0x55200n + BigInt(bytes + 2), 1, slot === 0 ? 0x12 : 0x09);
+        }
     }
     if (mode.startsWith('freeze')) {
         number(0x6f000n, 4, mode === 'freeze inline' ? 5 : ['freeze outer', 'freeze nested', 'freeze snapshot'].indexOf(mode) + 1);
@@ -210,6 +221,11 @@ for (const backend of [...Object.keys(monoLayouts), 'il2cpp']) for (const width 
     }
     if (mode === 'retry discovery') {
         number(0x52000n + BigInt(wide ? 0x18 : 0xc), 4, 0x40);
+        host.updateUntil(() => host.variables.get('result') === 'ok' && normalize(host.variables.get('rows')) === '[]', label);
+    }
+    if (mode.startsWith('replacement ')) {
+        assert.match(host.variables.get('result'), /invalid backing or count field types/, label);
+        number(0x55200n + BigInt(bytes + 2), 1, mode === 'replacement items type' ? 0x1d : 0x08);
         host.updateUntil(() => host.variables.get('result') === 'ok' && normalize(host.variables.get('rows')) === '[]', label);
     }
     if (mode === 'reattach') {

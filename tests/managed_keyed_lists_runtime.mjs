@@ -27,6 +27,11 @@ for (const parallel of [false, true]) for (const mode of ['seed', 'mutate', 'dup
             const field = table + BigInt(i * (wide ? 32 : mono ? 16 : 20)), textAt = 0x600000n + BigInt(nameIndex++ * 256);
             ptr(field + BigInt(mono ? bytes : 0), textAt); name(textAt, text);
             number(field + BigInt(wide ? 0x18 : 0xc), 4, offset);
+            if (text === '_items' || text === '_size') {
+                const type = 0x540000n + (text === '_items' ? 0n : 0x100n);
+                ptr(field + BigInt(mono ? 0 : bytes), type);
+                number(type + BigInt(bytes + 2), 1, text === '_items' ? 0x1d : 0x08);
+            }
         });
     };
     fields(0x14000n, 0x58000n, [['rows', 0x10]]);

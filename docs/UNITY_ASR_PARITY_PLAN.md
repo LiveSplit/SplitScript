@@ -1454,6 +1454,37 @@ The remaining full-plan work includes remote runtime type/stride validation,
 shared metadata work, structured errors, complete profiles/platforms,
 and restoring explicit-profile Lunistice below 30,000 bytes.
 
+## List storage field type validation (2026-09-19)
+
+Both backends now require the selected `List<T>` ancestor's `_items` field to
+have vector (`SZARRAY`) metadata and `_size` to have signed 32-bit integer
+metadata. Matching names and offsets alone no longer prove a usable list
+layout. Missing, unreadable, overflowing, or incompatible field type metadata
+fails discovery and remains retryable. Unrelated fields do not require type
+metadata. These checks reuse the collection type reader and demand neither
+entry-class resolution nor instance-size discovery.
+
+The private layout fixtures add wrong reference/array/generic kinds, wrong
+count kinds, null/unreadable type metadata, address overflow, and recovery.
+End-to-end fixtures replace a valid list's runtime class with an invalid shape,
+check that the previous snapshot is retained, then repair metadata and confirm
+successful discovery on the same attachment. Existing nested list/map/set,
+cache, reattachment, and snapshot cases still pass.
+
+Focused validation: 324 private layout cases, 740 managed list cases, and
+512 lists nested in Map/Set cases pass across Debug and Release, both target
+widths, and the covered Mono/IL2CPP families. Full generic-argument and element
+stride compatibility remain open; these field-kind checks do not establish
+those stronger requirements.
+
+The Release size review adds 670 bytes to the IL2CPP list fixture and 663 to
+the Mono list fixture. Each gains only the field-type-pointer and type-kind
+readers, with 163 bytes of additional static data; scratch and memory-page requirements do
+not change. The other 32 fixtures retain all module/section sizes, function/type
+counts, and body sizes. Emission metadata is unchanged after normalizing
+source-position-derived expression names. Lunistice remains 58,178 bytes
+(explicit) and 125,920 bytes (automatic); its base and DLC fixtures pass.
+
 ## Source map for implementation
 
 Upstream links below are pinned to the reviewed tip; the PR table provides the historical changes.

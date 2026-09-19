@@ -1889,7 +1889,7 @@ private struct UnityFields {
         throw "Unity object has no matching generic collection ancestor"
     }
 
-    private fn listLayout(class: address, readCount: (address) -> i32!) -> UnityListLayout! {
+    private fn listLayout(class: address, types: UnityCollectionTypes, readCount: (address) -> i32!) -> UnityListLayout! {
         let owner = self.corlibClass(class, "List`1")?
         let count = (readCount)(owner)?
         if count < 0 || count > 4096 { throw "Unity collection field count exceeds the metadata work limit" }
@@ -1908,6 +1908,10 @@ private struct UnityFields {
                 let offset = process.read<i32>(self.names.member(field, self.fieldValue, 4)?)?
                 if offset < 0 || (offset as u64) < 2 * self.names.width {
                     throw "Unity list field does not use supported instance storage"
+                }
+                let kind = types.kind(types.fieldTypeAddress(field)?)?
+                if kind != (if name == "_items" { 0x1d as u8 } else { 0x08 as u8 }) {
+                    throw "Unity list has invalid backing or count field types"
                 }
                 if name == "_items" {
                     if items != None { throw "Unity list metadata contains duplicate items fields" }
@@ -8435,7 +8439,10 @@ private struct UnityModule {
         let fields = UnityFields { names, parent: self.profile.classParent,
             fields: self.profile.classFields, fieldName: self.profile.fieldName,
             fieldValue: self.profile.fieldValue, stride: self.profile.fieldStride }
-        return fields.listLayout(class, current => self.fieldCount(current, names))
+        let types = UnityCollectionTypes { names, mono: false,
+            kindOffset: self.profile.typeKind, fieldType: self.profile.fieldType,
+            data: None, cached: None, instanceSize: None }
+        return fields.listLayout(class, types, current => self.fieldCount(current, names))
     }
 
     // Checked target address arithmetic is shared by the metadata readers.
@@ -11944,7 +11951,10 @@ private struct MonoModule {
         let fields = UnityFields { names, parent: self.layout.classParent,
             fields: self.layout.classFields, fieldName: self.layout.fieldName,
             fieldValue: self.layout.fieldValue, stride: self.layout.fieldStride }
-        return fields.listLayout(class, current => self.fieldCount(current, names))
+        let types = UnityCollectionTypes { names, mono: true,
+            kindOffset: self.layout.typeKind, fieldType: self.layout.fieldType,
+            data: None, cached: None, instanceSize: None }
+        return fields.listLayout(class, types, current => self.fieldCount(current, names))
     }
 
     // Reads a pointer without rejecting metadata null sentinels.
@@ -13833,7 +13843,7 @@ struct CatalogSuspensionProbe {
     }
 }
 
-/// Checked type facts used only when discovering keyed collection storage.
+/// Checked type facts used only when discovering managed collection storage.
 ///
 /// # Example
 ///

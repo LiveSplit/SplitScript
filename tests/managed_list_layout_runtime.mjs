@@ -6,7 +6,10 @@ import { createIl2cppPeFixture } from './support/il2cpp_pe_fixture.mjs';
 const [wasm, backend] = process.argv.slice(2);
 const mono = backend === 'mono';
 const profiles = JSON.parse(await readFile(new URL('./fixtures/mono-pe-profiles.json', import.meta.url)));
-const modes = ['derived', 'direct', 'replacement', 'late object', 'null header', 'null class', 'unreadable object', 'unreadable name', 'unreadable parent', 'cycle', 'wrong namespace', 'wrong name', 'null fields', 'missing items', 'missing size', 'duplicate items', 'duplicate size', 'negative offset', 'header offset', 'overlap', 'large count', 'unreadable field', 'null name', 'unreadable generic', 'null generic', 'object overflow', 'field span overflow', 'negative count', 'unreadable count', 'unreadable namespace', 'null required name', 'null definition'];
+const typeModes = ['items class', 'items string', 'items multidimensional array', 'items generic',
+    'size unsigned', 'size long', 'null items type', 'null size type', 'unreadable type pointer',
+    'unreadable type kind', 'overflowing type'];
+const modes = [...typeModes, 'derived', 'direct', 'replacement', 'late object', 'null header', 'null class', 'unreadable object', 'unreadable name', 'unreadable parent', 'cycle', 'wrong namespace', 'wrong name', 'null fields', 'missing items', 'missing size', 'duplicate items', 'duplicate size', 'negative offset', 'header offset', 'overlap', 'large count', 'unreadable field', 'null name', 'unreadable generic', 'null generic', 'object overflow', 'field span overflow', 'negative count', 'unreadable count', 'unreadable namespace', 'null required name', 'null definition'];
 let cases = 0;
 for (const width of [32, 64]) for (const mode of modes) {
     if (!mono && ['null class', 'unreadable generic', 'null generic', 'negative count', 'null definition'].includes(mode)) continue;
@@ -60,10 +63,17 @@ for (const width of [32, 64]) for (const mode of modes) {
     if (mode === 'header offset') entries[1][1] = bytes;
     if (mode === 'overlap') entries[2][1] = 2 * bytes + 1;
     number(counted + BigInt(countOffset), mono ? 4 : 2, mode === 'large count' ? 4097 : entries.length);
+    const itemsType = 0x54000n, sizeType = 0x54100n;
+    number(itemsType + BigInt(bytes + 2), 1, 0x1d);
+    number(sizeType + BigInt(bytes + 2), 1, 0x08);
     entries.forEach(([name, offset], i) => {
         const field = fields + BigInt(i * stride), at = 0x44000n + BigInt(i * 256);
         ptr(field + BigInt(mono ? bytes : 0), at); text(at, name);
         number(field + BigInt(valueOffset), 4, offset);
+        // The ignored field intentionally has no readable type metadata.
+        if (name === '_items' || name === '_size') {
+            ptr(field + BigInt(mono ? 0 : bytes), name === '_items' ? itemsType : sizeType);
+        }
     });
     ptr(object, mono ? vtable : root); ptr(vtable, root); number(0x60000n, 8, object);
     if (mode === 'direct') { ptr(object, mono ? vtable : list); ptr(vtable, list); }
@@ -89,6 +99,17 @@ for (const width of [32, 64]) for (const mode of modes) {
     if (mode === 'unreadable namespace') memory.delete(0x43000n);
     if (mode === 'null required name') ptr(fields + BigInt(stride + (mono ? bytes : 0)), 0);
     if (mode === 'null definition') ptr(generic, 0);
+    const itemsFieldType = fields + BigInt(stride + (mono ? 0 : bytes));
+    const sizeFieldType = fields + BigInt(2 * stride + (mono ? 0 : bytes));
+    const itemsKinds = {'items class': 0x12, 'items string': 0x0e, 'items multidimensional array': 0x14, 'items generic': 0x15};
+    if (mode in itemsKinds) number(itemsType + BigInt(bytes + 2), 1, itemsKinds[mode]);
+    if (mode === 'size unsigned') number(sizeType + BigInt(bytes + 2), 1, 0x09);
+    if (mode === 'size long') number(sizeType + BigInt(bytes + 2), 1, 0x0a);
+    if (mode === 'null items type') ptr(itemsFieldType, 0);
+    if (mode === 'null size type') ptr(sizeFieldType, 0);
+    if (mode === 'unreadable type pointer') memory.delete(itemsFieldType);
+    if (mode === 'unreadable type kind') memory.delete(itemsType + BigInt(bytes + 2));
+    if (mode === 'overflowing type') ptr(itemsFieldType, limit - 1n);
     const originalRead = fixture.process.read;
     fixture.process.read = request => {
         const address = BigInt.asUintN(64, request.address);
@@ -106,6 +127,16 @@ for (const width of [32, 64]) for (const mode of modes) {
         assert.equal(BigInt(host.variables.get('owner')), list, label);
         assert.equal(host.variables.get('items'), String(2 * bytes), label);
         assert.equal(host.variables.get('size'), String(3 * bytes), label);
+    }
+    if (typeModes.includes(mode)) {
+        if (mode in itemsKinds || mode.startsWith('size ')) {
+            assert.match(host.variables.get('result'), /invalid backing or count field types/, label);
+        }
+        // Failed discovery must remain retryable when metadata materializes.
+        ptr(itemsFieldType, itemsType); ptr(sizeFieldType, sizeType);
+        number(itemsType + BigInt(bytes + 2), 1, 0x1d);
+        number(sizeType + BigInt(bytes + 2), 1, 0x08);
+        host.updateUntil(() => host.variables.get('result') === 'ok', label);
     }
     if (mode === 'late object' || mode === 'replacement') {
         number(0x60000n, 8, object);
