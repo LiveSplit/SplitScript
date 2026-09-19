@@ -154,7 +154,7 @@ Mono remains different: exact PE/ELF/Mach-O identity selection followed by forma
 
 ### Important semantic differences to decide explicitly
 
-**Strings:** ASR's `ManagedString` is a raw UTF-16-unit container; SplitScript produces a normal UTF-8 `String`, replacing invalid surrogate sequences. Keep ordinary text reads as normal `String` values. To achieve the raw-unit capability too, add a bounded managed UTF-16 storage decoder whose output is `[u16]`; this avoids changing every language string operation or exposing Rust's `ManagedString` representation. Test both paths with unpaired surrogates and embedded NUL.
+**Strings:** SplitScript reads managed strings as ordinary UTF-8 `String` values, replacing invalid surrogate sequences and preserving embedded NUL. Test those semantics with unpaired surrogates and embedded NUL. Raw UTF-16 access is outside this plan by user decision; reconsider it only when a concrete use case appears. ASR's raw-unit container does not require a corresponding SplitScript API.
 
 **Collections:** ASR exposes bounded vectors of values, pairs, or addresses. SplitScript should decode recursively into its normal local `[T]`, `Map<K,V>`, and `Set<T>` values. `Map<String, [String]>` is a required ordinary case, not a special convenience API. Local map/set equality remains SplitScript equality; a custom .NET comparer is not reproduced. Detect duplicate decoded keys/elements that would silently lose remote entries and fail the materialization with a diagnostic. Keep `Map` and `Set` as both schema and result types. Extend structural equality to owned class snapshots and nested collections so composition works without changing collection kinds. Any future decision about C# versus SplitScript spelling is a syntax decision, independent of these semantics.
 
@@ -180,7 +180,7 @@ For public API changes, the recommended direction is:
 - Replace numeric `Unity.il2cpp(0/2019/2020/2022)` with explicit complete IL2CPP profile selection. Expose named measured constants and exhaustive custom profiles. A spelling such as `Unity.il2cpp(UnityIl2CppProfiles.UNITY_2022_3_0F1_X86_64)` is a **proposed API**, not existing syntax. Auto selection and explicit selection should share attachment implementation but have distinct reachability roots.
 - Retain explicit Mono family selection where useful, add V1/V1Cattrs, and make automatic Mono selection prefer exact binary identity. Offer explicit complete Mono layouts through the same validated descriptor mechanism if needed by unmeasured games.
 - Add `ManagedReadable` to the existing capability system. Fixed-layout `MemoryReadable` types are its base cases; high-level `String`, arrays, maps, sets, nullable reference values, and declared class snapshots compose it recursively.
-- Prefer ordinary schema value types such as `Map<String, [String]>`, `[[Player?]]`, and `Set<String>` over mandatory `ManagedArray`/`ManagedDictionary` wrappers at every level. Keep remote storage shape separate: a local `[T]` may be backed by a managed vector or a `List<T>`, resolved from field/runtime metadata. Allow explicit storage hints where metadata cannot determine the supported shape; never guess the representation from local value size. Raw UTF-16 remains an explicit opt-in storage projection.
+- Prefer ordinary schema value types such as `Map<String, [String]>`, `[[Player?]]`, and `Set<String>` over mandatory `ManagedArray`/`ManagedDictionary` wrappers at every level. Keep remote storage shape separate: a local `[T]` may be backed by a managed vector or a `List<T>`, resolved from field/runtime metadata. Allow explicit storage hints where metadata cannot determine the supported shape; never guess the representation from local value size.
 - Extend `ManagedFieldBinding` to carry declared schema type, live-access type, snapshot type, remote storage description, and recursive decoder-plan identity. Array/list materialization produces sequences, dictionary materialization produces maps, set materialization produces sets, and class materialization produces class snapshots. The live-reference projection is distinct and opt-in where required.
 - Finalize concrete value syntax and storage hints in Step 1, then update parser, type checking, formatting, diagnostics, highlighting, completion, documentation, and fixtures together. No deprecated parallel spellings are needed.
 
@@ -276,7 +276,7 @@ Each step is a reviewable change with its own acceptance gate **and the mandator
 ### 1. Lock down the new contract and baseline fixtures
 
 1. Record the pinned upstream revision and a per-PR checklist in the implementation issue/PR. Preserve measurement provenance for imported layouts and fixtures; no additional ASR license annotations are needed for this work by the same authors.
-2. Specify the profile selector, `ManagedReadable` rules, remote storage hints, live/snapshot type projections, nested nullability, root budgets and process-lifetime constraints. Include raw UTF-16 as a separate opt-in decoder and nested map/array/class examples as acceptance targets.
+2. Specify the profile selector, `ManagedReadable` rules, remote storage hints, live/snapshot type projections, nested nullability, root budgets and process-lifetime constraints. Include nested string/map/array/class examples as acceptance targets.
 3. Specify finite metadata/collection work limits and typed error versus pending behavior. Unloaded modules/uninitialized metadata may retry; unavailable profile capabilities or malformed layout descriptions need a useful diagnostic, not indefinite retries.
 4. Extend `tests/support/splitscript_host.mjs` only where needed for read accounting, module identities, mapped ranges, and failures. Generalize `tests/support/mono_v2_fixture.mjs` and factor reusable IL2CPP fixtures from `tests/lunistice_runtime.mjs`.
 5. Capture existing Lunistice base/DLC, Mono, inherited-static, strings, instances, and scene behavior before refactoring. Build fixtures from independently specified memory layouts, not directly from the descriptor under test. Capture the reproducible Wasm size/dependency baseline and wire up the per-step reporting gate before adding features.
@@ -356,7 +356,7 @@ Each step is a reviewable change with its own acceptance gate **and the mandator
 3. Integrate the plan with existing class snapshot generation now: snapshot field types and decoders materialize child class values, honor active conditional fields, and do not leave hidden live refs. Support finite recursive schemas without infinitely expanding compiler plans or helper emission.
 4. Add pointer width to the managed string object decoder; compute length/characters from the two-word object header. Update helper signatures, registry entries, scratch planning, dependency retention, and all field/snapshot callers.
 5. Reuse one object-address decoder from both field-reference reads and nested elements. Avoid double-dereferencing a string object's address.
-6. Decode ordinary `String` and `String?` from their stored lengths using fixed scratch chunks and invalid-UTF-16 replacement semantics. Add raw UTF-16 storage projection returning `[u16]` for unit-preserving access.
+6. Decode ordinary `String` and `String?` from their stored lengths using fixed scratch chunks and invalid-UTF-16 replacement semantics.
 7. Validate stored lengths, scratch sizes, target spans, and shared root budgets. Budget exhaustion is an error; a failed payload read is not an empty or null string. Add explicit demand edges for each generated decoder and the discovery operations it needs; capability checking alone emits nothing.
 
 **Files:** `src/capabilities.rs`, `src/semantic.rs`, `src/structural.rs`, `src/managed.rs`, capability inference/catalog definitions, `src/codegen/managed_snapshots.rs`, `src/codegen/gc_types.rs`, `src/codegen.rs` snapshot field projection, `src/codegen/runtime_helpers/process.rs`, `src/codegen/runtime_helper_registry.rs`, `src/codegen/runtime_helpers.rs`, `src/codegen/expression.rs`, scratch/dependency planning, type validation and storage hints.
@@ -426,7 +426,7 @@ Each step is a reviewable change with its own acceptance gate **and the mandator
 4. Keep existing Lunistice base/DLC, inherited-static, Mono instances, IL2CPP instances, scene, and typed-component fixtures passing after API updates. Update `examples/lunistice.split`, other explicit Unity scripts, and their documentation to measured profile selectors or automatic detection based on verified targets, not a blind year-to-profile mapping.
 5. Review the accumulated **per-step** Lunistice and feature-isolation size reports, not just a final total. Verify every positive delta is attributed to reachable work and that unused resolvers/readers/data never appeared along the way. An explicit single profile must not pull all profiles/readers into the final Wasm; a string-only script must not contain dictionary offset discovery; ordinary field reads must not trigger repeated metadata discovery.
 6. Run controlled real-game or recorded-memory probes for representative old/new Mono, old inline/new handle IL2CPP, x86/x64, and each collection family. Record exact binary identity/player version, selected layout, expected values, provenance, and environment. Reuse available Lunistice evidence only after verifying what it actually covers.
-7. Update `docs/STANDARD_LIBRARY.md`, `docs/COMPILER.md`, `docs/LANGUAGE.md`, `docs/MIGRATION_CAPABILITIES.md`, `docs/ASL_PORTING.md`, relevant port pages, and generated language/editor documentation. Publish a format/architecture/profile/collection support matrix and explain `MemoryReadable` versus recursive `ManagedReadable`, storage hints, deep snapshots, selection heuristics, root budgets, nested nullability, raw UTF-16, references, comparer differences, cycles, and snapshot race limits.
+7. Update `docs/STANDARD_LIBRARY.md`, `docs/COMPILER.md`, `docs/LANGUAGE.md`, `docs/MIGRATION_CAPABILITIES.md`, `docs/ASL_PORTING.md`, relevant port pages, and generated language/editor documentation. Publish a format/architecture/profile/collection support matrix and explain `MemoryReadable` versus recursive `ManagedReadable`, storage hints, deep snapshots, selection heuristics, root budgets, nested nullability, references, comparer differences, cycles, and snapshot race limits.
 8. Remove stale numeric-year tables, old selectors, unreachable helper variants, and claims of unsupported capabilities. No compatibility layer is required.
 
 **Gate:** all supported cells in the matrix below have recorded fixture coverage; required repository checks pass; unavailable live validations are explicitly identified; each PR's behavior is implemented or an intentional language-level difference is documented.
@@ -441,7 +441,7 @@ Avoid a huge blind Cartesian product: test every profile's data/selection invari
 | IL2CPP selection | Every exact profile; same-major/minor later patch; between families; older/newer than corpus; 16-bit rejection; explicit/custom profiles; no unnecessary auto-table retention |
 | Discovery | PE x86/x64 signatures and exports; ELF x64 symbols/load bias; Mach-O x86_64/arm64 symbols/instructions; false matches; module edges; delayed metadata; cancellation |
 | Metadata | Assembly-name routes; inline/handle type start; sparse class tables; nested declaring chains; generic counts/types; inherited owner; ambiguity; corrupt/cyclic metadata |
-| Readers | Both widths; recursive value/reference arrays and lists; jagged arrays; both entry/slot naming generations; parallel arrays; strings/raw UTF-16; null/empty/capacity/length/tally errors; failed nested reads; local comparer collisions |
+| Readers | Both widths; recursive value/reference arrays and lists; jagged arrays; both entry/slot naming generations; parallel arrays; strings; null/empty/capacity/length/tally errors; failed nested reads; local comparer collisions |
 | Recursive composition | Map of string arrays; array of maps; map of maps; list of optional class snapshots with nested maps; scalar/string/map mixtures; null at outer/inner/element levels; shared child versus actual cycle; shared total-budget exhaustion |
 | Runtime integration | Static/live/conditional/deep-snapshot paths; collection shape caching; replacement class; current/old stability after remote and attempted local mutation; failure at a deep leaf rejects the root; process restart; instances/components |
 | Cost | Bounded attachment polls and shared root scan/decode work; no per-tick metadata walks after cache resolution; per-step Lunistice size deltas; unused feature discovery/readers/data/scratch absent; exact transitive demand for nested decoders |
@@ -453,7 +453,7 @@ The implementation is complete when all 14 PRs have an outcome in this checklist
 - [x] #144 measured IL2CPP layouts, x86 discovery, and corrected reads; superseded selection intentionally omitted.
 - [ ] #145 shared metadata operations with SplitScript-specific scheduling/ambiguity semantics.
 - [ ] #146 nested/generic handling and owner-aware static regression coverage.
-- [ ] #147 width-correct strings, raw UTF-16 access, and bounded value arrays.
+- [ ] #147 width-correct strings and bounded value arrays (raw-unit access excluded).
 - [ ] #148 runtime-validated lists with cached layouts.
 - [ ] #150 validated dictionary layouts and complete live-pair reads.
 - [ ] #151 hash sets with correct high-water/count semantics.
@@ -646,7 +646,7 @@ Managed field validation now requires a managed decoder rather than using a
 separate string exemption from fixed-layout validation. An interned compiler
 node map covers fixed-layout values, strings, and nullable strings. This is the
 base of Step 8, not completion of the recursive decoder graph: collection and
-deep-class nodes, shared root budgets, storage policies, and raw UTF-16 output
+deep-class nodes, shared root budgets, and storage policies
 remain to be implemented and are not accepted prematurely.
 
 The common string object reader now takes target pointer width and locates its
@@ -731,7 +731,7 @@ recursive class declarations do not introduce them either.
 
 This is another part of Step 8, not completion of managed materialization.
 Shared byte/element budgets, checked remote-slot arithmetic at every entry
-point, structured nested error paths, raw UTF-16 output, and recursive
+point, structured nested error paths, and recursive
 collection nodes remain unfinished. In particular, class field-address addition
 still needs a checked base-plus-offset operation before the existing payload
 span checks; malformed high object addresses must not wrap into readable low
@@ -856,8 +856,7 @@ baseline was recorded and its strict behavior/size gate passed.
 The explicit artifact was tested against the demo for 569 accelerated updates
 and 32,408 process reads, with zero failures and Title/Hana/zero counters. The
 game was immediately closed and process exit verified. Evidence is in
-`target/managed-length-live.json`. Recursive containers, raw UTF-16 projection,
-collection element budgets, remaining metadata/platform work, and the
+`target/managed-length-live.json`. Recursive containers, collection element budgets, remaining metadata/platform work, and the
 below-30,000-byte Lunistice completion requirement remain open.
 
 ### Recursive managed vector readers — decoder implementation
@@ -887,7 +886,7 @@ sooner can renumber an existing GC type, so binary identity is not the invariant
 This implements vector decoding within Steps 8–10, not their completion.
 Snapshot-owned array mutation protection is implemented in the next entry.
 Runtime metadata storage-shape validation,
-lists, dictionaries, sets, raw UTF-16 projection, and structured nested error
+lists, dictionaries, sets, and structured nested error
 paths remain open. The reader currently accepts zero-based vectors only.
 
 The new matrix covers Mono and IL2CPP at both pointer widths in Debug and
@@ -1063,7 +1062,7 @@ at both pointer widths, including recursive snapshots, nullable slots, native
 strides, malformed sizes/capacity, shared budgets, cycles, depth/object limits,
 partial-read rollback, concurrent resize, cached metadata, changed runtime
 classes, failed-discovery retry, and reattachment. Element-type metadata
-verification, richer error paths, raw UTF-16, and managed map/set decoding
+verification, richer error paths, and managed map/set decoding
 remain separate unfinished work.
 
 Adding the callback exposed a stale type-dependency edge: after generated
@@ -1215,7 +1214,7 @@ projections and rejects unsupported child decoders. Unused map declarations
 retain no readers, discovery, scan counter, scratch, or extra Wasm size.
 
 This is the first public map integration. Set decoding, compound structural equality,
-full remote element/generic-type compatibility, raw UTF-16, structured nested
+full remote element/generic-type compatibility, structured nested
 errors, and shared metadata work remain open. The overall Unity goal also still
 includes the profile replacement, platform coverage, and Lunistice size target.
 
@@ -1256,8 +1255,7 @@ support local equality need structural equality support while retaining map/set 
 at this checkpoint, managed class snapshots had no equality implementation.
 The following milestone resolves direct `Set<SomeClass>` and class-valued Map keys.
 These remaining cases are part of the full nesting requirement, not reasons to
-declare the collection work finished. Remote type/stride compatibility, raw
-UTF-16, structured nested errors, and shared metadata work also remain open.
+declare the collection work finished. Remote type/stride compatibility, structured nested errors, and shared metadata work also remain open.
 
 Validation: 443 library tests (one ignored), 667 compiler tests, and four baseline
 tests pass. The runtime catalog validates 116 artifacts and 146 scenarios,
@@ -1317,7 +1315,7 @@ new equality. No live game was launched.
 
 The full collection-nesting requirement remains open: compound map/set equality
 and equality constraints applied to the owned projection of source `List<T>`
-are still needed. Remote type/stride compatibility, raw UTF-16, structured nested
+are still needed. Remote type/stride compatibility, structured nested
 errors, shared metadata/comparison work, complete profiles/platforms, and the
 explicit Lunistice size target remain part of the active Unity goal.
 
@@ -1365,7 +1363,7 @@ Owned-list constraints remain the next composition gap: schema `List<T>` must
 be checked using its owned array projection where Map/Set require equality.
 The shared managed comparison budget currently charges outer duplicate-check
 pairs, not every recursive equality operation; that accounting remains open,
-along with the other metadata, profile/platform, error, UTF-16, and Lunistice
+along with the other metadata, profile/platform, error, and Lunistice
 requirements in the full plan.
 
 ### Owned list keys and set elements
@@ -1402,8 +1400,8 @@ sizes, and full emission metadata. The strict size gate and Lunistice base/DLC
 fixtures pass; explicit Lunistice remains 58,178 bytes and automatic selection
 125,920 bytes. No live game was launched.
 
-The shared recursive comparison budget, remote type/stride validation, raw
-UTF-16, structured errors, complete profiles/platforms, and explicit Lunistice
+The shared recursive comparison budget, remote type/stride validation,
+structured errors, complete profiles/platforms, and explicit Lunistice
 size target remain open in the full Unity plan.
 
 ### Recursive managed comparison work
@@ -1453,7 +1451,7 @@ Lunistice edition fixtures pass; all 34 final measurements exactly match the
 reviewed baseline's code, section, and emission metrics. No live game was launched.
 
 The remaining full-plan work includes remote runtime type/stride validation,
-shared metadata work, raw UTF-16, structured errors, complete profiles/platforms,
+shared metadata work, structured errors, complete profiles/platforms,
 and restoring explicit-profile Lunistice below 30,000 bytes.
 
 ## Source map for implementation
