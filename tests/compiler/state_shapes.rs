@@ -884,7 +884,7 @@ fn unsupported_managed_value_layouts_are_diagnosed_before_codegen() {
             .iter()
             .find(|diagnostic| {
                 diagnostic.message.contains(
-                    "managed field `WorldSaveData.coinFlags` has no fixed process-memory layout",
+                    "managed field `WorldSaveData.coinFlags` has no supported managed decoder",
                 )
             })
             .expect("the managed field declaration should receive a source diagnostic");
@@ -896,7 +896,7 @@ fn unsupported_managed_value_layouts_are_diagnosed_before_codegen() {
             label
                 .message
                 .as_deref()
-                .is_some_and(|message| message.contains("fixed `MemoryReadable` representation"))
+                .is_some_and(|message| message.contains("must satisfy `ManagedReadable`"))
         }));
         assert!(diagnostic.notes.iter().any(|note| {
             note.contains("managed array or list") && note.contains("dedicated schema support")

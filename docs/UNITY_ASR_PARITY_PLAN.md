@@ -6,6 +6,17 @@ Status: researched on 2026-09-18; the measurement gate, reachable binding/scratc
 
 Bring the improvements from ero-qt's ASR Unity series into SplitScript's schema-based Unity provider, then go beyond ASR with **recursively composable managed reads integrated with class snapshots**. A dictionary containing arrays of strings, or a class snapshot containing such a dictionary, must work through the same decoding system. Flat collection readers alone do not satisfy this plan. **Unused managed features must contribute no feature-specific discovery, decoding, tables, or scratch storage to generated Wasm, and size must be checked at every implementation step using Lunistice as the running baseline.** Replace obsolete implementations where necessary; SplitScript is not stable, so source compatibility, deprecation periods, and compatibility shims are not requirements. Update examples, tests, documentation, and editor support with each API change.
 
+The explicit-profile Lunistice Release artifact must return **below 30,000 bytes**
+before this work is complete, aiming for its earlier 23–28 KB range. The current
+roughly 57 KB artifact is a temporary regression, not an accepted final budget.
+Focus the reduction on the Unity discovery code introduced by this migration:
+specialize known profile facts and avoid unnecessarily large generated async
+walks. Preserve the actual script, metadata correctness, and behavior checks;
+do not meet the target by removing functionality or changing the measurement
+pipeline. Merely proving that oversized general-purpose code is reachable is
+not sufficient justification. Continue managed features alongside this focused
+work, without unrelated compiler optimization.
+
 The comparison is pinned to:
 
 - ASR start, inclusive: [`566e9a12a62a677bed0abbd1998d533cfa01760c`](https://github.com/LiveSplit/asr/commit/566e9a12a62a677bed0abbd1998d533cfa01760c), “add mock host for tests,” in PR #142. Its parent is `12375fc19255b19b0a2333bbd435a44e5a607256`.
@@ -455,6 +466,7 @@ The implementation is complete when all 14 PRs have an outcome in this checklist
 - [ ] Beyond ASR: natural nested arrays/lists/maps/sets/strings and declared class snapshots through one decoder graph.
 - [ ] Beyond ASR: transitive immutable snapshot ownership, per-root budgets, nested nullability/failures, cycle handling, and retained-state safety.
 - [ ] Every implementation step has a Lunistice size/behavior report; all positive size deltas have a reachable-feature explanation.
+- [ ] Explicit-profile Lunistice Release is below 30,000 bytes under the existing baseline pipeline (target range 23–28 KB), with base/DLC behavior preserved.
 - [ ] Unused feature resolvers, readers, metadata names, profile data, GC types, and scratch storage are absent from generated Wasm.
 
 ## IL2CPP integration evidence (2026-09-19)
@@ -624,6 +636,72 @@ Remaining work includes shared assembly-name routing, broader class-cursor
 hardening, type-to-class/collection-shape operations, platform attachment,
 recursive managed readers and deep snapshots. These are not marked complete by
 this field-cursor integration.
+
+### Managed-readable base cases and width-correct strings (2026-09-19)
+
+`MemoryReadable: ManagedReadable` is now declared in the standard-library
+capability catalog. Concrete and inferred generic capability queries preserve
+that implication without allowing managed strings through `Process.read`.
+Managed field validation now requires a managed decoder rather than using a
+separate string exemption from fixed-layout validation. An interned compiler
+node map covers fixed-layout values, strings, and nullable strings. This is the
+base of Step 8, not completion of the recursive decoder graph: collection and
+deep-class nodes, shared root budgets, storage policies, and raw UTF-16 output
+remain to be implemented and are not accepted prematurely.
+
+The common string object reader now takes target pointer width and locates its
+length/payload after the two-word object header on both x86 and x64. It checks
+the field slot, header, and complete string payload spans against the target
+address limit before reading. Length bounds, embedded NULs, and replacement of
+invalid UTF-16 retain their existing semantics. Static reads, live field reads,
+and class snapshots use this same object decoder.
+
+The new failure fixtures exposed two snapshot propagation defects. Discarded
+error payloads were dereferenced even though Release deliberately erases them;
+snapshot propagation now preserves their nullable representation. Conversely,
+an observed snapshot error did not retain its underlying field message. The
+demand pass now follows generated snapshot-to-field error dependencies,
+including equivalent Result layouts produced by inference and generated code.
+Only observed messages are retained.
+
+Two runtime fixtures exercise 68 cases each for Mono/IL2CPP and x86/x64,
+with discarded and observed error payloads respectively. They cover empty and
+bounded text, embedded NULs, surrogate pairs and lone surrogates, negative and
+oversized lengths, null versus unreadable slots, header/payload overflow, a
+valid payload ending at the target's last address, transactional field failure,
+and unchanged previous snapshots. Both fixtures are registered in Debug and
+Release conformance. The JS fixture normalizes signed Wasm i64 arguments to
+unsigned remote addresses for the high-address boundary cases.
+
+The explicit-profile Lunistice Release artifact was also checked against the
+live demo: 122 accelerated host updates, 30,173 process reads, zero failed
+reads, and the expected Title/Hana/zero counters. The game was closed immediately
+after the probe and process exit was verified. The probe performs no real timer
+actions. Evidence is in `target/managed-read-live.json`; this validates the
+demo's 64-bit string path, while the synthetic fixtures cover 32-bit layouts
+and malformed memory.
+
+Validation covers 659 compiler integration tests, 441 library tests (one
+ignored), 106 syntax tests, 29 loader tests, 19 compiler CLI tests, one language
+server CLI test, and four baseline tests. The full compiler run exposed one
+stale diagnostic-label expectation; its corrected test passed on a focused
+rerun, with no product-code change afterward. All 90 unique Wasm artifacts and
+120 runtime scenarios from the xtask catalog passed, including all four
+managed-string scenarios (272 cases total). Clippy, formatting, and 558
+generated documentation pages passed. The optimized Lunistice artifact is
+byte-identical to the one used for the live probe.
+
+The reviewed rolling size gate passes. IL2CPP and Mono string fixtures grow
+by 169 bytes, to 48,068 and 38,887 respectively. Lunistice grows by 167 bytes,
+to 56,808 explicit / 123,677 automatic. The common string object reader adds
+112 bytes for width-aware headers and checked spans; the field reader adds
+55 bytes for slot validation. The helper signature adds one type-section byte;
+instruction/body framing and removal of nullable-error dereferences account
+for the remaining difference. No function count, type count, scratch allocation,
+or initial page count grows. All other fixtures, including scalar and unused
+string declarations, retain their sizes and emission plans. This small reader correction does
+not resolve the earlier metadata size regression: the explicit artifact must
+still return below 30,000 bytes before the Unity work is complete.
 
 ## Source map for implementation
 

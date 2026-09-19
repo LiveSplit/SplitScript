@@ -1,0 +1,23 @@
+image "Assembly-CSharp" {
+    class ProfileProbe {
+        static String value maxLength 8;
+        static ProfileProbe instance;
+        String text maxLength 8;
+        String? optional maxLength 8;
+    }
+}
+state Unity ["game.exe"] {
+    staticText = ProfileProbe.value?;
+    liveText = ProfileProbe.instance?.text?;
+    snapshot = ProfileProbe.instance?.snapshot()?;
+}
+whileAttached {
+    setVariable("static", current.staticText)
+    setVariable("live", current.liveText)
+    setVariable("snapshot", current.snapshot.text)
+    setVariable("old", old.snapshot.text)
+    setVariable("optional", match current.snapshot.optional {
+        Some(value) => `some:{value}`,
+        None => "none",
+    })
+}

@@ -2195,6 +2195,95 @@ fn explicit_generic_calls_accept_named_and_constructed_types() {
 }
 
 #[test]
+fn managed_readable_accepts_memory_layouts_and_managed_strings() {
+    let checked = splitscript::check(
+        splitscript::parse(
+            r#"
+        state "game.exe" {}
+        enum Mode: u32 { Idle, Running }
+        struct Header { mode: Mode, history: [u32; 2] }
+        fn readAt(at) { return process.read(at) }
+        setup {
+            let optional: String? = Some("Hana")
+        }
+        whileAttached {
+            let header: Header! = readAt(0 as address)
+        }
+    "#,
+        )
+        .unwrap(),
+    )
+    .unwrap();
+    use splitscript::compiler::stdlib::StdlibCapabilityId;
+    let managed_readable = StdlibCapabilityId::ManagedReadable;
+    let memory_readable = StdlibCapabilityId::MemoryReadable;
+    for (ty, kind) in checked.semantics().types().iter() {
+        if checked
+            .capabilities()
+            .has(ty, memory_readable, checked.semantics())
+        {
+            assert!(
+                checked
+                    .capabilities()
+                    .has(ty, managed_readable, checked.semantics()),
+                "{kind:?}"
+            );
+        }
+    }
+    let types = checked.semantics().types();
+    let string = types.id_for_standard(StdlibTypeId::String);
+    let optional = types
+        .iter()
+        .find_map(|(ty, kind)| {
+            matches!(kind, TypeKind::Option { value, .. } if *value == string).then_some(ty)
+        })
+        .unwrap();
+    for ty in [string, optional] {
+        assert!(
+            checked
+                .capabilities()
+                .has(ty, managed_readable, checked.semantics())
+        );
+        assert!(
+            !checked
+                .capabilities()
+                .has(ty, memory_readable, checked.semantics())
+        );
+    }
+    let generic = checked
+        .semantics()
+        .function_type_parameters(checked.syntax().functions[0].id)[0];
+    assert!(
+        checked
+            .capabilities()
+            .has(generic, managed_readable, checked.semantics())
+    );
+}
+
+#[test]
+fn managed_readable_rejects_types_without_implemented_decoders() {
+    for value_type in ["char", "[String]", "Map<String, String>", "Header"] {
+        let source = format!(
+            r#"
+            state Unity ["game.exe"] {{}}
+            struct Header {{ text: String }}
+            image "Assembly-CSharp" {{
+                class Probe {{ {value_type} value; }}
+            }}
+        "#
+        );
+        let errors = splitscript::compile(&source)
+            .expect_err("capability proofs require an implemented decoder for the entire value");
+        assert!(
+            errors
+                .iter()
+                .any(|error| error.message.contains("no supported managed decoder")),
+            "{value_type}: {errors:#?}"
+        );
+    }
+}
+
+#[test]
 fn integer_represented_enums_are_memory_readable_recursively() {
     let source = r#"
         enum GameState: i32 {

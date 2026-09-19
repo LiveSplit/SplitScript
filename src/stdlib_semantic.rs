@@ -185,6 +185,13 @@ fn semantic_type_may_have_capability(
         );
     }
     let behavior = library.capability(capability).behavior;
+    if behavior == CapabilityBehavior::StructuralManagedRead {
+        return semantic_type_may_have_capability(library, ty, StdlibCapabilityId::MemoryReadable)
+            || matches!(
+                ty,
+                TypeKind::Standard(crate::stdlib::StdlibTypeId::String) | TypeKind::Option { .. }
+            );
+    }
     match ty {
         TypeKind::Error => false,
         TypeKind::Builtin(builtin) => library.core_type_has_capability(*builtin, capability),

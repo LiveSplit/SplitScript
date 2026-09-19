@@ -3538,7 +3538,31 @@ private typeConstructor InclusiveRangeIterator<T: Integer> {
 /// let health = process.read<i32>(0x1234) else 0
 /// ```
 @behavior(structuralMemoryLayout)
-capability MemoryReadable {}
+capability MemoryReadable: ManagedReadable {}
+
+/// Supports a managed value decoder rather than requiring a fixed byte layout.
+///
+/// Every [`MemoryReadable`] type satisfies this capability. [`String`] and
+/// nullable strings additionally decode managed object references and own their
+/// resulting text. String schema fields still require [`maxLength`] to bound the
+/// read. This initial decoder graph does not yet accept managed collections or
+/// deep class snapshots; their nodes are added with their runtime implementations.
+/// [`ManagedReadable`] does not make a type usable with [`Process.read`], which
+/// still requires [`MemoryReadable`].
+///
+/// # Example
+///
+/// Decode bounded text from a managed field
+///
+/// ```splitscript
+/// image "Assembly-CSharp" {
+///     class Player { static String name maxLength 128; }
+/// }
+/// state Unity ["game.exe"] { name = Player.name?; }
+/// whileAttached { print(current.name) }
+/// ```
+@behavior(structuralManagedRead)
+capability ManagedReadable {}
 
 /// Reads typed values and bounded strings from an address space.
 ///
@@ -4738,7 +4762,7 @@ extend address {
 /// ```
 @representation(gcArray, u8, mutable, nullable)
 @valueUsage(structField, enumPayload, stateField, localVariable)
-@capabilities(Debug, Equatable, Display)
+@capabilities(Debug, Equatable, Display, ManagedReadable)
 intrinsic type String {
     /// Returns a string's UTF-8 byte length.
     ///

@@ -1086,15 +1086,16 @@ pub(super) fn compile_read_managed_string(
     ]);
     let process = 0;
     let address = 1;
-    let max_units = 2;
-    let units = 3;
-    let input_index = 4;
-    let byte_len = 5;
-    let unit = 6;
-    let low = 7;
-    let codepoint = 8;
-    let output_index = 9;
-    let output = 10;
+    let pointer_size = 2;
+    let max_units = 3;
+    let units = 4;
+    let input_index = 5;
+    let byte_len = 6;
+    let unit = 7;
+    let low = 8;
+    let codepoint = 9;
+    let output_index = 10;
+    let output = 11;
 
     function
         // The schema path validates constants earlier. Keep the internal
@@ -1110,17 +1111,26 @@ pub(super) fn compile_read_managed_string(
         .instruction(&Instruction::I32Or)
         .instruction(&Instruction::If(BlockType::Empty));
     emit_failed_managed_string_return(&mut function, gc);
-    function
-        .instruction(&Instruction::End)
-        .instruction(&Instruction::LocalGet(address))
-        .instruction(&Instruction::I64Eqz)
-        .instruction(&Instruction::If(BlockType::Empty));
+    function.instruction(&Instruction::End);
+    emit_invalid_managed_span(&mut function, address, pointer_size, |function| {
+        function
+            .instruction(&Instruction::LocalGet(pointer_size))
+            .instruction(&Instruction::I64ExtendI32U)
+            .instruction(&Instruction::I64Const(2))
+            .instruction(&Instruction::I64Mul)
+            .instruction(&Instruction::I64Const(4))
+            .instruction(&Instruction::I64Add);
+    });
+    function.instruction(&Instruction::If(BlockType::Empty));
     emit_failed_managed_string_return(&mut function, gc);
     function
         .instruction(&Instruction::End)
         .instruction(&Instruction::LocalGet(process))
         .instruction(&Instruction::LocalGet(address))
-        .instruction(&Instruction::I64Const(0x10))
+        .instruction(&Instruction::LocalGet(pointer_size))
+        .instruction(&Instruction::I64ExtendI32U)
+        .instruction(&Instruction::I64Const(2))
+        .instruction(&Instruction::I64Mul)
         .instruction(&Instruction::I64Add)
         .instruction(&Instruction::I32Const(abi_read.destination(4)))
         .instruction(&Instruction::I32Const(4))
@@ -1147,11 +1157,31 @@ pub(super) fn compile_read_managed_string(
         .instruction(&Instruction::I32Eqz)
         .instruction(&Instruction::If(BlockType::Empty));
     emit_successful_empty_managed_string_return(&mut function, gc);
+    function.instruction(&Instruction::End);
+    emit_invalid_managed_span(&mut function, address, pointer_size, |function| {
+        function
+            .instruction(&Instruction::LocalGet(pointer_size))
+            .instruction(&Instruction::I64ExtendI32U)
+            .instruction(&Instruction::LocalGet(units))
+            .instruction(&Instruction::I64ExtendI32U)
+            .instruction(&Instruction::I64Add)
+            .instruction(&Instruction::I64Const(2))
+            .instruction(&Instruction::I64Mul)
+            .instruction(&Instruction::I64Const(4))
+            .instruction(&Instruction::I64Add);
+    });
+    function.instruction(&Instruction::If(BlockType::Empty));
+    emit_failed_managed_string_return(&mut function, gc);
     function
         .instruction(&Instruction::End)
         .instruction(&Instruction::LocalGet(process))
         .instruction(&Instruction::LocalGet(address))
-        .instruction(&Instruction::I64Const(0x14))
+        .instruction(&Instruction::LocalGet(pointer_size))
+        .instruction(&Instruction::I64ExtendI32U)
+        .instruction(&Instruction::I64Const(2))
+        .instruction(&Instruction::I64Mul)
+        .instruction(&Instruction::I64Const(4))
+        .instruction(&Instruction::I64Add)
         .instruction(&Instruction::I64Add)
         .instruction(&Instruction::I32Const(utf16_start))
         .instruction(&Instruction::LocalGet(units))
@@ -1305,6 +1335,23 @@ pub(super) fn compile_read_managed_string_field(
     let string = 5;
     let value_type = option.map_or(Type::Standard(StdlibTypeId::String), Type::Option);
 
+    emit_invalid_managed_span(&mut function, field_address, pointer_size, |function| {
+        function
+            .instruction(&Instruction::LocalGet(pointer_size))
+            .instruction(&Instruction::I64ExtendI32U);
+    });
+    function.instruction(&Instruction::If(BlockType::Empty));
+    emit_result_error(
+        &mut function,
+        result,
+        value_type,
+        "managed string field pointer could not be read",
+        gc,
+        failure_payloads,
+    );
+    function
+        .instruction(&Instruction::Return)
+        .instruction(&Instruction::End);
     function
         .instruction(&Instruction::LocalGet(process))
         .instruction(&Instruction::LocalGet(field_address))
@@ -1349,6 +1396,7 @@ pub(super) fn compile_read_managed_string_field(
         .instruction(&Instruction::Else)
         .instruction(&Instruction::LocalGet(process))
         .instruction(&Instruction::LocalGet(pointer))
+        .instruction(&Instruction::LocalGet(pointer_size))
         .instruction(&Instruction::LocalGet(max_units))
         .instruction(&Instruction::Call(read_string))
         .instruction(&Instruction::LocalSet(string))
@@ -1386,6 +1434,42 @@ pub(super) fn compile_read_managed_string_field(
         .instruction(&Instruction::End)
         .instruction(&Instruction::End);
     function
+}
+
+/// Leaves an invalid-span predicate on the stack. Sizes here are positive and
+/// bounded by the decoder before this helper is called; addresses never wrap
+/// around either the guest's 32-bit limit or the host's 64-bit address space.
+fn emit_invalid_managed_span(
+    function: &mut Function,
+    address: u32,
+    pointer_size: u32,
+    emit_bytes: impl FnOnce(&mut Function),
+) {
+    function
+        .instruction(&Instruction::LocalGet(pointer_size))
+        .instruction(&Instruction::I32Const(4))
+        .instruction(&Instruction::I32Ne)
+        .instruction(&Instruction::LocalGet(pointer_size))
+        .instruction(&Instruction::I32Const(8))
+        .instruction(&Instruction::I32Ne)
+        .instruction(&Instruction::I32And)
+        .instruction(&Instruction::LocalGet(address))
+        .instruction(&Instruction::I64Eqz)
+        .instruction(&Instruction::I32Or)
+        .instruction(&Instruction::LocalGet(address))
+        .instruction(&Instruction::I64Const(u32::MAX as i64))
+        .instruction(&Instruction::I64Const(-1))
+        .instruction(&Instruction::LocalGet(pointer_size))
+        .instruction(&Instruction::I32Const(4))
+        .instruction(&Instruction::I32Eq)
+        .instruction(&Instruction::Select);
+    emit_bytes(function);
+    function
+        .instruction(&Instruction::I64Const(1))
+        .instruction(&Instruction::I64Sub)
+        .instruction(&Instruction::I64Sub)
+        .instruction(&Instruction::I64GtU)
+        .instruction(&Instruction::I32Or);
 }
 
 fn emit_failed_managed_string_return(function: &mut Function, gc: &GcLayout) {

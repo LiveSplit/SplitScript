@@ -1688,6 +1688,9 @@ impl InferenceContext {
         if variable
             .requirements
             .contains(StdlibCapabilityId::MemoryReadable)
+            || variable
+                .requirements
+                .contains(StdlibCapabilityId::ManagedReadable)
         {
             return None;
         }
@@ -2964,6 +2967,18 @@ pub(crate) fn type_may_have_capability(
         };
     }
     let behavior = library.capability(capability).behavior;
+    if behavior == CapabilityBehavior::StructuralManagedRead {
+        return type_may_have_capability(library, types, ty, StdlibCapabilityId::MemoryReadable)
+            || match ty {
+                Type::Known(id) => matches!(
+                    types.kind(id),
+                    TypeKind::Standard(crate::stdlib::StdlibTypeId::String)
+                        | TypeKind::Option { .. }
+                ),
+                Type::Option(_) => true,
+                _ => false,
+            };
+    }
     match ty {
         Type::Known(id) => match types.kind(id) {
             TypeKind::Error => false,

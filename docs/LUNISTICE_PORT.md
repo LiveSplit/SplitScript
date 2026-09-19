@@ -77,6 +77,12 @@ no failed process reads (30,173 explicit; 30,190 automatic), and exposed
 real attachment, metadata binding, snapshots, and managed-string decoding;
 gameplay transitions remain covered by the synthetic timer scenarios.
 
+The subsequent width-correct string and snapshot-error changes were rechecked
+live with the explicit profile: again 122 updates, 30,173 reads, zero failures,
+and the expected title-screen values. The demo was closed immediately afterward
+and its process exit was verified. The x86 and malformed-memory cases are
+covered separately by `tests/managed_string_width_runtime.mjs`.
+
 With the demo already running, repeat the read-only probe using
 `node scripts/probe-lunistice.mjs target/verify/lunistice.release.wasm` after
 `cargo xtask conformance`. The probe uses the VS Code extension's built native

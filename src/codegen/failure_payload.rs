@@ -28,6 +28,7 @@ impl FailurePayloadDemand {
         semantics: &SemanticModel,
         program: &wasm_ir::Program,
         reachability: &Reachability,
+        managed: &crate::managed::ManagedBindingPlan,
     ) -> Self {
         let mut demanded = BTreeSet::new();
         let mut dependencies = BTreeMap::<ResultTypeId, BTreeSet<ResultTypeId>>::new();
@@ -118,6 +119,38 @@ impl FailurePayloadDemand {
                 .expect("reachable closures have Wasm IR bodies");
             PatternDemandVisitor::new(instance.owner.as_ref(), semantics, &mut demanded)
                 .visit_block(&closure.entry, program);
+        }
+
+        // Snapshot readers are generated directly rather than represented by
+        // `?` expressions in Wasm IR. Their field failures still flow into the
+        // outer Result, and must retain messages when that Result is observed.
+        // Inferred and generated uses can have different Result layout IDs
+        // for the same value type. Include each alias: generated field readers
+        // select a canonical layout independently of the observing call site.
+        let mut results = BTreeMap::<TypeId, BTreeSet<ResultTypeId>>::new();
+        for (_, kind) in semantics.types().iter() {
+            if let TypeKind::Result { layout, value } = kind {
+                results.entry(*value).or_default().insert(*layout);
+            }
+        }
+        for class in reachability.managed_snapshots() {
+            let targets = &results[&semantics.types().id_for_managed_class(class)];
+            let binding = managed
+                .classes
+                .iter()
+                .find(|binding| binding.id == class)
+                .expect("reachable snapshots have managed bindings");
+            for field in binding
+                .all_fields()
+                .filter(|field| field.kind == crate::managed::ManagedFieldKind::Instance)
+            {
+                for target in targets {
+                    dependencies
+                        .entry(*target)
+                        .or_default()
+                        .extend(&results[&field.value_type]);
+                }
+            }
         }
 
         // If an outer error is observable, every payload forwarded into it is

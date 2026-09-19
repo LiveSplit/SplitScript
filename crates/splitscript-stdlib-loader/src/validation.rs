@@ -163,6 +163,7 @@ impl<'a> Validator<'a> {
                                 "declared"
                                     | "structuralEquality"
                                     | "structuralMemoryLayout"
+                                    | "structuralManagedRead"
                                     | "structuralMethods"
                             )
                         },

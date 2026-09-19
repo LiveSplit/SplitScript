@@ -192,6 +192,7 @@ impl<'a> CatalogGenerator<'a> {
                     "declared" => "Declared",
                     "structuralEquality" => "StructuralEquality",
                     "structuralMemoryLayout" => "StructuralMemoryLayout",
+                    "structuralManagedRead" => "StructuralManagedRead",
                     "structuralMethods" => "StructuralMethods",
                     other => other,
                 };

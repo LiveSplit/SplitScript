@@ -533,22 +533,22 @@ fn validate_remote_memory_layouts(
             let ty = semantics
                 .managed_field_value_type(field.id)
                 .expect("checked managed fields have semantic types");
-            if managed_field_has_dedicated_decoder(ty, semantics) {
+            if matches!(semantics.types().kind(ty), TypeKind::ManagedReference(_)) {
                 continue;
             }
             let Err(error) =
-                capabilities.require(ty, StdlibCapabilityId::MemoryReadable, semantics)
+                capabilities.require(ty, StdlibCapabilityId::ManagedReadable, semantics)
             else {
                 continue;
             };
             let mut diagnostic = Diagnostic::semantic(
                 format!(
-                    "managed field `{}.{}` has no fixed process-memory layout",
+                    "managed field `{}.{}` has no supported managed decoder",
                     class.name, field.name
                 ),
                 field.type_span,
             )
-            .with_primary_label("this managed value needs a fixed `MemoryReadable` representation")
+            .with_primary_label("this managed value must satisfy `ManagedReadable`")
             .with_note(error);
             if matches!(
                 semantics.types().kind(ty),
@@ -748,21 +748,6 @@ fn invalid_guest_read_diagnostic(
     .with_note(
         "computed guest addresses remain fallible and are checked by the provider at runtime",
     )
-}
-
-fn managed_field_has_dedicated_decoder(
-    ty: crate::types::TypeId,
-    semantics: &SemanticModel,
-) -> bool {
-    match semantics.types().kind(ty) {
-        TypeKind::ManagedReference(_) => true,
-        TypeKind::Standard(crate::stdlib::StdlibTypeId::String) => true,
-        TypeKind::Option { value, .. } => matches!(
-            semantics.types().kind(*value),
-            TypeKind::Standard(crate::stdlib::StdlibTypeId::String)
-        ),
-        _ => false,
-    }
 }
 
 fn validate_struct_field_shorthand(syntax: &Program) -> Vec<Diagnostic> {

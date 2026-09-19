@@ -25,6 +25,7 @@ pub struct CapabilityAnalysis {
     standard_library: StandardLibrary,
     equality: EqualityCapabilities,
     memory: MemoryLayouts,
+    managed: crate::managed_read::ManagedReadTypes,
     source_methods: HashMap<TypeId, HashMap<String, FunctionId>>,
     structural: StructuralTypes,
     structural_requirements: HashMap<StdlibCapabilityId, Vec<StdlibItemId>>,
@@ -127,6 +128,9 @@ impl CapabilityAnalysis {
                 (capability.id, requirements)
             })
             .collect();
+        let memory =
+            MemoryLayouts::build_with_library(structs, enums, semantics, standard_library.clone());
+        let managed = crate::managed_read::ManagedReadTypes::build(&memory, semantics);
         Self {
             standard_library: standard_library.clone(),
             equality: EqualityCapabilities::build_with_structural(
@@ -134,7 +138,8 @@ impl CapabilityAnalysis {
                 semantics,
                 standard_library.clone(),
             ),
-            memory: MemoryLayouts::build_with_library(structs, enums, semantics, standard_library),
+            memory,
+            managed,
             source_methods,
             structural,
             structural_requirements,
@@ -167,6 +172,7 @@ impl CapabilityAnalysis {
         match declaration.behavior {
             CapabilityBehavior::StructuralEquality => self.equality.require(ty, semantics),
             CapabilityBehavior::StructuralMemoryLayout => self.memory.require_layout(ty, semantics),
+            CapabilityBehavior::StructuralManagedRead => self.managed.require(ty, semantics),
             CapabilityBehavior::StructuralMethods => {
                 let declared = match semantics.types().kind(ty) {
                     TypeKind::Builtin(core)

@@ -143,7 +143,8 @@ pub(super) fn compile(
     function
         .instruction(&Instruction::I32Const(1))
         .instruction(&Instruction::LocalGet(error_local))
-        .instruction(&Instruction::RefAsNonNull)
+        // Unobserved diagnostics are erased in release builds. Propagating
+        // failure must preserve that nullable payload without dereferencing it.
         .instruction(&Instruction::StructNew(
             lowering.gc.index(Type::Result(result)),
         ))

@@ -1,6 +1,6 @@
 {
   "format_version": 1,
-  "compiler": "0.1.0 (d5cc41677b0d)",
+  "compiler": "0.1.0 (8590627eee9b)",
   "rustc": "rustc 1.98.1 (48a229cea 2026-09-01)",
   "node": "v24.14.0",
   "compiler_build": "optimized",
@@ -9,7 +9,7 @@
   "fixtures": {
     "elf-build-id": {
       "source_fingerprint": "ead9b1584fa2fad0",
-      "compile_micros": 88842,
+      "compile_micros": 87644,
       "module_bytes": 7718,
       "sections": {
         "10:code": 6299,
@@ -93,7 +93,7 @@
     },
     "il2cpp-auto-profile": {
       "source_fingerprint": "37fd82bc7487fe96",
-      "compile_micros": 85884,
+      "compile_micros": 84427,
       "module_bytes": 108510,
       "sections": {
         "10:code": 98955,
@@ -1117,7 +1117,7 @@
     },
     "il2cpp-instances": {
       "source_fingerprint": "88b331674c01cf45",
-      "compile_micros": 52225,
+      "compile_micros": 50038,
       "module_bytes": 39909,
       "sections": {
         "10:code": 36147,
@@ -1566,7 +1566,7 @@
     },
     "il2cpp-scalar": {
       "source_fingerprint": "934760e2d8311a59",
-      "compile_micros": 54874,
+      "compile_micros": 51677,
       "module_bytes": 47191,
       "sections": {
         "10:code": 42502,
@@ -2098,12 +2098,12 @@
     },
     "il2cpp-string": {
       "source_fingerprint": "547a3eabbed6efde",
-      "compile_micros": 54109,
-      "module_bytes": 47899,
+      "compile_micros": 52148,
+      "module_bytes": 48068,
       "sections": {
-        "10:code": 43187,
+        "10:code": 43355,
         "11:data": 1773,
-        "1:type": 2284,
+        "1:type": 2285,
         "2:import": 206,
         "3:function": 157,
         "5:memory": 5,
@@ -2131,8 +2131,8 @@
         "16:__splitscript::runtime::StringFromMemory": 54,
         "17:__splitscript::runtime::Utf8StringFromMemory": 358,
         "18:__splitscript::runtime::ReadUtf8String": 43,
-        "19:__splitscript::runtime::ReadManagedString": 600,
-        "20:__splitscript::runtime::ReadManagedStringField": 102,
+        "19:__splitscript::runtime::ReadManagedString": 712,
+        "20:__splitscript::runtime::ReadManagedStringField": 157,
         "21:__splitscript::runtime::JoinStrings": 233,
         "22:__splitscript::runtime::IndentDisplay": 167,
         "23:__splitscript::runtime::WrapDebugEntry": 41,
@@ -2642,7 +2642,7 @@
     },
     "il2cpp-unused-string": {
       "source_fingerprint": "e9cb106df0f27527",
-      "compile_micros": 68022,
+      "compile_micros": 67696,
       "module_bytes": 47191,
       "sections": {
         "10:code": 42502,
@@ -3174,7 +3174,7 @@
     },
     "il2cpp-x86-profile": {
       "source_fingerprint": "edc069673e15919a",
-      "compile_micros": 54225,
+      "compile_micros": 53086,
       "module_bytes": 47466,
       "sections": {
         "10:code": 42750,
@@ -3717,7 +3717,7 @@
     },
     "local-map": {
       "source_fingerprint": "f2f2aeaf86f8d4ff",
-      "compile_micros": 46585,
+      "compile_micros": 44257,
       "module_bytes": 4860,
       "sections": {
         "10:code": 4015,
@@ -3907,7 +3907,7 @@
     },
     "local-set": {
       "source_fingerprint": "b288825dd79bff60",
-      "compile_micros": 45865,
+      "compile_micros": 44656,
       "module_bytes": 3181,
       "sections": {
         "10:code": 2481,
@@ -4033,12 +4033,12 @@
     },
     "lunistice": {
       "source_fingerprint": "3b30b58ef5aa03b0",
-      "compile_micros": 58812,
-      "module_bytes": 56641,
+      "compile_micros": 54877,
+      "module_bytes": 56808,
       "sections": {
-        "10:code": 50535,
+        "10:code": 50701,
         "11:data": 2443,
-        "1:type": 2732,
+        "1:type": 2733,
         "2:import": 390,
         "3:function": 210,
         "5:memory": 5,
@@ -4099,8 +4099,8 @@
         "26:__splitscript::runtime::StringFromMemory": 54,
         "27:__splitscript::runtime::Utf8StringFromMemory": 358,
         "28:__splitscript::runtime::ReadUtf8String": 43,
-        "29:__splitscript::runtime::ReadManagedString": 600,
-        "30:__splitscript::runtime::ReadManagedStringField": 102,
+        "29:__splitscript::runtime::ReadManagedString": 712,
+        "30:__splitscript::runtime::ReadManagedStringField": 157,
         "31:__splitscript::runtime::JoinStrings": 233,
         "32:__splitscript::runtime::IndentDisplay": 167,
         "33:__splitscript::runtime::WrapDebugEntry": 41,
@@ -4112,8 +4112,8 @@
         "39:__splitscript::array#11::push": 119,
         "40:__splitscript::managed::class#0::field#0::read": 128,
         "41:__splitscript::managed::class#1::field#6::read": 128,
-        "42:__splitscript::managed::GameManager::snapshot": 633,
-        "43:__splitscript::managed::Timer::snapshot": 349,
+        "42:__splitscript::managed::GameManager::snapshot": 632,
+        "43:__splitscript::managed::Timer::snapshot": 348,
         "44:twoDigits<u32>": 53,
         "45:toString": 69,
         "46:levelText<i32>": 118,
@@ -4684,12 +4684,12 @@
     },
     "lunistice-auto": {
       "source_fingerprint": "18272ab85fe8f1a6",
-      "compile_micros": 100912,
-      "module_bytes": 123510,
+      "compile_micros": 90494,
+      "module_bytes": 123677,
       "sections": {
-        "10:code": 112346,
+        "10:code": 112512,
         "11:data": 5287,
-        "1:type": 4687,
+        "1:type": 4688,
         "2:import": 406,
         "3:function": 445,
         "5:memory": 5,
@@ -4852,8 +4852,8 @@
         "26:__splitscript::runtime::StringFromMemory": 54,
         "27:__splitscript::runtime::Utf8StringFromMemory": 358,
         "28:__splitscript::runtime::ReadUtf8String": 43,
-        "29:__splitscript::runtime::ReadManagedString": 600,
-        "30:__splitscript::runtime::ReadManagedStringField": 102,
+        "29:__splitscript::runtime::ReadManagedString": 712,
+        "30:__splitscript::runtime::ReadManagedStringField": 157,
         "31:__splitscript::runtime::LoadedModule": 132,
         "32:__splitscript::runtime::JoinStrings": 233,
         "33:__splitscript::runtime::IndentDisplay": 167,
@@ -4868,8 +4868,8 @@
         "42:__splitscript::array#11::push": 119,
         "43:__splitscript::managed::class#0::field#0::read": 131,
         "44:__splitscript::managed::class#1::field#6::read": 131,
-        "45:__splitscript::managed::GameManager::snapshot": 640,
-        "46:__splitscript::managed::Timer::snapshot": 355,
+        "45:__splitscript::managed::GameManager::snapshot": 639,
+        "46:__splitscript::managed::Timer::snapshot": 354,
         "47:twoDigits<u32>": 53,
         "48:toString": 69,
         "49:levelText<i32>": 118,
@@ -5846,7 +5846,7 @@
     },
     "mach-uuid": {
       "source_fingerprint": "5106d448d3c16584",
-      "compile_micros": 44980,
+      "compile_micros": 43626,
       "module_bytes": 4308,
       "sections": {
         "10:code": 3228,
@@ -5920,7 +5920,7 @@
     },
     "mono-inherited-static": {
       "source_fingerprint": "d849259d66b37bb4",
-      "compile_micros": 50335,
+      "compile_micros": 50456,
       "module_bytes": 38682,
       "sections": {
         "10:code": 34315,
@@ -6328,7 +6328,7 @@
     },
     "mono-instances": {
       "source_fingerprint": "f8114e5628a14dee",
-      "compile_micros": 62384,
+      "compile_micros": 63653,
       "module_bytes": 31105,
       "sections": {
         "10:code": 27685,
@@ -6677,7 +6677,7 @@
     },
     "mono-old": {
       "source_fingerprint": "0f71900d22e0bafa",
-      "compile_micros": 50415,
+      "compile_micros": 50330,
       "module_bytes": 38287,
       "sections": {
         "10:code": 33943,
@@ -7085,7 +7085,7 @@
     },
     "mono-profiles-auto": {
       "source_fingerprint": "37fd82bc7487fe96",
-      "compile_micros": 84265,
+      "compile_micros": 81710,
       "module_bytes": 108510,
       "sections": {
         "10:code": 98955,
@@ -8109,7 +8109,7 @@
     },
     "mono-scalar": {
       "source_fingerprint": "e70ab4de5b26343a",
-      "compile_micros": 58247,
+      "compile_micros": 49743,
       "module_bytes": 38010,
       "sections": {
         "10:code": 33693,
@@ -8506,12 +8506,12 @@
     },
     "mono-string": {
       "source_fingerprint": "20c84947116d9289",
-      "compile_micros": 50494,
-      "module_bytes": 38718,
+      "compile_micros": 51143,
+      "module_bytes": 38887,
       "sections": {
-        "10:code": 34378,
+        "10:code": 34546,
         "11:data": 1979,
-        "1:type": 1770,
+        "1:type": 1771,
         "2:import": 206,
         "3:function": 93,
         "5:memory": 5,
@@ -8531,8 +8531,8 @@
         "15:__splitscript::runtime::StringFromMemory": 54,
         "16:__splitscript::runtime::Utf8StringFromMemory": 358,
         "17:__splitscript::runtime::ReadUtf8String": 43,
-        "18:__splitscript::runtime::ReadManagedString": 600,
-        "19:__splitscript::runtime::ReadManagedStringField": 102,
+        "18:__splitscript::runtime::ReadManagedString": 712,
+        "19:__splitscript::runtime::ReadManagedStringField": 157,
         "20:__splitscript::runtime::LoadedModule": 132,
         "21:__splitscript::runtime::JoinStrings": 233,
         "22:__splitscript::runtime::IndentDisplay": 167,
@@ -8915,7 +8915,7 @@
     },
     "mono-unused-string": {
       "source_fingerprint": "97da02f2c8e61094",
-      "compile_micros": 67355,
+      "compile_micros": 67588,
       "module_bytes": 38010,
       "sections": {
         "10:code": 33693,
@@ -9312,7 +9312,7 @@
     },
     "native": {
       "source_fingerprint": "9733d9cb885f7136",
-      "compile_micros": 42439,
+      "compile_micros": 44016,
       "module_bytes": 615,
       "sections": {
         "10:code": 194,
@@ -9352,7 +9352,7 @@
     },
     "pe-debug-id": {
       "source_fingerprint": "7c84c46d1b10e5e4",
-      "compile_micros": 44630,
+      "compile_micros": 45168,
       "module_bytes": 7135,
       "sections": {
         "10:code": 5805,
@@ -9441,7 +9441,7 @@
     },
     "unity-nested-metadata": {
       "source_fingerprint": "02d531da636f05c0",
-      "compile_micros": 83604,
+      "compile_micros": 88850,
       "module_bytes": 110583,
       "sections": {
         "10:code": 100919,

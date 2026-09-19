@@ -240,6 +240,8 @@ pub enum CapabilityBehavior {
     Declared,
     StructuralEquality,
     StructuralMemoryLayout,
+    /// Fixed-layout base cases and source-owned high-level managed decoders.
+    StructuralManagedRead,
     /// User-defined nominal types satisfy the capability by declaring every
     /// method contract owned by it with the required signature.
     StructuralMethods,

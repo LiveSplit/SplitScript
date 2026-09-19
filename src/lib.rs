@@ -35,6 +35,7 @@ mod language;
 mod lexer;
 mod lsp;
 mod managed;
+mod managed_read;
 mod memory;
 pub mod migration;
 mod name_matching;
