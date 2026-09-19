@@ -5388,7 +5388,7 @@ fn unity_managed_schemas_are_typed_and_suspension_safe() {
             }
         }
 
-        state Unity.il2cpp(2020) ["game.exe"] {
+        state Unity.il2cpp(Il2CppProfile.unity2021_3_11f1X64()) ["game.exe"] {
             currentLevel: i32 = GameManager.instance?.currentLevel?;
         }
 
@@ -5434,7 +5434,7 @@ fn unity_static_data_is_emitted_only_when_required() {
                     i32 state;
                 }
             }
-            state Unity.il2cpp(2020) ["game.exe"] {
+            state Unity.il2cpp(Il2CppProfile.unity2021_3_11f1X64()) ["game.exe"] {
                 state: i32 = GameManager.instance?.state?;
             }
         "#,

@@ -736,12 +736,9 @@ mod tests {
     #[test]
     fn helper_dependencies_are_closed_transitively() {
         let mut dependencies = BackendDependencies::default();
-        dependencies.require(RuntimeHelperId::UnityGetStaticInstance);
-
-        assert!(dependencies.uses_helper(RuntimeHelperId::UnityGetStaticInstance));
-        assert!(dependencies.uses_helper(RuntimeHelperId::UnityGetFieldAny));
-        assert!(dependencies.uses_helper(RuntimeHelperId::UnityGetFieldOffset));
-        assert!(dependencies.uses_helper(RuntimeHelperId::CStringEquality));
-        assert!(dependencies.uses_helper(RuntimeHelperId::BackingFieldEquality));
+        dependencies.require(RuntimeHelperId::ReadUtf8String);
+        assert!(dependencies.uses_helper(RuntimeHelperId::ReadUtf8String));
+        assert!(dependencies.uses_helper(RuntimeHelperId::Utf8StringFromMemory));
+        assert!(dependencies.uses_helper(RuntimeHelperId::StringFromMemory));
     }
 }

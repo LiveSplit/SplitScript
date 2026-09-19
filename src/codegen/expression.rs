@@ -5095,16 +5095,7 @@ fn compile_expr_unconverted(
             | IntrinsicId::InclusiveRangeIteratorNext => {
                 emit_iterator_next(function, expression, target, builtin, context);
             }
-            IntrinsicId::ModuleScan
-            | IntrinsicId::ModuleScanAny
-            | IntrinsicId::ModuleMd5
-            | IntrinsicId::UnityModuleImage
-            | IntrinsicId::UnityImageClass
-            | IntrinsicId::UnityImageClassAny
-            | IntrinsicId::UnityClassField
-            | IntrinsicId::UnityClassProbeFieldAny
-            | IntrinsicId::UnityClassStaticTable
-            | IntrinsicId::UnityClassStaticInstance => {
+            IntrinsicId::ModuleScan | IntrinsicId::ModuleScanAny | IntrinsicId::ModuleMd5 => {
                 unreachable!("suspending receiver methods are lowered by await")
             }
         },

@@ -1499,7 +1499,7 @@ state Unity ["game.exe"] {
 ```
 
 The automatic [`Unity`] selector chooses a supported backend from the loaded
-modules. Select `Unity.mono(MonoVersion.V2)` or `Unity.il2cpp(2020)` after the
+modules. Select `Unity.mono(MonoVersion.V2)` or `Unity.il2cpp(Il2CppProfile.unity2021_3_11f1X64())` after the
 [`state`] keyword only when the target's exact metadata layout is known and
 automatic detection is inappropriate. [`MonoVersion.V3`] selects the Unity
 2021.2-and-newer PE64 Mono layout; `V2` selects the preceding modern layout.

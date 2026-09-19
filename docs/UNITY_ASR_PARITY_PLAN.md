@@ -1,6 +1,6 @@
 # Unity support: ASR research and SplitScript implementation plan
 
-Status: researched on 2026-09-18; the measurement gate, reachable binding/scratch allocation, binary identities, and Windows Mono profile integration are implemented. IL2CPP profiles and recursive managed readers remain in progress/planned. See [implementation progress](#implementation-progress).
+Status: researched on 2026-09-18; the measurement gate, reachable binding/scratch allocation, binary identities, Windows Mono profiles, and measured IL2CPP profiles/discovery are implemented. Shared nested/generic metadata and recursive managed readers remain in progress/planned. See [implementation progress](#implementation-progress).
 
 ## Objective and baseline
 
@@ -68,6 +68,15 @@ The fifth slice implements Windows Mono profile selection and attachment (Steps 
 - Validation on 2026-09-19: **443 library tests**, **654 compiler integration tests**, and **106 runtime scenarios** pass, including **70 Mono profile cases**, inherited statics, instances, and Lunistice base/DLC. Clippy, formatting, 510-page documentation validation, importer reproducibility, and the reviewed size gate pass. Automatic Lunistice remains size-only; no live-game validation was performed.
 
 Step 1 is **in progress**, not complete: executable contracts for new profile/read APIs and recursive acceptance examples still need implementation. No new managed collection or recursive snapshot support is claimed by these slices. Live game validation has not been performed.
+
+IL2CPP profile migration is underway. The demo at `C:\Games\Lunistice-Demo`
+contains x64 UnityPlayer/GameAssembly binaries. On 2026-09-19, its UnityPlayer
+product version was **2022.3.13f1 (5f90a5ebde0f)** and its four binary file-version
+components were **2022.3.13.37029**. The textual FileVersion string ends in
+`6262949`; automatic selection must use the binary components, not that string.
+The final ASR nearest-profile rule selects **2022.3.0f1 x64** for this demo.
+The example's old `2020` bucket therefore needs correction during migration.
+This records file inspection, not a successful live attachment or gameplay test.
 
 ## What changed upstream
 
@@ -430,7 +439,7 @@ The implementation is complete when all 14 PRs have an outcome in this checklist
 
 - [x] #142 identities and equivalent generated-Wasm test infrastructure.
 - [x] #143 Windows Mono exact profiles and image-name routing.
-- [ ] #144 measured IL2CPP layouts, x86 discovery, and corrected reads; superseded selection intentionally omitted.
+- [x] #144 measured IL2CPP layouts, x86 discovery, and corrected reads; superseded selection intentionally omitted.
 - [ ] #145 shared metadata operations with SplitScript-specific scheduling/ambiguity semantics.
 - [ ] #146 nested/generic handling and owner-aware static regression coverage.
 - [ ] #147 width-correct strings, raw UTF-16 access, and bounded value arrays.
@@ -441,12 +450,56 @@ The implementation is complete when all 14 PRs have an outcome in this checklist
 - [ ] #153 reference array/list elements and direct string-object decoding.
 - [ ] #155 Linux exact identities/profiles and required discovery support.
 - [ ] #156 macOS UUID profiles and required discovery support.
-- [ ] #160 complete explicit/custom IL2CPP profiles, final auto selection, and removal of year buckets.
+- [x] #160 complete explicit/custom IL2CPP profiles, final auto selection, and removal of year buckets.
 - [ ] Beyond ASR: recursive `ManagedReadable`, with `MemoryReadable` base cases and generic constraint support.
 - [ ] Beyond ASR: natural nested arrays/lists/maps/sets/strings and declared class snapshots through one decoder graph.
 - [ ] Beyond ASR: transitive immutable snapshot ownership, per-root budgets, nested nullability/failures, cycle handling, and retained-state safety.
 - [ ] Every implementation step has a Lunistice size/behavior report; all positive size deltas have a reachable-feature explanation.
 - [ ] Unused feature resolvers, readers, metadata names, profile data, GC types, and scratch storage are absent from generated Wasm.
+
+## IL2CPP integration evidence (2026-09-19)
+
+The numeric IL2CPP selector and Rust year-offset table have been removed. The
+standard library now owns complete measured/custom profiles, exact/nearest
+selection, x86/x64 global discovery, and profile-driven image/class/field/static
+reads. Profile inputs are reproducible from the pinned ASR source with
+`python scripts/import-il2cpp-profiles.py target/asr-unity-review --check`.
+The independent fixture covers all 22 profiles, sparse/inline/indirect tables,
+nearest selection, three x86 store forms, decoys, bounded operands/windows,
+width rejection, explicit/custom profiles without UnityPlayer, and restart.
+Nested/generic metadata and recursive managed collections remain separate
+unfinished steps; complete offset descriptors alone do not implement them.
+
+The profile suite now exercises 56 independent runtime cases. Native scripts,
+local maps/sets, explicit Mono scripts, PE identity readers, and Mach-O identity
+readers retain their previous sizes. IL2CPP source metadata walks add reachable
+async code: Lunistice grows from 23,141 to 76,166 bytes; auto Lunistice grows from
+72,974 to 131,836 bytes. The explicit profile omits UnityPlayer version lookup
+and all other measured profile constructors. An unused managed string still
+produces exactly the scalar module size. An initial eight-byte increase in ELF-only modules was traced to an unused
+fixed-array subtype introduced by profile validation. Validation now checks
+individual offsets without constructing those arrays; the final size gate
+checks that this accidental dependency is gone. IL2CPP scratch shrinks from 8,192 to 4,120 bytes for
+scalar reads and from 14,336 to 10,264 bytes with managed strings; page counts do
+not grow. The targeted checked-read helper adjustment saved about 7 KB before
+this measurement. Further work is focused on the remaining metadata/reader
+features rather than general compiler optimization.
+
+The supplied Lunistice demo was also tested live, using both explicit and
+automatic profiles. Binary file version `2022.3.13.37029` selected measured
+`UNITY_2022_3_0F1_X86_64`; both probes read title-screen state in 126 host updates
+with no failed memory reads. The game was closed after validation. See
+[Lunistice live validation](LUNISTICE_PORT.md#live-demo-validation) for the
+reproducible probe and limits of this evidence.
+
+Validation passed 656 compiler integration tests, 111 registered runtime
+scenarios, 83 distinct Wasm artifact validations, and the library, syntax,
+loader, CLI, and example suites. Clippy and 557 generated documentation pages
+also passed. The optimized size gate now records 21 fixtures; after reviewing
+the reachable IL2CPP growth above, its strict comparison and Lunistice base/DLC
+behavior checks passed. Both pinned-source profile importers reproduce the
+checked-in catalogs. These checks complete this profile slice, not the remaining
+metadata and recursive-reader work.
 
 ## Source map for implementation
 
@@ -457,6 +510,6 @@ Upstream links below are pinned to the reviewed tip; the PR table provides the h
 - [IL2CPP attachment](https://github.com/LiveSplit/asr/blob/cf732d3aeac7509c8ab5f29a4d0d28f16487d245/src/game_engine/unity/il2cpp/mod.rs), [complete profile schema](https://github.com/LiveSplit/asr/blob/cf732d3aeac7509c8ab5f29a4d0d28f16487d245/src/game_engine/unity/il2cpp/offsets.rs), [named profiles](https://github.com/LiveSplit/asr/blob/cf732d3aeac7509c8ab5f29a4d0d28f16487d245/src/game_engine/unity/il2cpp/profiles.rs).
 - [Shared walk and collection shape resolution](https://github.com/LiveSplit/asr/blob/cf732d3aeac7509c8ab5f29a4d0d28f16487d245/src/game_engine/unity/managed/walk.rs), [backend operations](https://github.com/LiveSplit/asr/blob/cf732d3aeac7509c8ab5f29a4d0d28f16487d245/src/game_engine/unity/managed/runtime.rs), [cursors](https://github.com/LiveSplit/asr/blob/cf732d3aeac7509c8ab5f29a4d0d28f16487d245/src/game_engine/unity/managed/cursor.rs), [pointer paths](https://github.com/LiveSplit/asr/blob/cf732d3aeac7509c8ab5f29a4d0d28f16487d245/src/game_engine/unity/managed/pointer.rs).
 - [Shared value readers](https://github.com/LiveSplit/asr/blob/cf732d3aeac7509c8ab5f29a4d0d28f16487d245/src/game_engine/unity/managed/readers.rs), [raw managed strings](https://github.com/LiveSplit/asr/blob/cf732d3aeac7509c8ab5f29a4d0d28f16487d245/src/game_engine/unity/managed/string.rs). The Mono/IL2CPP directories contain `walk_tests.rs`, `readers_tests.rs`, and `collections_tests.rs`; Mono also has `identity_tests.rs`.
-- SplitScript entry points: [standard library](../stdlib/standard.split), [managed binding plan](../src/managed.rs), [remote-memory validation](../src/validation.rs), [IL2CPP layout facts](../src/codegen/unity_layout.rs), [IL2CPP helpers](../src/codegen/runtime_helpers/unity.rs), [managed string decoding](../src/codegen/runtime_helpers/process.rs), [field expression lowering](../src/codegen/expression.rs), [snapshot generation](../src/codegen/managed_snapshots.rs), [static read caching](../src/codegen/managed_state_reads.rs), [async lowering](../src/codegen/async_state.rs), [fixture registration](../src/bin/xtask.rs).
+- SplitScript entry points: [standard library](../stdlib/standard.split), [managed binding plan](../src/managed.rs), [remote-memory validation](../src/validation.rs), [IL2CPP profile corpus](../tests/fixtures/il2cpp-pe-profiles.json), [managed string decoding](../src/codegen/runtime_helpers/process.rs), [field expression lowering](../src/codegen/expression.rs), [snapshot generation](../src/codegen/managed_snapshots.rs), [static read caching](../src/codegen/managed_state_reads.rs), [async lowering](../src/codegen/async_state.rs), [fixture registration](../src/bin/xtask.rs).
 
 The intended result is one coherent Unity implementation with complete selected layouts, recursive managed-readable values, deep class snapshots, bounded shared read contexts, and generated Wasm that pays only for reachable features. The work is a source/compiler migration extending ASR's capabilities, not a dependency update or a literal transplant of ASR's Rust public API.

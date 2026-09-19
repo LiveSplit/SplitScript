@@ -462,7 +462,6 @@ mod tests {
             ("async", include_str!("async_state.rs")),
             ("state", include_str!("script_functions.rs")),
             ("process helper", include_str!("runtime_helpers/process.rs")),
-            ("Unity helper", include_str!("runtime_helpers/unity.rs")),
             ("GBA helper", include_str!("runtime_helpers/gba.rs")),
             ("GameCube helper", include_str!("runtime_helpers/gcn.rs")),
             ("Wii helper", include_str!("runtime_helpers/wii.rs")),

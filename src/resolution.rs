@@ -462,21 +462,28 @@ pub(crate) fn resolve_program(
     };
     resolver.visit_program(program);
     provider_diagnostics.extend(resolver.diagnostics);
-    if let Some(selector) = program
+    for selector in program
         .state
-        .as_ref()
-        .and_then(|state| state.provider.as_ref())
-        .and_then(|provider| provider.selector.as_ref())
+        .iter()
+        .flat_map(|state| {
+            state.provider.iter().chain(
+                state
+                    .provider_alternatives
+                    .iter()
+                    .map(|alternative| &alternative.provider),
+            )
+        })
+        .filter_map(|provider| provider.selector.as_ref())
     {
         for argument in &selector.arguments {
-            if !crate::constant::is_constant(argument, resolutions) {
+            if !crate::constant::is_constant(argument, resolutions, program, standard_library) {
                 provider_diagnostics.push(
                     Diagnostic::type_error(
                         "state-provider configuration must be a compile-time constant",
                         argument.span,
                     )
                     .with_primary_label(
-                        "use a literal, enum variant, or a constant expression composed from them",
+                        "use constant values or a constructor function that only returns a constant expression",
                     ),
                 );
             }

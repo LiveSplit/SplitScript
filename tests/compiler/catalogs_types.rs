@@ -3,6 +3,37 @@
 use super::*;
 
 #[test]
+fn provider_profiles_accept_constant_constructors_but_not_runtime_state() {
+    let compile = |body: &str| {
+        splitscript::compile(&format!(
+            "{body}\nstate Unity.mono(pick()) [\"game.exe\"] {{}}"
+        ))
+    };
+    for body in [
+        "fn pick() -> MonoVersion { return MonoVersion.V2 }",
+        "fn identity(value: MonoVersion) -> MonoVersion { return value } fn pick() -> MonoVersion { return identity(MonoVersion.V2) }",
+    ] {
+        Validator::new_with_features(WasmFeatures::all())
+            .validate_all(&compile(body).expect("a constant constructor is valid configuration"))
+            .unwrap();
+    }
+    for body in [
+        "let version = MonoVersion.V2; fn pick() -> MonoVersion { return version }",
+        "fn pick() -> MonoVersion { print(1); return MonoVersion.V2 }",
+        "fn pick() -> MonoVersion { return pick() }",
+        "fn pick() -> MonoVersion { return other() } fn other() -> MonoVersion { return pick() }",
+    ] {
+        let errors = compile(body).expect_err("configuration cannot read or change runtime state");
+        assert!(
+            errors.iter().any(|error| error
+                .message
+                .contains("configuration must be a compile-time constant")),
+            "{errors:?}"
+        );
+    }
+}
+
+#[test]
 fn source_defined_library_bodies_compile_without_leaking_hidden_declarations() {
     let library = StandardLibrary::new();
     for item in [
@@ -1253,7 +1284,10 @@ fn unity_provider_preparation_is_selected_typed_and_lowered_before_attachment() 
 
     for (source, selector) in [
         (r#"state Unity ["game.exe"] {}"#, None),
-        (r#"state Unity.il2cpp(2020) ["game.exe"] {}"#, Some(0)),
+        (
+            r#"state Unity.il2cpp(Il2CppProfile.unity2021_3_11f1X64()) ["game.exe"] {}"#,
+            Some(0),
+        ),
         (
             r#"state Unity.mono(MonoVersion.V3) ["game.exe"] {}"#,
             Some(1),

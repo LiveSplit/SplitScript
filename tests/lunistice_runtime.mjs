@@ -50,6 +50,10 @@ const field = (table, index, nameAddress, offset) => {
 // Put each full-module IL2CPP discovery target deep into a realistically
 // sized image. This makes the fixture exercise many cooperative scan polls
 // instead of accidentally completing every scan in one update.
+view.setUint16(0, 0x5a4d, true);
+view.setUint32(0x3c, 0x80, true);
+view.setUint32(0x80, 0x4550, true);
+view.setUint16(0x98, 0x20b, true);
 const assembliesInstruction = 0x100500;
 const metadataAddress = 0x200600;
 const metadataReference = 0x2400700;
@@ -58,6 +62,7 @@ const storeInstruction = 0x2400740;
 memoryImage.set([0x75, 0x11, 0x48, 0x8b, 0x1d], assembliesInstruction);
 view.setInt32(assembliesInstruction + 5, 0x800 - (assembliesInstruction + 9), true);
 memoryImage.set([0x48, 0x3b, 0x1d], assembliesInstruction + 9);
+view.setInt32(assembliesInstruction + 12, 0x808 - (assembliesInstruction + 16), true);
 string(metadataAddress, "global-metadata.dat");
 // Real GameAssembly images contain thousands of unrelated LEA instructions.
 // Checking only one candidate per update made source-defined Unity discovery
@@ -76,6 +81,7 @@ pointer(0x808, 0x1818);
 pointer(0x810, 0x1a00);
 pointer(0xa00, 0x1b00);
 pointer(0xa18, 0x1c00);
+pointer(0xb08, 0x1c00);
 string(0xc00, "Assembly-CSharp");
 view.setUint32(0xb18, 2, true);
 pointer(0xb28, 0x1d00);
@@ -108,11 +114,11 @@ pointer(0xd010, 0xf000);
 pointer(0xd018, 0xf040);
 string(0xe000, inheritedField ? "BaseManager" : "MonoBehaviour");
 string(0xe040, inheritedField ? "" : "UnityEngine");
-view.setUint16(0xd120, 1, true);
+view.setUint16(0xd124, 1, true);
 // Real IL2CPP classes may expose unreadable field slots after their usable
 // metadata entries. Field discovery must skip those slots instead of retrying
 // the entire alias forever before later aliases are considered.
-view.setUint16(0x2120, 119, true);
+view.setUint16(0x2124, 119, true);
 const gameFieldNames = [
     "<Instance>k__BackingField",
     dlc ? "<GameState>k__BackingField" : "gameState",
@@ -156,7 +162,7 @@ pointer(0x2818, 0xb040);
 pointer(0x2858, 0);
 pointer(0x2880, 0x5200);
 pointer(0x28b8, 0x7200);
-view.setUint16(0x2920, 5, true);
+view.setUint16(0x2924, 5, true);
 const timerFieldNames = ["<Instance>k__BackingField", "currentLevelTime", "currentLevelTimeVector", "timerStopped", "character"];
 const timerFieldOffsets = [0x20, 0x30, 0x34, 0x40, 0x44];
 for (let index = 0; index < timerFieldNames.length; index += 1) {
@@ -290,8 +296,7 @@ if (expectedBindingFailure !== undefined) {
         }
     }
     console.log(JSON.stringify({ messages, variableWrites, tickRates }));
-    process.exit(0);
-}
+} else {
 if (variableWrites < 5) {
     throw new Error(
         `attachment did not finish: messages=${JSON.stringify(messages)}, scanReads=${scanReads}, variableWrites=${variableWrites}, tickRates=${JSON.stringify(tickRates)}`,
@@ -452,3 +457,5 @@ if (JSON.stringify(tickRates.slice(-2)) !== JSON.stringify([120, 1])) {
 }
 
 console.log(JSON.stringify({ dlc, starts, splits, resets, pauses, gameTimes, variables: Object.fromEntries(variables), tickRates, messages, bulkScanReads, levelOrSceneReadWidths: [...levelOrSceneReadWidths], levelTimeVectorReads: [...levelTimeVectorReads] }));
+
+}

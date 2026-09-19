@@ -44,7 +44,7 @@ fn schema(provider: &str, field: &str) -> String {
 
 fn fixtures() -> BTreeMap<String, String> {
     let lunistice = include_str!("lunistice.split").replace("\r\n", "\n");
-    let selector = "Unity.il2cpp(2020)";
+    let selector = "Unity.il2cpp(Il2CppProfile.unity2022_3_0f1X64())";
     assert_eq!(
         lunistice.matches(selector).count(),
         1,
@@ -52,6 +52,14 @@ fn fixtures() -> BTreeMap<String, String> {
     );
     BTreeMap::from([
         ("native".into(), "state \"game.exe\" {}".into()),
+        (
+            "il2cpp-auto-profile".into(),
+            include_str!("../tests/il2cpp_profiles.split").into(),
+        ),
+        (
+            "il2cpp-x86-profile".into(),
+            include_str!("../tests/il2cpp_profile_explicit_x86.split").into(),
+        ),
         (
             "pe-debug-id".into(),
             include_str!("../tests/pe_debug_id.split").into(),

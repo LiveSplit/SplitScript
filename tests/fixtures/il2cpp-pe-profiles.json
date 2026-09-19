@@ -1,0 +1,797 @@
+{
+  "asr_revision": "cf732d3aeac7509c8ab5f29a4d0d28f16487d245",
+  "builds": [
+    {
+      "name": "UNITY_2018_4_36F1_X86_64",
+      "method": "unity2018_4_36f1X64",
+      "version": [
+        2018,
+        4,
+        36,
+        54151
+      ],
+      "width": 64,
+      "offsets": {
+        "assembly.image": 0,
+        "assembly.name": null,
+        "image.assembly_name": 8,
+        "image.type_count": 28,
+        "image.type_start": {
+          "kind": "Inline",
+          "offset": 24
+        },
+        "class.name": 16,
+        "class.namespace": 24,
+        "class.declaring_type": 80,
+        "class.parent": 88,
+        "class.fields": 128,
+        "class.static_fields": 184,
+        "class.instance_size": 236,
+        "class.field_count": 276,
+        "generic.cached_class": 24,
+        "type_.data": 0,
+        "type_.kind": 10,
+        "field.name": 0,
+        "field.type_": 8,
+        "field.offset": 24,
+        "field.size": 32
+      }
+    },
+    {
+      "name": "UNITY_2018_4_36F1_X86",
+      "method": "unity2018_4_36f1X86",
+      "version": [
+        2018,
+        4,
+        36,
+        54151
+      ],
+      "width": 32,
+      "offsets": {
+        "assembly.image": 0,
+        "assembly.name": null,
+        "image.assembly_name": 4,
+        "image.type_count": 16,
+        "image.type_start": {
+          "kind": "Inline",
+          "offset": 12
+        },
+        "class.name": 8,
+        "class.namespace": 12,
+        "class.declaring_type": 40,
+        "class.parent": 44,
+        "class.fields": 64,
+        "class.static_fields": 92,
+        "class.instance_size": 132,
+        "class.field_count": 172,
+        "generic.cached_class": 12,
+        "type_.data": 0,
+        "type_.kind": 6,
+        "field.name": 0,
+        "field.type_": 4,
+        "field.offset": 12,
+        "field.size": 20
+      }
+    },
+    {
+      "name": "UNITY_2019_4_41F2_X86_64",
+      "method": "unity2019_4_41f2X64",
+      "version": [
+        2019,
+        4,
+        41,
+        9172
+      ],
+      "width": 64,
+      "offsets": {
+        "assembly.image": 0,
+        "assembly.name": null,
+        "image.assembly_name": 8,
+        "image.type_count": 28,
+        "image.type_start": {
+          "kind": "Inline",
+          "offset": 24
+        },
+        "class.name": 16,
+        "class.namespace": 24,
+        "class.declaring_type": 80,
+        "class.parent": 88,
+        "class.fields": 128,
+        "class.static_fields": 184,
+        "class.instance_size": 244,
+        "class.field_count": 284,
+        "generic.cached_class": 24,
+        "type_.data": 0,
+        "type_.kind": 10,
+        "field.name": 0,
+        "field.type_": 8,
+        "field.offset": 24,
+        "field.size": 32
+      }
+    },
+    {
+      "name": "UNITY_2019_4_41F2_X86",
+      "method": "unity2019_4_41f2X86",
+      "version": [
+        2019,
+        4,
+        41,
+        9172
+      ],
+      "width": 32,
+      "offsets": {
+        "assembly.image": 0,
+        "assembly.name": null,
+        "image.assembly_name": 4,
+        "image.type_count": 16,
+        "image.type_start": {
+          "kind": "Inline",
+          "offset": 12
+        },
+        "class.name": 8,
+        "class.namespace": 12,
+        "class.declaring_type": 40,
+        "class.parent": 44,
+        "class.fields": 64,
+        "class.static_fields": 92,
+        "class.instance_size": 128,
+        "class.field_count": 168,
+        "generic.cached_class": 12,
+        "type_.data": 0,
+        "type_.kind": 6,
+        "field.name": 0,
+        "field.type_": 4,
+        "field.offset": 12,
+        "field.size": 20
+      }
+    },
+    {
+      "name": "UNITY_2020_1_18F1_X86_64",
+      "method": "unity2020_1_18f1X64",
+      "version": [
+        2020,
+        1,
+        18,
+        38512
+      ],
+      "width": 64,
+      "offsets": {
+        "assembly.image": 0,
+        "assembly.name": null,
+        "image.assembly_name": 8,
+        "image.type_count": 28,
+        "image.type_start": {
+          "kind": "Inline",
+          "offset": 24
+        },
+        "class.name": 16,
+        "class.namespace": 24,
+        "class.declaring_type": 80,
+        "class.parent": 88,
+        "class.fields": 128,
+        "class.static_fields": 184,
+        "class.instance_size": 244,
+        "class.field_count": 284,
+        "generic.cached_class": 24,
+        "type_.data": 0,
+        "type_.kind": 10,
+        "field.name": 0,
+        "field.type_": 8,
+        "field.offset": 24,
+        "field.size": 32
+      }
+    },
+    {
+      "name": "UNITY_2020_1_18F1_X86",
+      "method": "unity2020_1_18f1X86",
+      "version": [
+        2020,
+        1,
+        18,
+        38512
+      ],
+      "width": 32,
+      "offsets": {
+        "assembly.image": 0,
+        "assembly.name": null,
+        "image.assembly_name": 4,
+        "image.type_count": 16,
+        "image.type_start": {
+          "kind": "Inline",
+          "offset": 12
+        },
+        "class.name": 8,
+        "class.namespace": 12,
+        "class.declaring_type": 40,
+        "class.parent": 44,
+        "class.fields": 64,
+        "class.static_fields": 92,
+        "class.instance_size": 128,
+        "class.field_count": 168,
+        "generic.cached_class": 12,
+        "type_.data": 0,
+        "type_.kind": 6,
+        "field.name": 0,
+        "field.type_": 4,
+        "field.offset": 12,
+        "field.size": 20
+      }
+    },
+    {
+      "name": "UNITY_2021_3_11F1_X86_64",
+      "method": "unity2021_3_11f1X64",
+      "version": [
+        2021,
+        3,
+        11,
+        23713
+      ],
+      "width": 64,
+      "offsets": {
+        "assembly.image": 0,
+        "assembly.name": null,
+        "image.assembly_name": 8,
+        "image.type_count": 24,
+        "image.type_start": {
+          "kind": "Handle",
+          "offset": 40
+        },
+        "class.name": 16,
+        "class.namespace": 24,
+        "class.declaring_type": 80,
+        "class.parent": 88,
+        "class.fields": 128,
+        "class.static_fields": 184,
+        "class.instance_size": 248,
+        "class.field_count": 288,
+        "generic.cached_class": 24,
+        "type_.data": 0,
+        "type_.kind": 10,
+        "field.name": 0,
+        "field.type_": 8,
+        "field.offset": 24,
+        "field.size": 32
+      }
+    },
+    {
+      "name": "UNITY_2021_3_11F1_X86",
+      "method": "unity2021_3_11f1X86",
+      "version": [
+        2021,
+        3,
+        11,
+        23713
+      ],
+      "width": 32,
+      "offsets": {
+        "assembly.image": 0,
+        "assembly.name": null,
+        "image.assembly_name": 4,
+        "image.type_count": 12,
+        "image.type_start": {
+          "kind": "Handle",
+          "offset": 24
+        },
+        "class.name": 8,
+        "class.namespace": 12,
+        "class.declaring_type": 40,
+        "class.parent": 44,
+        "class.fields": 64,
+        "class.static_fields": 92,
+        "class.instance_size": 128,
+        "class.field_count": 168,
+        "generic.cached_class": 12,
+        "type_.data": 0,
+        "type_.kind": 6,
+        "field.name": 0,
+        "field.type_": 4,
+        "field.offset": 12,
+        "field.size": 20
+      }
+    },
+    {
+      "name": "UNITY_2022_3_0F1_X86_64",
+      "method": "unity2022_3_0f1X64",
+      "version": [
+        2022,
+        3,
+        0,
+        4507
+      ],
+      "width": 64,
+      "offsets": {
+        "assembly.image": 0,
+        "assembly.name": null,
+        "image.assembly_name": 8,
+        "image.type_count": 24,
+        "image.type_start": {
+          "kind": "Handle",
+          "offset": 40
+        },
+        "class.name": 16,
+        "class.namespace": 24,
+        "class.declaring_type": 80,
+        "class.parent": 88,
+        "class.fields": 128,
+        "class.static_fields": 184,
+        "class.instance_size": 248,
+        "class.field_count": 292,
+        "generic.cached_class": 24,
+        "type_.data": 0,
+        "type_.kind": 10,
+        "field.name": 0,
+        "field.type_": 8,
+        "field.offset": 24,
+        "field.size": 32
+      }
+    },
+    {
+      "name": "UNITY_2022_3_0F1_X86",
+      "method": "unity2022_3_0f1X86",
+      "version": [
+        2022,
+        3,
+        0,
+        4507
+      ],
+      "width": 32,
+      "offsets": {
+        "assembly.image": 0,
+        "assembly.name": null,
+        "image.assembly_name": 4,
+        "image.type_count": 12,
+        "image.type_start": {
+          "kind": "Handle",
+          "offset": 24
+        },
+        "class.name": 8,
+        "class.namespace": 12,
+        "class.declaring_type": 40,
+        "class.parent": 44,
+        "class.fields": 64,
+        "class.static_fields": 92,
+        "class.instance_size": 128,
+        "class.field_count": 172,
+        "generic.cached_class": 12,
+        "type_.data": 0,
+        "type_.kind": 6,
+        "field.name": 0,
+        "field.type_": 4,
+        "field.offset": 12,
+        "field.size": 20
+      }
+    },
+    {
+      "name": "UNITY_2023_1_0F1_X86_64",
+      "method": "unity2023_1_0f1X64",
+      "version": [
+        2023,
+        1,
+        0,
+        2298
+      ],
+      "width": 64,
+      "offsets": {
+        "assembly.image": 0,
+        "assembly.name": null,
+        "image.assembly_name": 8,
+        "image.type_count": 24,
+        "image.type_start": {
+          "kind": "Handle",
+          "offset": 40
+        },
+        "class.name": 16,
+        "class.namespace": 24,
+        "class.declaring_type": 80,
+        "class.parent": 88,
+        "class.fields": 128,
+        "class.static_fields": 184,
+        "class.instance_size": 248,
+        "class.field_count": 292,
+        "generic.cached_class": 24,
+        "type_.data": 0,
+        "type_.kind": 10,
+        "field.name": 0,
+        "field.type_": 8,
+        "field.offset": 24,
+        "field.size": 32
+      }
+    },
+    {
+      "name": "UNITY_2023_1_0F1_X86",
+      "method": "unity2023_1_0f1X86",
+      "version": [
+        2023,
+        1,
+        0,
+        2298
+      ],
+      "width": 32,
+      "offsets": {
+        "assembly.image": 0,
+        "assembly.name": null,
+        "image.assembly_name": 4,
+        "image.type_count": 12,
+        "image.type_start": {
+          "kind": "Handle",
+          "offset": 24
+        },
+        "class.name": 8,
+        "class.namespace": 12,
+        "class.declaring_type": 40,
+        "class.parent": 44,
+        "class.fields": 64,
+        "class.static_fields": 92,
+        "class.instance_size": 128,
+        "class.field_count": 172,
+        "generic.cached_class": 12,
+        "type_.data": 0,
+        "type_.kind": 6,
+        "field.name": 0,
+        "field.type_": 4,
+        "field.offset": 12,
+        "field.size": 20
+      }
+    },
+    {
+      "name": "UNITY_2023_1_22F1_X86_64",
+      "method": "unity2023_1_22f1X64",
+      "version": [
+        2023,
+        1,
+        22,
+        16744
+      ],
+      "width": 64,
+      "offsets": {
+        "assembly.image": 0,
+        "assembly.name": null,
+        "image.assembly_name": 8,
+        "image.type_count": 24,
+        "image.type_start": {
+          "kind": "Handle",
+          "offset": 40
+        },
+        "class.name": 16,
+        "class.namespace": 24,
+        "class.declaring_type": 80,
+        "class.parent": 88,
+        "class.fields": 128,
+        "class.static_fields": 184,
+        "class.instance_size": 248,
+        "class.field_count": 292,
+        "generic.cached_class": 24,
+        "type_.data": 0,
+        "type_.kind": 10,
+        "field.name": 0,
+        "field.type_": 8,
+        "field.offset": 24,
+        "field.size": 32
+      }
+    },
+    {
+      "name": "UNITY_2023_1_22F1_X86",
+      "method": "unity2023_1_22f1X86",
+      "version": [
+        2023,
+        1,
+        22,
+        16744
+      ],
+      "width": 32,
+      "offsets": {
+        "assembly.image": 0,
+        "assembly.name": null,
+        "image.assembly_name": 4,
+        "image.type_count": 12,
+        "image.type_start": {
+          "kind": "Handle",
+          "offset": 24
+        },
+        "class.name": 8,
+        "class.namespace": 12,
+        "class.declaring_type": 40,
+        "class.parent": 44,
+        "class.fields": 64,
+        "class.static_fields": 92,
+        "class.instance_size": 128,
+        "class.field_count": 172,
+        "generic.cached_class": 12,
+        "type_.data": 0,
+        "type_.kind": 6,
+        "field.name": 0,
+        "field.type_": 4,
+        "field.offset": 12,
+        "field.size": 20
+      }
+    },
+    {
+      "name": "UNITY_6000_2_12F1_X86_64",
+      "method": "unity6000_2_12f1X64",
+      "version": [
+        6000,
+        2,
+        12,
+        40285
+      ],
+      "width": 64,
+      "offsets": {
+        "assembly.image": 0,
+        "assembly.name": null,
+        "image.assembly_name": 8,
+        "image.type_count": 24,
+        "image.type_start": {
+          "kind": "Handle",
+          "offset": 40
+        },
+        "class.name": 16,
+        "class.namespace": 24,
+        "class.declaring_type": 80,
+        "class.parent": 88,
+        "class.fields": 128,
+        "class.static_fields": 184,
+        "class.instance_size": 248,
+        "class.field_count": 292,
+        "generic.cached_class": 24,
+        "type_.data": 0,
+        "type_.kind": 10,
+        "field.name": 0,
+        "field.type_": 8,
+        "field.offset": 24,
+        "field.size": 32
+      }
+    },
+    {
+      "name": "UNITY_6000_2_12F1_X86",
+      "method": "unity6000_2_12f1X86",
+      "version": [
+        6000,
+        2,
+        12,
+        40285
+      ],
+      "width": 32,
+      "offsets": {
+        "assembly.image": 0,
+        "assembly.name": null,
+        "image.assembly_name": 4,
+        "image.type_count": 12,
+        "image.type_start": {
+          "kind": "Handle",
+          "offset": 24
+        },
+        "class.name": 8,
+        "class.namespace": 12,
+        "class.declaring_type": 40,
+        "class.parent": 44,
+        "class.fields": 64,
+        "class.static_fields": 92,
+        "class.instance_size": 128,
+        "class.field_count": 172,
+        "generic.cached_class": 12,
+        "type_.data": 0,
+        "type_.kind": 6,
+        "field.name": 0,
+        "field.type_": 4,
+        "field.offset": 12,
+        "field.size": 20
+      }
+    },
+    {
+      "name": "UNITY_6000_3_21F1_X86_64",
+      "method": "unity6000_3_21f1X64",
+      "version": [
+        6000,
+        3,
+        21,
+        9777
+      ],
+      "width": 64,
+      "offsets": {
+        "assembly.image": 0,
+        "assembly.name": null,
+        "image.assembly_name": 8,
+        "image.type_count": 24,
+        "image.type_start": {
+          "kind": "Handle",
+          "offset": 40
+        },
+        "class.name": 16,
+        "class.namespace": 24,
+        "class.declaring_type": 80,
+        "class.parent": 88,
+        "class.fields": 128,
+        "class.static_fields": 184,
+        "class.instance_size": 248,
+        "class.field_count": 292,
+        "generic.cached_class": 24,
+        "type_.data": 0,
+        "type_.kind": 10,
+        "field.name": 0,
+        "field.type_": 8,
+        "field.offset": 24,
+        "field.size": 32
+      }
+    },
+    {
+      "name": "UNITY_6000_3_21F1_X86",
+      "method": "unity6000_3_21f1X86",
+      "version": [
+        6000,
+        3,
+        21,
+        9777
+      ],
+      "width": 32,
+      "offsets": {
+        "assembly.image": 0,
+        "assembly.name": null,
+        "image.assembly_name": 4,
+        "image.type_count": 12,
+        "image.type_start": {
+          "kind": "Handle",
+          "offset": 24
+        },
+        "class.name": 8,
+        "class.namespace": 12,
+        "class.declaring_type": 40,
+        "class.parent": 44,
+        "class.fields": 64,
+        "class.static_fields": 92,
+        "class.instance_size": 128,
+        "class.field_count": 172,
+        "generic.cached_class": 12,
+        "type_.data": 0,
+        "type_.kind": 6,
+        "field.name": 0,
+        "field.type_": 4,
+        "field.offset": 12,
+        "field.size": 20
+      }
+    },
+    {
+      "name": "UNITY_6000_5_10F1_X86_64",
+      "method": "unity6000_5_10f1X64",
+      "version": [
+        6000,
+        5,
+        10,
+        54518
+      ],
+      "width": 64,
+      "offsets": {
+        "assembly.image": 0,
+        "assembly.name": null,
+        "image.assembly_name": 8,
+        "image.type_count": 24,
+        "image.type_start": {
+          "kind": "Handle",
+          "offset": 40
+        },
+        "class.name": 16,
+        "class.namespace": 24,
+        "class.declaring_type": 80,
+        "class.parent": 88,
+        "class.fields": 128,
+        "class.static_fields": 160,
+        "class.instance_size": 248,
+        "class.field_count": 292,
+        "generic.cached_class": 24,
+        "type_.data": 0,
+        "type_.kind": 10,
+        "field.name": 0,
+        "field.type_": 8,
+        "field.offset": 24,
+        "field.size": 32
+      }
+    },
+    {
+      "name": "UNITY_6000_5_10F1_X86",
+      "method": "unity6000_5_10f1X86",
+      "version": [
+        6000,
+        5,
+        10,
+        54518
+      ],
+      "width": 32,
+      "offsets": {
+        "assembly.image": 0,
+        "assembly.name": null,
+        "image.assembly_name": 4,
+        "image.type_count": 12,
+        "image.type_start": {
+          "kind": "Handle",
+          "offset": 24
+        },
+        "class.name": 8,
+        "class.namespace": 12,
+        "class.declaring_type": 40,
+        "class.parent": 44,
+        "class.fields": 64,
+        "class.static_fields": 80,
+        "class.instance_size": 128,
+        "class.field_count": 172,
+        "generic.cached_class": 12,
+        "type_.data": 0,
+        "type_.kind": 6,
+        "field.name": 0,
+        "field.type_": 4,
+        "field.offset": 12,
+        "field.size": 20
+      }
+    },
+    {
+      "name": "UNITY_6000_7_0A3_X86_64",
+      "method": "unity6000_7_0a3X64",
+      "version": [
+        6000,
+        7,
+        0,
+        5476
+      ],
+      "width": 64,
+      "offsets": {
+        "assembly.image": 0,
+        "assembly.name": null,
+        "image.assembly_name": 8,
+        "image.type_count": 24,
+        "image.type_start": {
+          "kind": "Handle",
+          "offset": 40
+        },
+        "class.name": 16,
+        "class.namespace": 24,
+        "class.declaring_type": 80,
+        "class.parent": 88,
+        "class.fields": 128,
+        "class.static_fields": 152,
+        "class.instance_size": 240,
+        "class.field_count": 284,
+        "generic.cached_class": 16,
+        "type_.data": 0,
+        "type_.kind": 10,
+        "field.name": 0,
+        "field.type_": 8,
+        "field.offset": 24,
+        "field.size": 32
+      }
+    },
+    {
+      "name": "UNITY_6000_7_0A3_X86",
+      "method": "unity6000_7_0a3X86",
+      "version": [
+        6000,
+        7,
+        0,
+        5476
+      ],
+      "width": 32,
+      "offsets": {
+        "assembly.image": 0,
+        "assembly.name": null,
+        "image.assembly_name": 4,
+        "image.type_count": 12,
+        "image.type_start": {
+          "kind": "Handle",
+          "offset": 24
+        },
+        "class.name": 8,
+        "class.namespace": 12,
+        "class.declaring_type": 40,
+        "class.parent": 44,
+        "class.fields": 64,
+        "class.static_fields": 76,
+        "class.instance_size": 128,
+        "class.field_count": 172,
+        "generic.cached_class": 8,
+        "type_.data": 0,
+        "type_.kind": 6,
+        "field.name": 0,
+        "field.type_": 4,
+        "field.offset": 12,
+        "field.size": 20
+      }
+    }
+  ]
+}

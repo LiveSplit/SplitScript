@@ -371,8 +371,28 @@ impl<'a> Validator<'a> {
         self.validate_attributes(
             &value.name,
             &value.attributes,
-            &["representation", "valueUsage", "capabilities", "testOnly"],
+            &[
+                "representation",
+                "valueUsage",
+                "capabilities",
+                "testOnly",
+                "publicConstruction",
+            ],
         );
+        if has_attribute(&value.attributes, "publicConstruction") {
+            let arguments =
+                self.attribute_names(&value.name, &value.attributes, "publicConstruction", false);
+            if !arguments.is_empty()
+                || value.private
+                || value.fields.iter().any(|field| field.private)
+                || !self
+                    .attribute_names(&value.name, &value.attributes, "representation", true)
+                    .first()
+                    .is_some_and(|name| name == "gcStruct")
+            {
+                self.error(format!("`{}`: @publicConstruction requires a public GC struct with public fields and no attribute arguments", value.name));
+            }
+        }
         self.validate_representation(&value.name, &value.attributes, "");
         self.validate_value_usage(&value.name, &value.attributes);
         self.validate_capabilities(&value.name, &value.attributes);

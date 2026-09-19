@@ -1078,7 +1078,7 @@ mod tests {
                 image "Assembly-CSharp" {
                     class GameManager { u32 state; }
                 }
-                state Unity.il2cpp(2020) ["game.exe"] {}
+                state Unity.il2cpp(Il2CppProfile.unity2021_3_11f1X64()) ["game.exe"] {}
             "#,
         )
         .expect("the schema fixture should parse")

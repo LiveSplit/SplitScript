@@ -3,6 +3,26 @@
 use super::catalogs_types::TypedExpressionCounter;
 use super::*;
 
+#[test]
+fn explicit_il2cpp_profiles_omit_the_measured_catalog_and_version_lookup() {
+    let source = include_str!("../il2cpp_profile_custom.split");
+    let (wasm, report) = release_emission(source);
+    Validator::new_with_features(WasmFeatures::all())
+        .validate_all(&wasm)
+        .unwrap();
+    assert!(
+        !wasm
+            .windows(b"UnityPlayer.dll".len())
+            .any(|bytes| bytes == b"UnityPlayer.dll")
+    );
+    for (_, function) in &report.functions {
+        assert!(
+            !function.contains("Il2CppProfileSelect") && !function.contains("Il2CppProfileUnity"),
+            "custom profile retained catalog: {function}"
+        );
+    }
+}
+
 fn release_emission(source: &str) -> (Vec<u8>, splitscript::compiler::CodegenReport) {
     let checked =
         splitscript::check(splitscript::lower(splitscript::parse(source).unwrap())).unwrap();
@@ -72,7 +92,11 @@ fn binary_identity_readers_follow_the_requested_format() {
 
 #[test]
 fn managed_metadata_demand_ignores_dead_and_debug_reads() {
-    for provider in ["Unity.il2cpp(2020)", "Unity.mono(MonoVersion.V2)", "Unity"] {
+    for provider in [
+        "Unity.il2cpp(Il2CppProfile.unity2021_3_11f1X64())",
+        "Unity.mono(MonoVersion.V2)",
+        "Unity",
+    ] {
         let source = format!(
             r#"
             image "Assembly-CSharp" {{
@@ -136,7 +160,7 @@ fn managed_snapshot_demand_keeps_unprojected_instance_fields() {
         image "Assembly-CSharp" {
             class Probe { static Probe instance; i32 value; String snapshotText maxLength 64; }
         }
-        state Unity.il2cpp(2020) ["game.exe"] { probe = Probe.instance?.snapshot()?; }
+        state Unity.il2cpp(Il2CppProfile.unity2021_3_11f1X64()) ["game.exe"] { probe = Probe.instance?.snapshot()?; }
         whileAttached { print(current.probe.value) }
     "#;
     let (wasm, report) = release_emission(source);
@@ -167,7 +191,7 @@ fn managed_metadata_keeps_automatic_evidence_but_prunes_unused_explicit_shape_fi
                 else { i32 evidenceDemo; }
             }
         }
-        state Unity.il2cpp(2020) ["game.exe"] { value = Probe.value?; }
+        state Unity.il2cpp(Il2CppProfile.unity2021_3_11f1X64()) ["game.exe"] { value = Probe.value?; }
     "#;
     for (suffix, present) in [("", true), ("onAttach { edition = Edition.Base }", false)] {
         let (wasm, _) = release_emission(&format!("{source}\n{suffix}"));
@@ -199,7 +223,7 @@ fn scratch_reservations_follow_reachable_operations() {
         format!(
             r#"
         image "Assembly-CSharp" {{ class Probe {{ {field} }} }}
-        state Unity.il2cpp(2020) ["game.exe"] {{ value = Probe.value?; }}
+        state Unity.il2cpp(Il2CppProfile.unity2021_3_11f1X64()) ["game.exe"] {{ value = Probe.value?; }}
     "#
         )
     };
@@ -207,13 +231,13 @@ fn scratch_reservations_follow_reachable_operations() {
         release_emission(&managed("static i32 value;"))
             .1
             .scratch_bytes,
-        8192
+        4120
     );
     assert_eq!(
         release_emission(&managed("static String value maxLength 64;"))
             .1
             .scratch_bytes,
-        8192 + 6144
+        4120 + 6144
     );
 }
 
@@ -349,7 +373,7 @@ fn release_managed_report_excludes_unused_strings_and_opposite_backend() {
         )
     };
     for (provider, excluded) in [
-        ("Unity.il2cpp(2020)", "Mono"),
+        ("Unity.il2cpp(Il2CppProfile.unity2021_3_11f1X64())", "Mono"),
         ("Unity.mono(MonoVersion.V2)", "Il2Cpp"),
     ] {
         let ordinary = compile(provider, "", "value");
@@ -712,7 +736,7 @@ fn managed_reference_snapshot_reads_the_complete_layout_refined_shape() {
             }
         }
 
-        state Unity.il2cpp(2020) ["game.exe"] {
+        state Unity.il2cpp(Il2CppProfile.unity2021_3_11f1X64()) ["game.exe"] {
             manager: GameManager = GameManager.instance?.snapshot()?;
         }
 
@@ -764,7 +788,7 @@ fn managed_reference_snapshot_reads_the_complete_layout_refined_shape() {
                     i32 points;
                 }
             }
-            state Unity.il2cpp(2020) ["game.exe"] {
+            state Unity.il2cpp(Il2CppProfile.unity2021_3_11f1X64()) ["game.exe"] {
                 points: i32 = GameManager.instance?.points?;
             }
         "#,
@@ -794,7 +818,7 @@ fn managed_string_decoders_are_retained_only_for_reachable_reads() {
                     }}
                 }}
 
-                state Unity.il2cpp(2020) ["game.exe"] {{
+                state Unity.il2cpp(Il2CppProfile.unity2021_3_11f1X64()) ["game.exe"] {{
                     {state_fields}
                 }}
             "#
@@ -863,7 +887,8 @@ fn explicit_unity_backends_prune_the_unreachable_schema_binder() {
             .collect::<Vec<_>>()
     };
 
-    let explicit = compile_names(r#"state Unity.il2cpp(2020) ["game.exe"]"#);
+    let explicit =
+        compile_names(r#"state Unity.il2cpp(Il2CppProfile.unity2021_3_11f1X64()) ["game.exe"]"#);
     assert!(explicit.iter().any(|name| name.contains("Il2Cpp")));
     assert!(
         explicit.iter().all(|name| !name.contains("Mono")),

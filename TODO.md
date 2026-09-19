@@ -226,7 +226,7 @@ to inference or code generation.
     source design has been approved.
 - [x] Make Unity an attachment/state provider with an automatic form and
   explicit backend/version forms, including `state Unity [...]`,
-  `state Unity.il2cpp(2020) [...]`, and `state Unity.mono(...) [...]`.
+  `state Unity.il2cpp(Il2CppProfile.unity2021_3_11f1X64()) [...]`, and `state Unity.mono(...) [...]`.
   Provider setup is cooperative and cancelled with the process. Ordinary state
   fields can read generated managed members without manually retaining classes,
   static tables, instance addresses, or offsets.

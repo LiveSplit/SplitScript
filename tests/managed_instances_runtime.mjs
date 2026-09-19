@@ -17,9 +17,13 @@ const absolute = relative => base + BigInt(relative);
 const pointer = (relative, value) => view.setBigUint64(relative, BigInt(value), true);
 const string = (relative, value) => memoryImage.set(new TextEncoder().encode(`${value}\0`), relative);
 
-// Minimal IL2CPP 2020 metadata graph for Assembly-CSharp.Enemy. The explicit
+// Minimal IL2CPP measured 2021.3 metadata graph for Assembly-CSharp.Enemy. The explicit
 // provider selector avoids version probing but intentionally retains the same
 // cooperative image and class discovery used by real schemas.
+view.setUint16(0, 0x5a4d, true);
+view.setUint32(0x3c, 0x80, true);
+view.setUint32(0x80, 0x4550, true);
+view.setUint16(0x98, 0x20b, true);
 const assembliesInstruction = 0x500;
 const metadataAddress = 0x600;
 const metadataReference = 0x700;
@@ -28,6 +32,7 @@ const storeInstruction = 0x740;
 memoryImage.set([0x75, 0x11, 0x48, 0x8b, 0x1d], assembliesInstruction);
 view.setInt32(assembliesInstruction + 5, 0x800 - (assembliesInstruction + 9), true);
 memoryImage.set([0x48, 0x3b, 0x1d], assembliesInstruction + 9);
+view.setInt32(assembliesInstruction + 12, 0x808 - (assembliesInstruction + 16), true);
 string(metadataAddress, "global-metadata.dat");
 memoryImage.set([0x48, 0x8d, 0x0d], metadataReference);
 view.setInt32(metadataReference + 3, metadataAddress - (metadataReference + 7), true);
@@ -39,6 +44,7 @@ pointer(0x808, 0x1818);
 pointer(0x810, 0x1a00);
 pointer(0xa00, 0x1b00);
 pointer(0xa18, 0x1c00);
+pointer(0xb08, 0x1c00);
 string(0xc00, "Assembly-CSharp");
 view.setUint32(0xb18, 1, true);
 pointer(0xb28, 0x1d00);

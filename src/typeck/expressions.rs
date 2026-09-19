@@ -505,7 +505,7 @@ impl Checker {
                 .copied()
                 {
                     let privileged_library_body = self.is_library_function();
-                    if !privileged_library_body
+                    if (!privileged_library_body && !declaration.public_construction)
                         || !matches!(
                             declaration.representation,
                             RuntimeRepresentation::GcStruct { .. }

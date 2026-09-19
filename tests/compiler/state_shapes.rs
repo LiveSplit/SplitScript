@@ -761,7 +761,7 @@ fn lunistice_shaped_unity_schema_reads_both_editions_without_manual_offsets() {
             }
         }
 
-        state Unity.il2cpp(2020) ["Lunistice.exe", "Lunistice-Demo.exe"] {
+        state Unity.il2cpp(Il2CppProfile.unity2021_3_11f1X64()) ["Lunistice.exe", "Lunistice-Demo.exe"] {
             gameState: i32 = GameManager.instance?.gameState?;
             points: u32 = GameManager.instance?.points?;
             deaths: u32 = GameManager.instance?.deaths?;

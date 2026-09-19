@@ -315,6 +315,8 @@ pub struct StdlibType {
     pub display: Option<super::StdlibItemId>,
     pub representation: RuntimeRepresentation,
     pub value_usage: ValueUsage,
+    /// Whether user code may construct this complete value with a struct literal.
+    pub public_construction: bool,
     pub documentation: Documentation<StdlibSymbolId>,
 }
 

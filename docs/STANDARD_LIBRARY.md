@@ -341,8 +341,23 @@ Prefer this form unless the exact target layout is already known and automatic
 detection is inappropriate. Such a target may select
 `Unity.mono(MonoVersion.V1)`, `Unity.mono(MonoVersion.V1Cattrs)`,
 `Unity.mono(MonoVersion.V2)`, `Unity.mono(MonoVersion.V3)`, or an IL2CPP layout
-such as `Unity.il2cpp(2020)` in the state header. These selectors configure the
+such as `Unity.il2cpp(Il2CppProfile.unity2021_3_11f1X64())` in the state header. These selectors configure the
 provider; they are not callable discovery functions.
+
+IL2CPP profiles contain complete measured layouts, with x86 and x64 factories
+for 11 Unity releases. Automatic selection reads all four numeric file-version
+components from `UnityPlayer.dll`, prefers an exact match at the target width,
+then selects the newest measured major/minor family not newer than the target
+(or the oldest profile when the target predates the catalog). The runtime log
+names both the player version and selected profile. Explicit selection checks
+the GameAssembly pointer width and omits player-version lookup and the catalog.
+
+For a separately measured player, construct an `Il2CppProfile` struct literal
+with every field supplied. Optional unknown facts must be `None`; offsets are
+never filled in from another profile. A provider argument may call a constructor
+function whose body only returns a value composed from constant inputs. Custom
+profiles are validated before metadata scanning; malformed layouts and pointer
+width mismatches reject the attachment until that process closes.
 
 On Windows, automatic Mono selection first matches the runtime DLL's PDB GUID
 and age against 26 measured profiles and verifies its pointer width. Missing,

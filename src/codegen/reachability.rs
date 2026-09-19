@@ -1319,7 +1319,10 @@ mod tests {
     #[test]
     fn explicit_unity_backends_exclude_opposite_runtime_types() {
         for (provider, excluded) in [
-            ("Unity.il2cpp(2020)", StdlibTypeId::MonoModule),
+            (
+                "Unity.il2cpp(Il2CppProfile.unity2021_3_11f1X64())",
+                StdlibTypeId::MonoModule,
+            ),
             ("Unity.mono(MonoVersion.V2)", StdlibTypeId::UnityModule),
         ] {
             let source = format!(

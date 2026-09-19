@@ -33,7 +33,6 @@ mod ps1;
 mod ps2;
 mod sms;
 mod strings;
-mod unity;
 mod wii;
 
 pub(super) use equality::{compile_equality, emit_value_equality};
@@ -409,71 +408,6 @@ pub(super) fn build_runtime_architecture(inputs: &RuntimeHelperInputs<'_>) -> Fu
         inputs.plan.function(RuntimeHelperId::StringFromMemory),
         inputs.gc,
         inputs.memory.scratch(),
-    )
-}
-
-pub(super) fn build_c_string_equality(inputs: &RuntimeHelperInputs<'_>) -> Function {
-    unity::compile_c_string_eq(inputs.abi, inputs.gc, inputs.memory.scratch().c_string)
-}
-
-pub(super) fn build_backing_field_equality(inputs: &RuntimeHelperInputs<'_>) -> Function {
-    unity::compile_backing_field_eq(inputs.abi, inputs.gc, inputs.memory.scratch().c_string)
-}
-
-pub(super) fn build_unity_get_image(inputs: &RuntimeHelperInputs<'_>) -> Function {
-    unity::compile_unity_get_image(
-        inputs.abi,
-        inputs.plan.function(RuntimeHelperId::CStringEquality),
-        inputs.gc,
-        inputs.memory.scratch().abi_read,
-    )
-}
-
-pub(super) fn build_unity_get_class(inputs: &RuntimeHelperInputs<'_>) -> Function {
-    unity::compile_unity_get_class(
-        inputs.abi,
-        inputs.plan.function(RuntimeHelperId::CStringEquality),
-        inputs.gc,
-        inputs.memory.scratch().abi_read,
-    )
-}
-
-pub(super) fn build_unity_get_class_any(inputs: &RuntimeHelperInputs<'_>) -> Function {
-    let (array, storage) = array_layouts(inputs, Type::Standard(StdlibTypeId::String));
-    unity::compile_unity_get_class_any(
-        inputs.plan.function(RuntimeHelperId::UnityGetClass),
-        array,
-        storage,
-        inputs.gc,
-    )
-}
-
-pub(super) fn build_unity_get_field_offset(inputs: &RuntimeHelperInputs<'_>) -> Function {
-    unity::compile_unity_get_field_offset(
-        inputs.abi,
-        inputs.plan.function(RuntimeHelperId::CStringEquality),
-        inputs.plan.function(RuntimeHelperId::BackingFieldEquality),
-        inputs.gc,
-        inputs.memory.scratch().abi_read,
-    )
-}
-
-pub(super) fn build_unity_get_field_any(inputs: &RuntimeHelperInputs<'_>) -> Function {
-    let (array, storage) = array_layouts(inputs, Type::Standard(StdlibTypeId::String));
-    unity::compile_unity_get_field_any(
-        inputs.plan.function(RuntimeHelperId::UnityGetFieldOffset),
-        array,
-        storage,
-        inputs.gc,
-    )
-}
-
-pub(super) fn build_unity_get_static_instance(inputs: &RuntimeHelperInputs<'_>) -> Function {
-    unity::compile_unity_get_static_instance(
-        inputs.abi,
-        inputs.plan.function(RuntimeHelperId::UnityGetFieldAny),
-        inputs.gc,
-        inputs.memory.scratch().abi_read,
     )
 }
 

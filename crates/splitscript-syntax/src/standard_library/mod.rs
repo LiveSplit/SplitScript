@@ -37,7 +37,7 @@ pub struct StateProviderDeclaration {
     /// Additional attachment-scoped values exposed by this provider.
     pub contexts: Vec<StateProviderContextDeclaration>,
     /// Qualified configurations accepted after the provider name, such as
-    /// `Unity.il2cpp(2020)`.
+    /// `Unity.il2cpp(Il2CppProfile.unity2021_3_11f1X64())`.
     pub selectors: Vec<StateProviderSelectorDeclaration>,
     pub documentation: Documentation,
     pub attributes: Vec<Attribute>,

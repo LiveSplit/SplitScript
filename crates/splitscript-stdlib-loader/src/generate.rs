@@ -356,10 +356,11 @@ impl<'a> CatalogGenerator<'a> {
             output.push_str("#[cfg(test)] ");
         }
         output.push_str(&format!(
-            "StdlibType {{ id: StdlibTypeId::{id}, name: {}, visibility: TypeVisibility::{}, kind: StdlibTypeKind::{kind}, capabilities: {}, associated_types: {}, display: {display}, representation: {}, value_usage: {}, documentation: {} }},\n",
+            "StdlibType {{ id: StdlibTypeId::{id}, name: {}, visibility: TypeVisibility::{}, kind: StdlibTypeKind::{kind}, capabilities: {}, associated_types: {}, display: {display}, representation: {}, value_usage: {}, public_construction: {}, documentation: {} }},\n",
             quote(&declaration.name), if declaration.private { "LibraryPrivate" } else { "Public" }, self.capabilities(&declaration.attributes),
             self.associated_type_definitions_for_type(declaration),
             self.representation(&declaration.attributes), self.value_usage(&declaration.attributes),
+            has_attribute(&declaration.attributes, "publicConstruction"),
             self.documentation(&declaration.documentation)
         ));
     }
@@ -367,7 +368,7 @@ impl<'a> CatalogGenerator<'a> {
     fn emit_enum_type(&self, output: &mut String, declaration: &crate::EnumDeclaration) {
         let id = ident(&declaration.name);
         output.push_str(&format!(
-            "StdlibType {{ id: StdlibTypeId::{id}, name: {}, visibility: TypeVisibility::{}, kind: StdlibTypeKind::Enum, capabilities: {}, associated_types: &[], display: None, representation: {}, value_usage: {}, documentation: {} }},\n",
+            "StdlibType {{ id: StdlibTypeId::{id}, name: {}, visibility: TypeVisibility::{}, kind: StdlibTypeKind::Enum, capabilities: {}, associated_types: &[], display: None, representation: {}, value_usage: {}, public_construction: false, documentation: {} }},\n",
             quote(&declaration.name), if declaration.private { "LibraryPrivate" } else { "Public" }, self.capabilities(&declaration.attributes),
             self.representation(&declaration.attributes), self.value_usage(&declaration.attributes),
             self.documentation(&declaration.documentation)

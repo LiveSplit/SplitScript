@@ -941,14 +941,14 @@ mod tests {
 
     #[test]
     fn state_providers_can_select_typed_configurations() {
-        let source = r#"state Unity.il2cpp(2020) ["game.exe"] {}"#;
+        let source = r#"state Unity.il2cpp(Il2CppProfile.unity2021_3_11f1X64()) ["game.exe"] {}"#;
         let program = parse(source, lex(source, SyntaxMode::Program).unwrap()).unwrap();
         let provider = program.state.unwrap().provider.unwrap();
         assert_eq!(provider.name, "Unity");
         let selector = provider.selector.expect("explicit selector");
         assert_eq!(selector.name, "il2cpp");
         assert_eq!(selector.arguments.len(), 1);
-        assert!(matches!(selector.arguments[0].kind, ExprKind::Int { .. }));
+        assert!(matches!(selector.arguments[0].kind, ExprKind::Call { .. }));
 
         let source = r#"state Unity.mono(MonoVersion.V2) "game.exe" {}"#;
         let program = parse(source, lex(source, SyntaxMode::Program).unwrap()).unwrap();

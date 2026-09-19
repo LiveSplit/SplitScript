@@ -2369,6 +2369,24 @@ fn validate_unused_declarations(
     for action in hir.action_bodies() {
         roots.visit_block(&action.body, hir);
     }
+    // Provider constructors are compiler-invoked roots, even when no user
+    // lifecycle block calls the function that builds the selected profile.
+    for provider in syntax.state.iter().flat_map(|state| {
+        state.provider.iter().chain(
+            state
+                .provider_alternatives
+                .iter()
+                .map(|alternative| &alternative.provider),
+        )
+    }) {
+        if let Some(selector) = &provider.selector {
+            for argument in &selector.arguments {
+                if let Some(expression) = hir.expression(argument.id) {
+                    roots.visit_expression(expression, hir);
+                }
+            }
+        }
+    }
     roots.expand_capability_dependencies(capabilities, semantics);
     for (value, profiles) in roots.writes {
         merge_profiled(&mut declaration_writes, value, profiles);

@@ -10,7 +10,7 @@ The authoritative source for this port is
 | --- | --- |
 | Attach to `Lunistice.exe`, then `Lunistice-Demo.exe` | Ordered process list in `state` |
 | Cancel initialization when the process closes | Generated process-lifetime attach continuation |
-| Unity IL2CPP V2020 registration discovery | `state Unity.il2cpp(2020)` prepares the generated schema binder |
+| Unity IL2CPP measured 2022.3 registration discovery | `state Unity.il2cpp(Il2CppProfile.unity2022_3_0f1X64())` prepares the generated schema binder |
 | `Assembly-CSharp`, `GameManager`, and `Timer` lookup | Top-level `image` and `class` declarations |
 | Original/DLC GameManager binding race | Attachment-wide enum conditions and explicit `from` names |
 | C# property backing fields | Transparent `<Name>k__BackingField` matching |
@@ -33,8 +33,8 @@ The authoritative source for this port is
 ## Verification
 
 `tests/lunistice_runtime.mjs` constructs synthetic but structurally accurate
-V2020 IL2CPP assembly, image, class, field, static-table, singleton, and managed
-string data. Its discovery signatures are separated across a 4 MiB module so
+measured Unity 2022.3 IL2CPP assembly, image, class, field, static-table, singleton, and managed
+string data. Its discovery signatures are separated across a 40 MiB module so
 the test requires many cooperative scan polls and proves the attached rate is
 selected before scanning starts. It executes the generated WebAssembly GC module in both base and
 DLC configurations and verifies:
@@ -64,3 +64,20 @@ wasm-tools validate --features all target/lunistice.wasm
 node tests/lunistice_runtime.mjs target/lunistice.wasm
 node tests/lunistice_runtime.mjs target/lunistice.wasm --dlc
 ```
+
+## Live demo validation
+
+On 2026-09-19, the demo at `C:\Games\Lunistice-Demo` reported Unity
+`2022.3.13f1`, with binary file version `2022.3.13.37029`. Its x64 modules
+successfully attached using both the explicit `unity2022_3_0f1X64()` profile and
+automatic selection, which logged `UNITY_2022_3_0F1_X86_64`. Both runs completed
+in 126 accelerated host updates with no failed process reads and exposed
+`Scene = Title`, `Character = Hana`, points, resets, and level time. This checks
+real attachment, metadata binding, snapshots, and managed-string decoding;
+gameplay transitions remain covered by the synthetic timer scenarios.
+
+With the demo already running, repeat the read-only probe using
+`node scripts/probe-lunistice.mjs target/verify/lunistice.release.wasm` after
+`cargo xtask conformance`. The probe uses the VS Code extension's built native
+process bridge and an isolated timer host. It neither launches the game nor
+changes a real LiveSplit timer. Close the demo after live checks.

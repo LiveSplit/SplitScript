@@ -133,7 +133,7 @@ stateProvider Unity as process {
     /// GameAssembly and metadata discovery.
     @prepare(UnityProviderIl2Cpp)
     @managedBackend(il2cpp)
-    selector il2cpp(version: u32),
+    selector il2cpp(profile: Il2CppProfile),
 
     /// Selects a Mono metadata family for the runtime's pointer width.
     ///
@@ -1288,8 +1288,13 @@ namespace Unity {
                 None => false,
             }
             if il2cppLoaded {
-                let version = await Unity.detectIl2cppVersion()
-                let runtime = await Unity.providerIl2cpp(version)
+                let module = await process.module("GameAssembly.dll")
+                let width = retry module.pointerSize()
+                let player = await process.module("UnityPlayer.dll")
+                let version = retry player.fileVersion()
+                print(`Unity IL2CPP: player {version.major}.{version.minor}.{version.build}.{version.privatePart}`)
+                let profile = Il2CppProfile.select(version, width)
+                let runtime = await Unity.discoverIl2cpp(module, profile)
                 return UnityRuntime { backend: UnityRuntimeBackend.Il2cpp, il2cpp: Some(runtime), mono: None }
             }
 
@@ -1310,8 +1315,8 @@ namespace Unity {
     }
 
     // Builds an IL2CPP provider context with an explicitly selected layout.
-    private fn providerIl2cpp(version: u32) -> async UnityModule {
-        return await Unity.il2cpp(version)
+    private fn providerIl2cpp(profile: Il2CppProfile) -> async UnityModule {
+        return await Unity.il2cpp(profile)
     }
 
     // Builds a Mono provider context with an explicitly selected layout.
@@ -1327,31 +1332,6 @@ namespace Unity {
         }
     }
 
-    // Mirrors ASR's supported Windows IL2CPP layout detection.
-    private fn detectIl2cppVersion() -> async u32 {
-        let player = await process.module("UnityPlayer.dll")
-        let pointerSize = retry player.pointerSize()
-        if pointerSize == PointerSize.Bit32 {
-            return 0
-        }
-
-        let version = retry player.fileVersion()
-        if version.major > 2022
-            || version.major == 2022 && version.minor >= 2
-        {
-            return 2022
-        }
-        if version.major == 2021
-            || version.major == 2020 && version.minor >= 2
-        {
-            return 2020
-        }
-        if version.major == 2019 || version.major == 2020 {
-            return 2019
-        }
-        return 0
-    }
-
     // Mirrors ASR's modern Windows Mono V2/V3 layout detection.
     private fn detectMonoVersion() -> async MonoVersion {
         let player = await process.module("UnityPlayer.dll")
@@ -1364,41 +1344,121 @@ namespace Unity {
         return MonoVersion.V2
     }
 
-    // Discovers the IL2CPP metadata used by the generated Unity schema binder.
-    private fn il2cpp(
-        // The Unity metadata layout version.
-        version: u32,
-    ) -> async UnityModule {
-        if version != 0 && version != 2019 && version != 2020 && version != 2022 {
+    // Explicit profiles do not retain player-version lookup or the profile catalog.
+    private fn il2cpp(profile: Il2CppProfile) -> async UnityModule {
+        let runtime = await process.module("GameAssembly.dll")
+        let width = retry runtime.pointerSize()
+        if width != profile.pointerSize || !profile.isValid() {
+            print("IL2CPP profile is invalid or has the wrong pointer width")
             await process.closed()
         }
+        return await Unity.discoverIl2cpp(runtime, profile)
+    }
 
-        let gameAssembly = await process.module("GameAssembly.dll")
-        let assembliesInstruction = await gameAssembly.scan(sig"75 ?? 48 8B 1D ?? ?? ?? ?? 48 3B 1D")
-        let assemblies = retry process.readRelative32(assembliesInstruction.offset(5))
-        let metadata = await gameAssembly.scan(sig"67 6C 6F 62 61 6C 2D 6D 65 74 61 64 61 74 61 2E 64 61 74 00")
-
-        let metadataInstruction = await gameAssembly.scanRelative32Target(sig"48 8D 0D", 3, metadata)
-        let metadataReference = metadataInstruction.offset(3)
-
-        let shiftInstruction = await process.scan(
-            metadataReference,
-            0x200,
-            sig"48 C1 E9",
-        )
-        let storeInstruction = await process.scan(
-            shiftInstruction.offset(3),
-            0x100,
-            sig"48 89 05",
-        )
-        let typeInformation = retry process.readRelative32(storeInstruction.offset(3))
-
-        return UnityModule {
-            assemblies,
-            typeInfoTable: typeInformation,
-            version,
-            pointerSize: 8,
+    private fn discoverIl2cpp(runtime: Module, profile: Il2CppProfile) -> async UnityModule {
+        let wide = profile.pointerSize == PointerSize.Bit64
+        let width: u64 = if wide { 8 } else { 4 }
+        let assemblies = await Unity.il2cppAssemblies(runtime, wide)
+        let metadata = await runtime.scan(sig"67 6C 6F 62 61 6C 2D 6D 65 74 61 64 61 74 61 2E 64 61 74 00")
+        let table = if wide {
+            let reference = await runtime.scanRelative32Target(sig"48 8D 0D ?? ?? ?? ??", 3, metadata)
+            let shift = await Unity.il2cppScanWindow(runtime, reference.add(3), 0x200, sig"48 C1 E9 ??")
+            let store = await Unity.il2cppScanWindow(runtime, shift.add(4), 0x100, sig"48 89 05 ?? ?? ?? ??")
+            retry process.readRelative32(store.add(3))
+        } else {
+            let reference = await Unity.il2cppNameReference32(runtime, metadata)
+            await Unity.il2cppTable32(runtime, reference.add(1))
         }
+        let inside = Unity.il2cppInside(runtime, table, width)
+        if !inside {
+            print("IL2CPP type table lies outside its module")
+            await process.closed()
+        }
+        return UnityModule { assemblies, typeInfoTable: table, profile, pointerSize: width as u32 }
+    }
+
+    private fn il2cppInside(runtime: Module, at: address, width: u64) -> bool {
+        if at < runtime.address { return false }
+        return match runtime.boundedAddress((at as u64) - (runtime.address as u64), width) {
+            Ok(_) => true,
+            Err(_) => false,
+        }
+    }
+
+    private fn il2cppWindow(runtime: Module, at: address, maximum: u64) -> u64 {
+        if !Unity.il2cppInside(runtime, at, 1) { return 0 }
+        let remaining = runtime.size - ((at as u64) - (runtime.address as u64))
+        return if remaining < maximum { remaining } else { maximum }
+    }
+
+    private fn il2cppScanWindow(runtime: Module, at: address, maximum: u64, signature: Signature) -> async address {
+        let found = await process.scanOnce(at, Unity.il2cppWindow(runtime, at, maximum), signature)
+        return found else {
+            print("IL2CPP metadata instruction was not found inside its module window")
+            await process.closed()
+        }
+    }
+
+    // Validate both operands, not just the instruction prefix. Decoys are skipped.
+    private fn il2cppAssemblies(runtime: Module, wide: bool) -> async address {
+        let signature = if wide { sig"75 ?? 48 8B 1D ?? ?? ?? ?? 48 3B 1D ?? ?? ?? ??" }
+            else { sig"75 ?? 8B 35 ?? ?? ?? ?? 2B F9 3B 35 ?? ?? ?? ??" }
+        let cursor: u64 = 0
+        let width: u64 = if wide { 8 } else { 4 }
+        while cursor < runtime.size {
+            let found = await process.scanOnce(runtime.address.add(cursor), runtime.size - cursor, signature)
+            let instruction = found else break
+            cursor = (instruction as u64) - (runtime.address as u64) + 1
+            let begin = if wide { process.readRelative32(instruction.add(5)) else continue }
+                else { (process.read<u32>(instruction.add(4)) else continue) as address }
+            let end = if wide { process.readRelative32(instruction.add(12)) else continue }
+                else { (process.read<u32>(instruction.add(12)) else continue) as address }
+            if Unity.il2cppInside(runtime, begin, width * 2) && end == begin.add(width) { return begin }
+        }
+        print("IL2CPP assemblies vector instruction was not found inside its module")
+        await process.closed()
+    }
+
+    private fn il2cppNameReference32(runtime: Module, metadata: address) -> async address {
+        let cursor: u64 = 0
+        while cursor < runtime.size {
+            let found = await process.scanOnce(runtime.address.add(cursor), runtime.size - cursor, sig"68 ?? ?? ?? ?? E8")
+            let instruction = found else break
+            cursor = (instruction as u64) - (runtime.address as u64) + 1
+            let target = process.read<u32>(instruction.add(1)) else continue
+            if target as address == metadata { return instruction }
+        }
+        print("IL2CPP metadata name reference was not found inside its module")
+        await process.closed()
+    }
+
+    private fn il2cppTable32(runtime: Module, at: address) -> async address {
+        let span = Unity.il2cppWindow(runtime, at, 0x400)
+        let earliest: address = 0
+        let table: address = 0
+        let pattern: u32 = 0
+        while pattern < 3 {
+            let signature = if pattern == 0 { sig"C1 EA ?? 52 E8 ?? ?? ?? ?? A3 ?? ?? ?? ??" }
+                else if pattern == 1 { sig"C1 EA ?? 52 E8 ?? ?? ?? ?? 8B 0D ?? ?? ?? ?? A3 ?? ?? ?? ??" }
+                else { sig"FF B0 F4 00 00 00 E8 ?? ?? ?? ?? A3 ?? ?? ?? ??" }
+            let operand: u64 = if pattern == 0 { 10 } else if pattern == 1 { 16 } else { 12 }
+            let cursor: u64 = 0
+            while cursor < span {
+                let found = await process.scanOnce(at.add(cursor), span - cursor, signature)
+                let instruction = found else break
+                cursor = (instruction as u64) - (at as u64) + 1
+                let store = instruction.add(operand)
+                let candidate = (process.read<u32>(store) else continue) as address
+                if Unity.il2cppInside(runtime, candidate, 4) && (earliest == 0 || store < earliest) {
+                    earliest = store
+                    table = candidate
+                }
+            }
+            pattern += 1
+        }
+        if earliest != 0 { return table }
+        print("IL2CPP metadata instruction was not found inside its module window")
+        await process.closed()
     }
 
     // Discovers the Mono metadata used by the generated Unity schema binder.
@@ -1477,7 +1537,7 @@ namespace Unity {
 /// Select a concrete managed backend through the public provider
 ///
 /// ```splitscript
-/// state Unity.il2cpp(2020) ["game.exe"] {}
+/// state Unity.il2cpp(Il2CppProfile.unity2021_3_11f1X64()) ["game.exe"] {}
 /// ```
 @representation(enum, nullable)
 @valueUsage(structField, localVariable)
@@ -1491,7 +1551,7 @@ private enum UnityRuntimeBackend {
     /// Select the IL2CPP 2019 layout
     ///
     /// ```splitscript
-    /// state Unity.il2cpp(2019) ["game.exe"] {}
+    /// state Unity.il2cpp(Il2CppProfile.unity2019_4_41f2X64()) ["game.exe"] {}
     /// ```
     Il2cpp,
 
@@ -7640,14 +7700,14 @@ struct UnityGameObject {
 
 /// Describes an attached Unity IL2CPP runtime.
 ///
-/// The runtime stores resolved metadata roots, its version, and pointer size.
+/// The runtime stores resolved metadata roots, its complete profile, and pointer size.
 ///
 /// # Example
 ///
 /// Discover a typed Unity runtime
 ///
 /// ```splitscript
-/// let unityRuntime = await Unity.il2cpp(2020)
+/// let unityRuntime = await Unity.il2cpp(Il2CppProfile.unity2021_3_11f1X64())
 /// ```
 @representation(gcStruct, nullable)
 @valueUsage(structField, enumPayload, stateField, localVariable)
@@ -7659,7 +7719,7 @@ private struct UnityModule {
     /// Inspect the assemblies metadata root
     ///
     /// ```splitscript
-    /// let runtime = await Unity.il2cpp(2020)
+    /// let runtime = await Unity.il2cpp(Il2CppProfile.unity2021_3_11f1X64())
     /// let assembliesAddress = runtime.assemblies
     /// ```
     assemblies: address,
@@ -7671,22 +7731,13 @@ private struct UnityModule {
     /// Inspect the type-information table
     ///
     /// ```splitscript
-    /// let runtime = await Unity.il2cpp(2020)
+    /// let runtime = await Unity.il2cpp(Il2CppProfile.unity2021_3_11f1X64())
     /// let typeInformation = runtime.typeInfoTable
     /// ```
     typeInfoTable: address,
 
-    /// Returns the detected Unity metadata version.
-    ///
-    /// # Example
-    ///
-    /// Read the selected Unity layout version
-    ///
-    /// ```splitscript
-    /// let runtime = await Unity.il2cpp(2020)
-    /// let metadataVersion = runtime.version
-    /// ```
-    version: u32,
+    /// Complete selected IL2CPP metadata layout.
+    private profile: Il2CppProfile,
 
     /// Returns the attached process pointer size.
     ///
@@ -7695,7 +7746,7 @@ private struct UnityModule {
     /// Read the Unity process pointer size
     ///
     /// ```splitscript
-    /// let runtime = await Unity.il2cpp(2020)
+    /// let runtime = await Unity.il2cpp(Il2CppProfile.unity2021_3_11f1X64())
     /// let unityPointerBytes = runtime.pointerSize
     /// ```
     pointerSize: u32,
@@ -7709,17 +7760,227 @@ private struct UnityModule {
     /// Find a managed assembly
     ///
     /// ```splitscript
-    /// let unity = await Unity.il2cpp(2020)
+    /// let unity = await Unity.il2cpp(Il2CppProfile.unity2021_3_11f1X64())
     /// let image = await unity.image("Assembly-CSharp")
     /// ```
-    @requires(attachedProcess)
-    @cancellation(processClose)
-    @availability(onAttach)
-    @intrinsic(UnityModuleImage)
     fn image(
         /// The managed assembly name.
         name: String,
-    ) -> async UnityImage;
+    ) -> async UnityImage {
+        return await self.imageNamed(name)
+    }
+
+    // Checked target address arithmetic is shared by the metadata readers.
+    private fn member(base: address, offset: u64) -> address! {
+        if base == 0 || (base as u64) > !0 - offset { throw "IL2CPP metadata address overflows" }
+        return Ok(base.add(offset))
+    }
+
+    private fn readNullablePointer(address: address) -> address! {
+        return if self.pointerSize == 8 {
+            process.read<u64>(address)? as address
+        } else { process.read<u32>(address)? as address }
+    }
+
+    private fn readPointer(address: address) -> address! {
+        let value = self.readNullablePointer(address)?
+        if value == 0 { throw "IL2CPP metadata pointer is null" }
+        return Ok(value)
+    }
+
+    // Keep each checked metadata read inside one retry operation. Propagating
+    // address errors in the async walk itself duplicates its continuation.
+    private fn readU32Member(base: address, offset: u64) -> u32! {
+        return process.read<u32>(self.member(base, offset)?)
+    }
+
+    private fn readI32Member(base: address, offset: u64) -> i32! {
+        return process.read<i32>(self.member(base, offset)?)
+    }
+
+    private fn readU16Member(base: address, offset: u64) -> u16! {
+        return process.read<u16>(self.member(base, offset)?)
+    }
+
+    private fn readNullableMember(base: address, offset: u64) -> address! {
+        return self.readNullablePointer(self.member(base, offset)?)
+    }
+
+    private fn readPointerMember(base: address, offset: u64) -> address! {
+        return self.readPointer(self.member(base, offset)?)
+    }
+
+    private fn readName(base: address, offset: u64) -> String! {
+        return process.readUtf8(self.readPointerMember(base, offset)?, 256)
+    }
+
+    private fn imageNamed(name: String) -> async UnityImage {
+        loop {
+            let begin = retry self.readNullablePointer(self.assemblies)
+            let end = retry self.readNullableMember(self.assemblies, self.pointerSize as u64)
+            if end < begin || ((end as u64) - (begin as u64)) % (self.pointerSize as u64) != 0 {
+                print("IL2CPP assembly vector is malformed")
+                await process.closed()
+            }
+            let count = ((end as u64) - (begin as u64)) / (self.pointerSize as u64)
+            if count > 65536 {
+                print("IL2CPP assembly vector exceeds the metadata work limit")
+                await process.closed()
+            }
+            let index: u64 = 0
+            while index < count {
+                let assembly = retry self.readNullableMember(begin, index * (self.pointerSize as u64))
+                if assembly != 0 {
+                    let image = retry self.readPointerMember(assembly, self.profile.assemblyImage)
+                    let namePointer = retry {
+                        match self.profile.imageAssemblyName {
+                            Some(offset) => self.readPointerMember(image, offset)?,
+                            None => {
+                                let offset = self.profile.assemblyName else throw "IL2CPP profile lacks an assembly name route"
+                                self.readPointerMember(assembly, offset)?
+                            },
+                        }
+                    }
+                    let candidate = retry process.readUtf8(namePointer, 256)
+                    if candidate == name { return UnityImage { address: image, module: self } }
+                }
+                index += 1
+                if index % 64 == 0 { await nextTick() }
+            }
+            await nextTick()
+        }
+    }
+
+    // A readable complete table distinguishes absence from pending metadata.
+    // Null entries are sparse slots and do not end the table.
+    private fn probeClasses(image: address, names: [String]) -> async UnityClass? {
+        let count = retry self.readU32Member(image, self.profile.imageTypeCount)
+        if count > 1048576 {
+            print("IL2CPP type table exceeds the metadata work limit")
+            await process.closed()
+        }
+        let startAddress = retry self.member(image, self.profile.imageTypeStart.offset)
+        let handle = if self.profile.imageTypeStart.indirect {
+            retry self.readPointer(startAddress)
+        } else { startAddress }
+        let start = retry process.read<i32>(handle)
+        if start < 0 {
+            print("IL2CPP image has a negative type start")
+            await process.closed()
+        }
+        let table = retry self.readPointer(self.typeInfoTable)
+        let selected: address = 0
+        let index: u32 = 0
+        while index < count {
+            let slot = ((start as u64) + (index as u64)) * (self.pointerSize as u64)
+            let class = retry self.readNullableMember(table, slot)
+            if class != 0 {
+                let candidate = retry self.readName(class, self.profile.className)
+                for name in names {
+                    let separator = name.lastIndexOf(".")
+                    let expected = match separator {
+                        Some(dot) => name.slice(dot + 1, name.byteLength()) else name,
+                        None => name,
+                    }
+                    if candidate == expected {
+                        let namespaceMatches = match separator {
+                            Some(dot) => {
+                                let actual = retry self.readName(class, self.profile.classNamespace)
+                                actual == (name.slice(0, dot) else name)
+                            },
+                            None => true,
+                        }
+                        if namespaceMatches {
+                            if selected != 0 && selected != class {
+                                return Some(UnityClass { address: 0, module: self })
+                            }
+                            selected = class
+                        }
+                    }
+                }
+            }
+            index += 1
+            if index % 64 == 0 { await nextTick() }
+        }
+        return if selected == 0 { None } else { Some(UnityClass { address: selected, module: self }) }
+    }
+
+    private fn probeNamedField(class: address, name: String) -> async UnityField? {
+        let current = class
+        let depth: u32 = 0
+        let backing = `<{name}>k__BackingField`
+        while current != 0 {
+            if depth >= 128 {
+                print("IL2CPP inheritance is cyclic or exceeds the metadata work limit")
+                await process.closed()
+            }
+            let className = retry self.readName(current, self.profile.className)
+            if className == "MonoBehaviour" || className == "Object" {
+                let namespace = retry self.readName(current, self.profile.classNamespace)
+                if namespace == "UnityEngine" || namespace == "System" { return None }
+            }
+            let rawCount = retry self.readU16Member(current, self.profile.classFieldCount)
+            let count: u32 = if rawCount == 65535 { 0 } else { rawCount as u32 }
+            let fields = if count == 0 { 0 as address } else {
+                retry self.readPointerMember(current, self.profile.classFields)
+            }
+            let index: u32 = 0
+            let selected: UnityField? = None
+            while index < count {
+                let field = retry self.member(fields, (index as u64) * self.profile.fieldStride)
+                let fieldIndex = index
+                index += 1
+                if index % 64 == 0 { await nextTick() }
+                // Individual unreadable field slots are holes; structural
+                // reads and the offsets of named matches still retry.
+                let candidate = self.readName(field, self.profile.fieldName) else continue
+                if candidate == name || candidate == backing {
+                    let offset = retry self.readI32Member(field, self.profile.fieldValue)
+                    if offset < 0 {
+                        print("IL2CPP field uses unsupported thread-static storage")
+                        await process.closed()
+                    }
+                    match selected {
+                        Some(previous) if previous.offset != (offset as u32) => {
+                            return Some(UnityField { offset: 0, index: !0, owner: current })
+                        },
+                        None => { selected = Some(UnityField { offset: offset as u32, index: fieldIndex, owner: current }) },
+                        _ => {},
+                    }
+                }
+            }
+            match selected { Some(_) => return selected, None => {} }
+            current = retry self.readNullableMember(current, self.profile.classParent)
+            depth += 1
+            await nextTick()
+        }
+        return None
+    }
+
+    private fn probeFields(class: address, names: [String]) -> async UnityField? {
+        let selected: UnityField? = None
+        for name in names {
+            let candidate = await self.probeNamedField(class, name)
+            match candidate {
+                Some(field) => {
+                    if field.index == !0 { return candidate }
+                    match selected {
+                        Some(previous) if previous.owner != field.owner || previous.offset != field.offset => {
+                            return Some(UnityField { offset: 0, index: !0, owner: class })
+                        },
+                        _ => { selected = candidate },
+                    }
+                },
+                None => {},
+            }
+        }
+        return selected
+    }
+
+    private fn statics(class: address) -> async address {
+        return retry self.readPointerMember(class, self.profile.classStatics)
+    }
+
 }
 
 /// Describes a Unity assembly image.
@@ -7731,7 +7992,7 @@ private struct UnityModule {
 /// Discover a typed Unity image
 ///
 /// ```splitscript
-/// let runtime = await Unity.il2cpp(2020)
+/// let runtime = await Unity.il2cpp(Il2CppProfile.unity2021_3_11f1X64())
 /// let assemblyImage = await runtime.image("Assembly-CSharp")
 /// ```
 @representation(gcStruct, nullable)
@@ -7744,7 +8005,7 @@ private struct UnityImage {
     /// Inspect a Unity image address
     ///
     /// ```splitscript
-    /// let runtime = await Unity.il2cpp(2020)
+    /// let runtime = await Unity.il2cpp(Il2CppProfile.unity2021_3_11f1X64())
     /// let image = await runtime.image("Assembly-CSharp")
     /// let imageAddress = image.address
     /// ```
@@ -7762,26 +8023,22 @@ private struct UnityImage {
     /// Find a managed class
     ///
     /// ```splitscript
-    /// let unity = await Unity.il2cpp(2020)
+    /// let unity = await Unity.il2cpp(Il2CppProfile.unity2021_3_11f1X64())
     /// let image = await unity.image("Assembly-CSharp")
     /// let gameManager = await image.class("GameManager")
     /// ```
-    @requires(attachedProcess)
-    @cancellation(processClose)
-    @availability(onAttach)
-    @intrinsic(UnityImageClass)
     fn class(
         /// The managed class name.
         name: String,
-    ) -> async UnityClass;
+    ) -> async UnityClass {
+        return await self.classAny([name])
+    }
 
     // Completes one readable metadata probe for all schema aliases. A class
     // with address zero is the compiler-private ambiguity sentinel.
-    @requires(attachedProcess)
-    @cancellation(processClose)
-    @availability(onAttach)
-    @intrinsic(UnityImageClassAny)
-    private fn probeClassAny(names: [String]) -> async UnityClass?;
+    private fn probeClassAny(names: [String]) -> async UnityClass? {
+        return await self.module.probeClasses(self.address, names)
+    }
 
     // Resolves exactly one runtime class for a source schema declaration.
     private fn classAny(names: [String]) -> async UnityClass {
@@ -7807,7 +8064,7 @@ private struct UnityImage {
 /// Discover a typed Unity class
 ///
 /// ```splitscript
-/// let runtime = await Unity.il2cpp(2020)
+/// let runtime = await Unity.il2cpp(Il2CppProfile.unity2021_3_11f1X64())
 /// let image = await runtime.image("Assembly-CSharp")
 /// let playerClass = await image.class("Player")
 /// ```
@@ -7821,7 +8078,7 @@ private struct UnityClass {
     /// Inspect a Unity class address
     ///
     /// ```splitscript
-    /// let runtime = await Unity.il2cpp(2020)
+    /// let runtime = await Unity.il2cpp(Il2CppProfile.unity2021_3_11f1X64())
     /// let image = await runtime.image("Assembly-CSharp")
     /// let player = await image.class("Player")
     /// let classAddress = player.address
@@ -7845,19 +8102,17 @@ private struct UnityClass {
     /// Find a field offset
     ///
     /// ```splitscript
-    /// let unity = await Unity.il2cpp(2020)
+    /// let unity = await Unity.il2cpp(Il2CppProfile.unity2021_3_11f1X64())
     /// let image = await unity.image("Assembly-CSharp")
     /// let gameManager = await image.class("GameManager")
     /// let healthOffset = await gameManager.field("health")
     /// ```
-    @requires(attachedProcess)
-    @cancellation(processClose)
-    @availability(onAttach)
-    @intrinsic(UnityClassField)
     fn field(
         /// The managed field name.
         name: String,
-    ) -> async u32;
+    ) -> async u32 {
+        return (await self.fieldAny([name])).offset
+    }
 
     /// Finds the unique field matching one of the supplied metadata names.
     ///
@@ -7868,7 +8123,7 @@ private struct UnityClass {
     /// Try multiple field names
     ///
     /// ```splitscript
-    /// let unity = await Unity.il2cpp(2020)
+    /// let unity = await Unity.il2cpp(Il2CppProfile.unity2021_3_11f1X64())
     /// let image = await unity.image("Assembly-CSharp")
     /// let gameManager = await image.class("GameManager")
     /// let levelField = await gameManager.fieldAny(["currentLevel", "level"])
@@ -7898,11 +8153,9 @@ private struct UnityClass {
         }
     }
 
-    @requires(attachedProcess)
-    @cancellation(processClose)
-    @availability(onAttach)
-    @intrinsic(UnityClassProbeFieldAny)
-    private fn rawProbeFieldAny(names: [String]) -> async UnityField?;
+    private fn rawProbeFieldAny(names: [String]) -> async UnityField? {
+        return await self.module.probeFields(self.address, names)
+    }
 
     // Resolves static storage against the field's declaring runtime class.
     private fn staticFieldAny(names: [String]) -> async address {
@@ -7938,16 +8191,14 @@ private struct UnityClass {
     /// Find static storage
     ///
     /// ```splitscript
-    /// let unity = await Unity.il2cpp(2020)
+    /// let unity = await Unity.il2cpp(Il2CppProfile.unity2021_3_11f1X64())
     /// let image = await unity.image("Assembly-CSharp")
     /// let gameManager = await image.class("GameManager")
     /// let staticTable = await gameManager.staticTable()
     /// ```
-    @requires(attachedProcess)
-    @cancellation(processClose)
-    @availability(onAttach)
-    @intrinsic(UnityClassStaticTable)
-    fn staticTable() -> async address;
+    fn staticTable() -> async address {
+        return await self.module.statics(self.address)
+    }
 
     /// Finds a static singleton instance.
     ///
@@ -7958,19 +8209,18 @@ private struct UnityClass {
     /// Find a singleton instance
     ///
     /// ```splitscript
-    /// let unity = await Unity.il2cpp(2020)
+    /// let unity = await Unity.il2cpp(Il2CppProfile.unity2021_3_11f1X64())
     /// let image = await unity.image("Assembly-CSharp")
     /// let gameManager = await image.class("GameManager")
     /// let instance = await gameManager.staticInstance(["Instance", "_instance"])
     /// ```
-    @requires(attachedProcess)
-    @cancellation(processClose)
-    @availability(onAttach)
-    @intrinsic(UnityClassStaticInstance)
     fn staticInstance(
         /// Candidate singleton field names.
         names: [String],
-    ) -> async address;
+    ) -> async address {
+        let slot = await self.staticFieldAny(names)
+        return retry self.module.readPointer(slot)
+    }
 }
 
 /// Describes a Unity runtime field.
@@ -7982,7 +8232,7 @@ private struct UnityClass {
 /// Discover a typed Unity field
 ///
 /// ```splitscript
-/// let runtime = await Unity.il2cpp(2020)
+/// let runtime = await Unity.il2cpp(Il2CppProfile.unity2021_3_11f1X64())
 /// let image = await runtime.image("Assembly-CSharp")
 /// let player = await image.class("Player")
 /// let healthField = await player.fieldAny(["health", "_health"])
@@ -7997,7 +8247,7 @@ private struct UnityField {
     /// Read a discovered field offset
     ///
     /// ```splitscript
-    /// let runtime = await Unity.il2cpp(2020)
+    /// let runtime = await Unity.il2cpp(Il2CppProfile.unity2021_3_11f1X64())
     /// let image = await runtime.image("Assembly-CSharp")
     /// let player = await image.class("Player")
     /// let field = await player.fieldAny(["health", "_health"])
@@ -8012,7 +8262,7 @@ private struct UnityField {
     /// Read a discovered field index
     ///
     /// ```splitscript
-    /// let runtime = await Unity.il2cpp(2020)
+    /// let runtime = await Unity.il2cpp(Il2CppProfile.unity2021_3_11f1X64())
     /// let image = await runtime.image("Assembly-CSharp")
     /// let player = await image.class("Player")
     /// let field = await player.fieldAny(["level", "_level"])
@@ -8030,13 +8280,1387 @@ private struct UnityField {
     /// Retain the declaring class during private schema binding
     ///
     /// ```splitscript
-    /// let runtime = await Unity.il2cpp(2020)
+    /// let runtime = await Unity.il2cpp(Il2CppProfile.unity2021_3_11f1X64())
     /// let image = await runtime.image("Assembly-CSharp")
     /// let player = await image.class("Player")
     /// let field = await player.fieldAny(["health"])
     /// let declaringClass = field.owner
     /// ```
     owner: address,
+}
+
+/// Describes where an IL2CPP image stores its first type index.
+///
+/// # Example
+///
+/// Select an indirect type index
+///
+/// ```splitscript
+/// let start = Il2CppTypeStart.handle(0x28)
+/// ```
+@representation(gcStruct, nullable)
+@valueUsage(structField, enumPayload, stateField, localVariable, globalVariable)
+struct Il2CppTypeStart {
+    /// Byte offset in the image.
+    private offset: u64,
+    /// Whether the image member points to the index.
+    private indirect: bool,
+    /// The image stores the index directly at this offset.
+    ///
+    /// Type indices are four-byte integers, independent of the pointer width.
+    ///
+    /// # Example
+    ///
+    /// Describe the image member
+    ///
+    /// ```splitscript
+    /// let start = Il2CppTypeStart.inline(0x18)
+    /// ```
+    static fn inline(
+        /// Offset from the image address.
+        offset: u64,
+    ) -> Il2CppTypeStart {
+        return Il2CppTypeStart { offset, indirect: false }
+    }
+    /// The image stores a pointer to the index at this offset.
+    ///
+    /// Type indices are four-byte integers, independent of the pointer width.
+    ///
+    /// # Example
+    ///
+    /// Describe the image member
+    ///
+    /// ```splitscript
+    /// let start = Il2CppTypeStart.handle(0x18)
+    /// ```
+    static fn handle(
+        /// Offset from the image address.
+        offset: u64,
+    ) -> Il2CppTypeStart {
+        return Il2CppTypeStart { offset, indirect: true }
+    }
+}
+
+/// A complete measured or custom IL2CPP memory layout.
+///
+/// All members are required when constructing a custom profile. Unknown optional
+/// metadata facts must be written as None; they are never borrowed from another build.
+///
+/// # Example
+///
+/// Choose a measured player layout
+///
+/// ```splitscript
+/// let profile = Il2CppProfile.unity2021_3_11f1X64()
+/// ```
+@representation(gcStruct, nullable)
+@valueUsage(structField, enumPayload, stateField, localVariable, globalVariable)
+@publicConstruction
+struct Il2CppProfile {
+    /// Target pointer width.
+    ///
+    /// # Example
+    ///
+    /// Inspect a measured layout fact
+    ///
+    /// ```splitscript
+    /// let profile = Il2CppProfile.unity2021_3_11f1X64()
+    /// let fact = profile.pointerSize
+    /// ```
+    pointerSize: PointerSize,
+
+    /// Target byte offset for `assembly.image`.
+    ///
+    /// # Example
+    ///
+    /// Inspect a measured layout fact
+    ///
+    /// ```splitscript
+    /// let profile = Il2CppProfile.unity2021_3_11f1X64()
+    /// let fact = profile.assemblyImage
+    /// ```
+    assemblyImage: u64,
+
+    /// Target byte offset for `assembly.name`. None means this fact is unavailable.
+    ///
+    /// # Example
+    ///
+    /// Inspect a measured layout fact
+    ///
+    /// ```splitscript
+    /// let profile = Il2CppProfile.unity2021_3_11f1X64()
+    /// let fact = profile.assemblyName
+    /// ```
+    assemblyName: u64?,
+
+    /// Target byte offset for `image.assembly_name`. None means this fact is unavailable.
+    ///
+    /// # Example
+    ///
+    /// Inspect a measured layout fact
+    ///
+    /// ```splitscript
+    /// let profile = Il2CppProfile.unity2021_3_11f1X64()
+    /// let fact = profile.imageAssemblyName
+    /// ```
+    imageAssemblyName: u64?,
+
+    /// Target byte offset for `image.type_count`.
+    ///
+    /// # Example
+    ///
+    /// Inspect a measured layout fact
+    ///
+    /// ```splitscript
+    /// let profile = Il2CppProfile.unity2021_3_11f1X64()
+    /// let fact = profile.imageTypeCount
+    /// ```
+    imageTypeCount: u64,
+
+    /// Location and storage mode of the image's first type index.
+    ///
+    /// # Example
+    ///
+    /// Inspect a measured layout fact
+    ///
+    /// ```splitscript
+    /// let profile = Il2CppProfile.unity2021_3_11f1X64()
+    /// let fact = profile.imageTypeStart
+    /// ```
+    imageTypeStart: Il2CppTypeStart,
+
+    /// Target byte offset for `class.name`.
+    ///
+    /// # Example
+    ///
+    /// Inspect a measured layout fact
+    ///
+    /// ```splitscript
+    /// let profile = Il2CppProfile.unity2021_3_11f1X64()
+    /// let fact = profile.className
+    /// ```
+    className: u64,
+
+    /// Target byte offset for `class.namespace`.
+    ///
+    /// # Example
+    ///
+    /// Inspect a measured layout fact
+    ///
+    /// ```splitscript
+    /// let profile = Il2CppProfile.unity2021_3_11f1X64()
+    /// let fact = profile.classNamespace
+    /// ```
+    classNamespace: u64,
+
+    /// Target byte offset for `class.declaring_type`. None means this fact is unavailable.
+    ///
+    /// # Example
+    ///
+    /// Inspect a measured layout fact
+    ///
+    /// ```splitscript
+    /// let profile = Il2CppProfile.unity2021_3_11f1X64()
+    /// let fact = profile.classDeclaring
+    /// ```
+    classDeclaring: u64?,
+
+    /// Target byte offset for `class.parent`.
+    ///
+    /// # Example
+    ///
+    /// Inspect a measured layout fact
+    ///
+    /// ```splitscript
+    /// let profile = Il2CppProfile.unity2021_3_11f1X64()
+    /// let fact = profile.classParent
+    /// ```
+    classParent: u64,
+
+    /// Target byte offset for `class.fields`.
+    ///
+    /// # Example
+    ///
+    /// Inspect a measured layout fact
+    ///
+    /// ```splitscript
+    /// let profile = Il2CppProfile.unity2021_3_11f1X64()
+    /// let fact = profile.classFields
+    /// ```
+    classFields: u64,
+
+    /// Target byte offset for `class.static_fields`.
+    ///
+    /// # Example
+    ///
+    /// Inspect a measured layout fact
+    ///
+    /// ```splitscript
+    /// let profile = Il2CppProfile.unity2021_3_11f1X64()
+    /// let fact = profile.classStatics
+    /// ```
+    classStatics: u64,
+
+    /// Target byte offset for `class.instance_size`. None means this fact is unavailable.
+    ///
+    /// # Example
+    ///
+    /// Inspect a measured layout fact
+    ///
+    /// ```splitscript
+    /// let profile = Il2CppProfile.unity2021_3_11f1X64()
+    /// let fact = profile.classInstanceSize
+    /// ```
+    classInstanceSize: u64?,
+
+    /// Target byte offset for `class.field_count`.
+    ///
+    /// # Example
+    ///
+    /// Inspect a measured layout fact
+    ///
+    /// ```splitscript
+    /// let profile = Il2CppProfile.unity2021_3_11f1X64()
+    /// let fact = profile.classFieldCount
+    /// ```
+    classFieldCount: u64,
+
+    /// Target byte offset for `generic.cached_class`. None means this fact is unavailable.
+    ///
+    /// # Example
+    ///
+    /// Inspect a measured layout fact
+    ///
+    /// ```splitscript
+    /// let profile = Il2CppProfile.unity2021_3_11f1X64()
+    /// let fact = profile.genericCachedClass
+    /// ```
+    genericCachedClass: u64?,
+
+    /// Target byte offset for `type_.data`. None means this fact is unavailable.
+    ///
+    /// # Example
+    ///
+    /// Inspect a measured layout fact
+    ///
+    /// ```splitscript
+    /// let profile = Il2CppProfile.unity2021_3_11f1X64()
+    /// let fact = profile.typeData
+    /// ```
+    typeData: u64?,
+
+    /// Target byte offset for `type_.kind`. None means this fact is unavailable.
+    ///
+    /// # Example
+    ///
+    /// Inspect a measured layout fact
+    ///
+    /// ```splitscript
+    /// let profile = Il2CppProfile.unity2021_3_11f1X64()
+    /// let fact = profile.typeKind
+    /// ```
+    typeKind: u64?,
+
+    /// Target byte offset for `field.name`.
+    ///
+    /// # Example
+    ///
+    /// Inspect a measured layout fact
+    ///
+    /// ```splitscript
+    /// let profile = Il2CppProfile.unity2021_3_11f1X64()
+    /// let fact = profile.fieldName
+    /// ```
+    fieldName: u64,
+
+    /// Target byte offset for `field.type_`. None means this fact is unavailable.
+    ///
+    /// # Example
+    ///
+    /// Inspect a measured layout fact
+    ///
+    /// ```splitscript
+    /// let profile = Il2CppProfile.unity2021_3_11f1X64()
+    /// let fact = profile.fieldType
+    /// ```
+    fieldType: u64?,
+
+    /// Target byte offset for `field.offset`.
+    ///
+    /// # Example
+    ///
+    /// Inspect a measured layout fact
+    ///
+    /// ```splitscript
+    /// let profile = Il2CppProfile.unity2021_3_11f1X64()
+    /// let fact = profile.fieldValue
+    /// ```
+    fieldValue: u64,
+
+    /// Target byte stride for `field.size`.
+    ///
+    /// # Example
+    ///
+    /// Inspect a measured layout fact
+    ///
+    /// ```splitscript
+    /// let profile = Il2CppProfile.unity2021_3_11f1X64()
+    /// let fact = profile.fieldStride
+    /// ```
+    fieldStride: u64,
+
+    // BEGIN GENERATED IL2CPP SELECTION
+    // Exact four-component matches precede the major/minor fallback.
+    private static fn select(version: FileVersion, width: PointerSize) -> Il2CppProfile {
+        if version == v"2018.4.36.54151" {
+            if width == PointerSize.Bit64 {
+                print("Unity IL2CPP: selected UNITY_2018_4_36F1_X86_64")
+                return Il2CppProfile.unity2018_4_36f1X64()
+            }
+            print("Unity IL2CPP: selected UNITY_2018_4_36F1_X86")
+            return Il2CppProfile.unity2018_4_36f1X86()
+        }
+        if version == v"2019.4.41.9172" {
+            if width == PointerSize.Bit64 {
+                print("Unity IL2CPP: selected UNITY_2019_4_41F2_X86_64")
+                return Il2CppProfile.unity2019_4_41f2X64()
+            }
+            print("Unity IL2CPP: selected UNITY_2019_4_41F2_X86")
+            return Il2CppProfile.unity2019_4_41f2X86()
+        }
+        if version == v"2020.1.18.38512" {
+            if width == PointerSize.Bit64 {
+                print("Unity IL2CPP: selected UNITY_2020_1_18F1_X86_64")
+                return Il2CppProfile.unity2020_1_18f1X64()
+            }
+            print("Unity IL2CPP: selected UNITY_2020_1_18F1_X86")
+            return Il2CppProfile.unity2020_1_18f1X86()
+        }
+        if version == v"2021.3.11.23713" {
+            if width == PointerSize.Bit64 {
+                print("Unity IL2CPP: selected UNITY_2021_3_11F1_X86_64")
+                return Il2CppProfile.unity2021_3_11f1X64()
+            }
+            print("Unity IL2CPP: selected UNITY_2021_3_11F1_X86")
+            return Il2CppProfile.unity2021_3_11f1X86()
+        }
+        if version == v"2022.3.0.4507" {
+            if width == PointerSize.Bit64 {
+                print("Unity IL2CPP: selected UNITY_2022_3_0F1_X86_64")
+                return Il2CppProfile.unity2022_3_0f1X64()
+            }
+            print("Unity IL2CPP: selected UNITY_2022_3_0F1_X86")
+            return Il2CppProfile.unity2022_3_0f1X86()
+        }
+        if version == v"2023.1.0.2298" {
+            if width == PointerSize.Bit64 {
+                print("Unity IL2CPP: selected UNITY_2023_1_0F1_X86_64")
+                return Il2CppProfile.unity2023_1_0f1X64()
+            }
+            print("Unity IL2CPP: selected UNITY_2023_1_0F1_X86")
+            return Il2CppProfile.unity2023_1_0f1X86()
+        }
+        if version == v"2023.1.22.16744" {
+            if width == PointerSize.Bit64 {
+                print("Unity IL2CPP: selected UNITY_2023_1_22F1_X86_64")
+                return Il2CppProfile.unity2023_1_22f1X64()
+            }
+            print("Unity IL2CPP: selected UNITY_2023_1_22F1_X86")
+            return Il2CppProfile.unity2023_1_22f1X86()
+        }
+        if version == v"6000.2.12.40285" {
+            if width == PointerSize.Bit64 {
+                print("Unity IL2CPP: selected UNITY_6000_2_12F1_X86_64")
+                return Il2CppProfile.unity6000_2_12f1X64()
+            }
+            print("Unity IL2CPP: selected UNITY_6000_2_12F1_X86")
+            return Il2CppProfile.unity6000_2_12f1X86()
+        }
+        if version == v"6000.3.21.9777" {
+            if width == PointerSize.Bit64 {
+                print("Unity IL2CPP: selected UNITY_6000_3_21F1_X86_64")
+                return Il2CppProfile.unity6000_3_21f1X64()
+            }
+            print("Unity IL2CPP: selected UNITY_6000_3_21F1_X86")
+            return Il2CppProfile.unity6000_3_21f1X86()
+        }
+        if version == v"6000.5.10.54518" {
+            if width == PointerSize.Bit64 {
+                print("Unity IL2CPP: selected UNITY_6000_5_10F1_X86_64")
+                return Il2CppProfile.unity6000_5_10f1X64()
+            }
+            print("Unity IL2CPP: selected UNITY_6000_5_10F1_X86")
+            return Il2CppProfile.unity6000_5_10f1X86()
+        }
+        if version == v"6000.7.0.5476" {
+            if width == PointerSize.Bit64 {
+                print("Unity IL2CPP: selected UNITY_6000_7_0A3_X86_64")
+                return Il2CppProfile.unity6000_7_0a3X64()
+            }
+            print("Unity IL2CPP: selected UNITY_6000_7_0A3_X86")
+            return Il2CppProfile.unity6000_7_0a3X86()
+        }
+        if version.major > 6000 || version.major == 6000 && version.minor >= 7 {
+            if width == PointerSize.Bit64 {
+                print("Unity IL2CPP: selected UNITY_6000_7_0A3_X86_64")
+                return Il2CppProfile.unity6000_7_0a3X64()
+            }
+            print("Unity IL2CPP: selected UNITY_6000_7_0A3_X86")
+            return Il2CppProfile.unity6000_7_0a3X86()
+        }
+        if version.major > 6000 || version.major == 6000 && version.minor >= 5 {
+            if width == PointerSize.Bit64 {
+                print("Unity IL2CPP: selected UNITY_6000_5_10F1_X86_64")
+                return Il2CppProfile.unity6000_5_10f1X64()
+            }
+            print("Unity IL2CPP: selected UNITY_6000_5_10F1_X86")
+            return Il2CppProfile.unity6000_5_10f1X86()
+        }
+        if version.major > 6000 || version.major == 6000 && version.minor >= 3 {
+            if width == PointerSize.Bit64 {
+                print("Unity IL2CPP: selected UNITY_6000_3_21F1_X86_64")
+                return Il2CppProfile.unity6000_3_21f1X64()
+            }
+            print("Unity IL2CPP: selected UNITY_6000_3_21F1_X86")
+            return Il2CppProfile.unity6000_3_21f1X86()
+        }
+        if version.major > 6000 || version.major == 6000 && version.minor >= 2 {
+            if width == PointerSize.Bit64 {
+                print("Unity IL2CPP: selected UNITY_6000_2_12F1_X86_64")
+                return Il2CppProfile.unity6000_2_12f1X64()
+            }
+            print("Unity IL2CPP: selected UNITY_6000_2_12F1_X86")
+            return Il2CppProfile.unity6000_2_12f1X86()
+        }
+        if version.major > 2023 || version.major == 2023 && version.minor >= 1 {
+            if width == PointerSize.Bit64 {
+                print("Unity IL2CPP: selected UNITY_2023_1_22F1_X86_64")
+                return Il2CppProfile.unity2023_1_22f1X64()
+            }
+            print("Unity IL2CPP: selected UNITY_2023_1_22F1_X86")
+            return Il2CppProfile.unity2023_1_22f1X86()
+        }
+        if version.major > 2022 || version.major == 2022 && version.minor >= 3 {
+            if width == PointerSize.Bit64 {
+                print("Unity IL2CPP: selected UNITY_2022_3_0F1_X86_64")
+                return Il2CppProfile.unity2022_3_0f1X64()
+            }
+            print("Unity IL2CPP: selected UNITY_2022_3_0F1_X86")
+            return Il2CppProfile.unity2022_3_0f1X86()
+        }
+        if version.major > 2021 || version.major == 2021 && version.minor >= 3 {
+            if width == PointerSize.Bit64 {
+                print("Unity IL2CPP: selected UNITY_2021_3_11F1_X86_64")
+                return Il2CppProfile.unity2021_3_11f1X64()
+            }
+            print("Unity IL2CPP: selected UNITY_2021_3_11F1_X86")
+            return Il2CppProfile.unity2021_3_11f1X86()
+        }
+        if version.major > 2020 || version.major == 2020 && version.minor >= 1 {
+            if width == PointerSize.Bit64 {
+                print("Unity IL2CPP: selected UNITY_2020_1_18F1_X86_64")
+                return Il2CppProfile.unity2020_1_18f1X64()
+            }
+            print("Unity IL2CPP: selected UNITY_2020_1_18F1_X86")
+            return Il2CppProfile.unity2020_1_18f1X86()
+        }
+        if version.major > 2019 || version.major == 2019 && version.minor >= 4 {
+            if width == PointerSize.Bit64 {
+                print("Unity IL2CPP: selected UNITY_2019_4_41F2_X86_64")
+                return Il2CppProfile.unity2019_4_41f2X64()
+            }
+            print("Unity IL2CPP: selected UNITY_2019_4_41F2_X86")
+            return Il2CppProfile.unity2019_4_41f2X86()
+        }
+        if version.major > 2018 || version.major == 2018 && version.minor >= 4 {
+            if width == PointerSize.Bit64 {
+                print("Unity IL2CPP: selected UNITY_2018_4_36F1_X86_64")
+                return Il2CppProfile.unity2018_4_36f1X64()
+            }
+            print("Unity IL2CPP: selected UNITY_2018_4_36F1_X86")
+            return Il2CppProfile.unity2018_4_36f1X86()
+        }
+        if width == PointerSize.Bit64 {
+            print("Unity IL2CPP: selected UNITY_2018_4_36F1_X86_64")
+            return Il2CppProfile.unity2018_4_36f1X64()
+        }
+        print("Unity IL2CPP: selected UNITY_2018_4_36F1_X86")
+        return Il2CppProfile.unity2018_4_36f1X86()
+    }
+    // END GENERATED IL2CPP SELECTION
+
+    // Validate before storing the descriptor on an attached runtime. Bounds
+    // also make offset arithmetic within one metadata record finite.
+    private static fn pointerOffsetIsValid(offset: u64, width: u64) -> bool {
+        return offset <= 65528 && offset % width == 0
+    }
+
+    private static fn optionalPointerOffsetIsValid(offset: u64?, width: u64) -> bool {
+        return match offset {
+            Some(value) => Il2CppProfile.pointerOffsetIsValid(value, width),
+            None => true,
+        }
+    }
+
+    private fn isValid() -> bool {
+        let width: u64 = if self.pointerSize == PointerSize.Bit64 { 8 } else { 4 }
+        if self.assemblyName == None && self.imageAssemblyName == None { return false }
+        if !Il2CppProfile.pointerOffsetIsValid(self.assemblyImage, width)
+            || !Il2CppProfile.pointerOffsetIsValid(self.className, width)
+            || !Il2CppProfile.pointerOffsetIsValid(self.classNamespace, width)
+            || !Il2CppProfile.pointerOffsetIsValid(self.classParent, width)
+            || !Il2CppProfile.pointerOffsetIsValid(self.classFields, width)
+            || !Il2CppProfile.pointerOffsetIsValid(self.classStatics, width)
+            || !Il2CppProfile.pointerOffsetIsValid(self.fieldName, width)
+            || !Il2CppProfile.optionalPointerOffsetIsValid(self.assemblyName, width)
+            || !Il2CppProfile.optionalPointerOffsetIsValid(self.imageAssemblyName, width)
+            || !Il2CppProfile.optionalPointerOffsetIsValid(self.classDeclaring, width)
+            || !Il2CppProfile.optionalPointerOffsetIsValid(self.genericCachedClass, width)
+            || !Il2CppProfile.optionalPointerOffsetIsValid(self.typeData, width)
+            || !Il2CppProfile.optionalPointerOffsetIsValid(self.fieldType, width)
+        { return false }
+        match self.typeKind {
+            Some(offset) if offset > 65535 => return false,
+            _ => {},
+        }
+        match self.classInstanceSize {
+            Some(offset) if offset > 65532 || offset % 4 != 0 => return false,
+            _ => {},
+        }
+        if self.imageTypeCount > 65532 || self.imageTypeCount % 4 != 0
+            || self.classFieldCount > 65534 || self.classFieldCount % 2 != 0
+            || self.imageTypeStart.offset > 65528
+            || self.imageTypeStart.offset % (if self.imageTypeStart.indirect { width } else { 4 }) != 0
+            || self.fieldStride == 0 || self.fieldStride > 1024 || self.fieldStride % width != 0
+            || self.fieldName + width > self.fieldStride
+            || self.fieldValue > 1020 || self.fieldValue % 4 != 0
+            || self.fieldValue + 4 > self.fieldStride
+        { return false }
+        match self.fieldType {
+            Some(offset) if offset + width > self.fieldStride => return false,
+            _ => {},
+        }
+        return true
+    }
+
+    // BEGIN GENERATED IL2CPP PROFILES
+// ASR cf732d3aeac7509c8ab5f29a4d0d28f16487d245.
+// Generated by scripts/import-il2cpp-profiles.py.
+
+    /// Measured UNITY_2018_4_36F1_X86_64; player file version 2018.4.36.54151.
+    ///
+    /// Returns the complete layout measured from this player's GameAssembly PDB.
+    ///
+    /// # Example
+    ///
+    /// Select this measured layout
+    ///
+    /// ```splitscript
+    /// let measured = Il2CppProfile.unity2018_4_36f1X64()
+    /// ```
+    static fn unity2018_4_36f1X64() -> Il2CppProfile {
+        return Il2CppProfile {
+            pointerSize: PointerSize.Bit64,
+            assemblyImage: 0x0,
+            assemblyName: None,
+            imageAssemblyName: Some(0x8),
+            imageTypeCount: 0x1c,
+            imageTypeStart: Il2CppTypeStart.inline(0x18),
+            className: 0x10,
+            classNamespace: 0x18,
+            classDeclaring: Some(0x50),
+            classParent: 0x58,
+            classFields: 0x80,
+            classStatics: 0xb8,
+            classInstanceSize: Some(0xec),
+            classFieldCount: 0x114,
+            genericCachedClass: Some(0x18),
+            typeData: Some(0x0),
+            typeKind: Some(0xa),
+            fieldName: 0x0,
+            fieldType: Some(0x8),
+            fieldValue: 0x18,
+            fieldStride: 0x20,
+        }
+    }
+
+    /// Measured UNITY_2018_4_36F1_X86; player file version 2018.4.36.54151.
+    ///
+    /// Returns the complete layout measured from this player's GameAssembly PDB.
+    ///
+    /// # Example
+    ///
+    /// Select this measured layout
+    ///
+    /// ```splitscript
+    /// let measured = Il2CppProfile.unity2018_4_36f1X86()
+    /// ```
+    static fn unity2018_4_36f1X86() -> Il2CppProfile {
+        return Il2CppProfile {
+            pointerSize: PointerSize.Bit32,
+            assemblyImage: 0x0,
+            assemblyName: None,
+            imageAssemblyName: Some(0x4),
+            imageTypeCount: 0x10,
+            imageTypeStart: Il2CppTypeStart.inline(0xc),
+            className: 0x8,
+            classNamespace: 0xc,
+            classDeclaring: Some(0x28),
+            classParent: 0x2c,
+            classFields: 0x40,
+            classStatics: 0x5c,
+            classInstanceSize: Some(0x84),
+            classFieldCount: 0xac,
+            genericCachedClass: Some(0xc),
+            typeData: Some(0x0),
+            typeKind: Some(0x6),
+            fieldName: 0x0,
+            fieldType: Some(0x4),
+            fieldValue: 0xc,
+            fieldStride: 0x14,
+        }
+    }
+
+    /// Measured UNITY_2019_4_41F2_X86_64; player file version 2019.4.41.9172.
+    ///
+    /// Returns the complete layout measured from this player's GameAssembly PDB.
+    ///
+    /// # Example
+    ///
+    /// Select this measured layout
+    ///
+    /// ```splitscript
+    /// let measured = Il2CppProfile.unity2019_4_41f2X64()
+    /// ```
+    static fn unity2019_4_41f2X64() -> Il2CppProfile {
+        return Il2CppProfile {
+            pointerSize: PointerSize.Bit64,
+            assemblyImage: 0x0,
+            assemblyName: None,
+            imageAssemblyName: Some(0x8),
+            imageTypeCount: 0x1c,
+            imageTypeStart: Il2CppTypeStart.inline(0x18),
+            className: 0x10,
+            classNamespace: 0x18,
+            classDeclaring: Some(0x50),
+            classParent: 0x58,
+            classFields: 0x80,
+            classStatics: 0xb8,
+            classInstanceSize: Some(0xf4),
+            classFieldCount: 0x11c,
+            genericCachedClass: Some(0x18),
+            typeData: Some(0x0),
+            typeKind: Some(0xa),
+            fieldName: 0x0,
+            fieldType: Some(0x8),
+            fieldValue: 0x18,
+            fieldStride: 0x20,
+        }
+    }
+
+    /// Measured UNITY_2019_4_41F2_X86; player file version 2019.4.41.9172.
+    ///
+    /// Returns the complete layout measured from this player's GameAssembly PDB.
+    ///
+    /// # Example
+    ///
+    /// Select this measured layout
+    ///
+    /// ```splitscript
+    /// let measured = Il2CppProfile.unity2019_4_41f2X86()
+    /// ```
+    static fn unity2019_4_41f2X86() -> Il2CppProfile {
+        return Il2CppProfile {
+            pointerSize: PointerSize.Bit32,
+            assemblyImage: 0x0,
+            assemblyName: None,
+            imageAssemblyName: Some(0x4),
+            imageTypeCount: 0x10,
+            imageTypeStart: Il2CppTypeStart.inline(0xc),
+            className: 0x8,
+            classNamespace: 0xc,
+            classDeclaring: Some(0x28),
+            classParent: 0x2c,
+            classFields: 0x40,
+            classStatics: 0x5c,
+            classInstanceSize: Some(0x80),
+            classFieldCount: 0xa8,
+            genericCachedClass: Some(0xc),
+            typeData: Some(0x0),
+            typeKind: Some(0x6),
+            fieldName: 0x0,
+            fieldType: Some(0x4),
+            fieldValue: 0xc,
+            fieldStride: 0x14,
+        }
+    }
+
+    /// Measured UNITY_2020_1_18F1_X86_64; player file version 2020.1.18.38512.
+    ///
+    /// Returns the complete layout measured from this player's GameAssembly PDB.
+    ///
+    /// # Example
+    ///
+    /// Select this measured layout
+    ///
+    /// ```splitscript
+    /// let measured = Il2CppProfile.unity2020_1_18f1X64()
+    /// ```
+    static fn unity2020_1_18f1X64() -> Il2CppProfile {
+        return Il2CppProfile {
+            pointerSize: PointerSize.Bit64,
+            assemblyImage: 0x0,
+            assemblyName: None,
+            imageAssemblyName: Some(0x8),
+            imageTypeCount: 0x1c,
+            imageTypeStart: Il2CppTypeStart.inline(0x18),
+            className: 0x10,
+            classNamespace: 0x18,
+            classDeclaring: Some(0x50),
+            classParent: 0x58,
+            classFields: 0x80,
+            classStatics: 0xb8,
+            classInstanceSize: Some(0xf4),
+            classFieldCount: 0x11c,
+            genericCachedClass: Some(0x18),
+            typeData: Some(0x0),
+            typeKind: Some(0xa),
+            fieldName: 0x0,
+            fieldType: Some(0x8),
+            fieldValue: 0x18,
+            fieldStride: 0x20,
+        }
+    }
+
+    /// Measured UNITY_2020_1_18F1_X86; player file version 2020.1.18.38512.
+    ///
+    /// Returns the complete layout measured from this player's GameAssembly PDB.
+    ///
+    /// # Example
+    ///
+    /// Select this measured layout
+    ///
+    /// ```splitscript
+    /// let measured = Il2CppProfile.unity2020_1_18f1X86()
+    /// ```
+    static fn unity2020_1_18f1X86() -> Il2CppProfile {
+        return Il2CppProfile {
+            pointerSize: PointerSize.Bit32,
+            assemblyImage: 0x0,
+            assemblyName: None,
+            imageAssemblyName: Some(0x4),
+            imageTypeCount: 0x10,
+            imageTypeStart: Il2CppTypeStart.inline(0xc),
+            className: 0x8,
+            classNamespace: 0xc,
+            classDeclaring: Some(0x28),
+            classParent: 0x2c,
+            classFields: 0x40,
+            classStatics: 0x5c,
+            classInstanceSize: Some(0x80),
+            classFieldCount: 0xa8,
+            genericCachedClass: Some(0xc),
+            typeData: Some(0x0),
+            typeKind: Some(0x6),
+            fieldName: 0x0,
+            fieldType: Some(0x4),
+            fieldValue: 0xc,
+            fieldStride: 0x14,
+        }
+    }
+
+    /// Measured UNITY_2021_3_11F1_X86_64; player file version 2021.3.11.23713.
+    ///
+    /// Returns the complete layout measured from this player's GameAssembly PDB.
+    ///
+    /// # Example
+    ///
+    /// Select this measured layout
+    ///
+    /// ```splitscript
+    /// let measured = Il2CppProfile.unity2021_3_11f1X64()
+    /// ```
+    static fn unity2021_3_11f1X64() -> Il2CppProfile {
+        return Il2CppProfile {
+            pointerSize: PointerSize.Bit64,
+            assemblyImage: 0x0,
+            assemblyName: None,
+            imageAssemblyName: Some(0x8),
+            imageTypeCount: 0x18,
+            imageTypeStart: Il2CppTypeStart.handle(0x28),
+            className: 0x10,
+            classNamespace: 0x18,
+            classDeclaring: Some(0x50),
+            classParent: 0x58,
+            classFields: 0x80,
+            classStatics: 0xb8,
+            classInstanceSize: Some(0xf8),
+            classFieldCount: 0x120,
+            genericCachedClass: Some(0x18),
+            typeData: Some(0x0),
+            typeKind: Some(0xa),
+            fieldName: 0x0,
+            fieldType: Some(0x8),
+            fieldValue: 0x18,
+            fieldStride: 0x20,
+        }
+    }
+
+    /// Measured UNITY_2021_3_11F1_X86; player file version 2021.3.11.23713.
+    ///
+    /// Returns the complete layout measured from this player's GameAssembly PDB.
+    ///
+    /// # Example
+    ///
+    /// Select this measured layout
+    ///
+    /// ```splitscript
+    /// let measured = Il2CppProfile.unity2021_3_11f1X86()
+    /// ```
+    static fn unity2021_3_11f1X86() -> Il2CppProfile {
+        return Il2CppProfile {
+            pointerSize: PointerSize.Bit32,
+            assemblyImage: 0x0,
+            assemblyName: None,
+            imageAssemblyName: Some(0x4),
+            imageTypeCount: 0xc,
+            imageTypeStart: Il2CppTypeStart.handle(0x18),
+            className: 0x8,
+            classNamespace: 0xc,
+            classDeclaring: Some(0x28),
+            classParent: 0x2c,
+            classFields: 0x40,
+            classStatics: 0x5c,
+            classInstanceSize: Some(0x80),
+            classFieldCount: 0xa8,
+            genericCachedClass: Some(0xc),
+            typeData: Some(0x0),
+            typeKind: Some(0x6),
+            fieldName: 0x0,
+            fieldType: Some(0x4),
+            fieldValue: 0xc,
+            fieldStride: 0x14,
+        }
+    }
+
+    /// Measured UNITY_2022_3_0F1_X86_64; player file version 2022.3.0.4507.
+    ///
+    /// Returns the complete layout measured from this player's GameAssembly PDB.
+    ///
+    /// # Example
+    ///
+    /// Select this measured layout
+    ///
+    /// ```splitscript
+    /// let measured = Il2CppProfile.unity2022_3_0f1X64()
+    /// ```
+    static fn unity2022_3_0f1X64() -> Il2CppProfile {
+        return Il2CppProfile {
+            pointerSize: PointerSize.Bit64,
+            assemblyImage: 0x0,
+            assemblyName: None,
+            imageAssemblyName: Some(0x8),
+            imageTypeCount: 0x18,
+            imageTypeStart: Il2CppTypeStart.handle(0x28),
+            className: 0x10,
+            classNamespace: 0x18,
+            classDeclaring: Some(0x50),
+            classParent: 0x58,
+            classFields: 0x80,
+            classStatics: 0xb8,
+            classInstanceSize: Some(0xf8),
+            classFieldCount: 0x124,
+            genericCachedClass: Some(0x18),
+            typeData: Some(0x0),
+            typeKind: Some(0xa),
+            fieldName: 0x0,
+            fieldType: Some(0x8),
+            fieldValue: 0x18,
+            fieldStride: 0x20,
+        }
+    }
+
+    /// Measured UNITY_2022_3_0F1_X86; player file version 2022.3.0.4507.
+    ///
+    /// Returns the complete layout measured from this player's GameAssembly PDB.
+    ///
+    /// # Example
+    ///
+    /// Select this measured layout
+    ///
+    /// ```splitscript
+    /// let measured = Il2CppProfile.unity2022_3_0f1X86()
+    /// ```
+    static fn unity2022_3_0f1X86() -> Il2CppProfile {
+        return Il2CppProfile {
+            pointerSize: PointerSize.Bit32,
+            assemblyImage: 0x0,
+            assemblyName: None,
+            imageAssemblyName: Some(0x4),
+            imageTypeCount: 0xc,
+            imageTypeStart: Il2CppTypeStart.handle(0x18),
+            className: 0x8,
+            classNamespace: 0xc,
+            classDeclaring: Some(0x28),
+            classParent: 0x2c,
+            classFields: 0x40,
+            classStatics: 0x5c,
+            classInstanceSize: Some(0x80),
+            classFieldCount: 0xac,
+            genericCachedClass: Some(0xc),
+            typeData: Some(0x0),
+            typeKind: Some(0x6),
+            fieldName: 0x0,
+            fieldType: Some(0x4),
+            fieldValue: 0xc,
+            fieldStride: 0x14,
+        }
+    }
+
+    /// Measured UNITY_2023_1_0F1_X86_64; player file version 2023.1.0.2298.
+    ///
+    /// Returns the complete layout measured from this player's GameAssembly PDB.
+    ///
+    /// # Example
+    ///
+    /// Select this measured layout
+    ///
+    /// ```splitscript
+    /// let measured = Il2CppProfile.unity2023_1_0f1X64()
+    /// ```
+    static fn unity2023_1_0f1X64() -> Il2CppProfile {
+        return Il2CppProfile {
+            pointerSize: PointerSize.Bit64,
+            assemblyImage: 0x0,
+            assemblyName: None,
+            imageAssemblyName: Some(0x8),
+            imageTypeCount: 0x18,
+            imageTypeStart: Il2CppTypeStart.handle(0x28),
+            className: 0x10,
+            classNamespace: 0x18,
+            classDeclaring: Some(0x50),
+            classParent: 0x58,
+            classFields: 0x80,
+            classStatics: 0xb8,
+            classInstanceSize: Some(0xf8),
+            classFieldCount: 0x124,
+            genericCachedClass: Some(0x18),
+            typeData: Some(0x0),
+            typeKind: Some(0xa),
+            fieldName: 0x0,
+            fieldType: Some(0x8),
+            fieldValue: 0x18,
+            fieldStride: 0x20,
+        }
+    }
+
+    /// Measured UNITY_2023_1_0F1_X86; player file version 2023.1.0.2298.
+    ///
+    /// Returns the complete layout measured from this player's GameAssembly PDB.
+    ///
+    /// # Example
+    ///
+    /// Select this measured layout
+    ///
+    /// ```splitscript
+    /// let measured = Il2CppProfile.unity2023_1_0f1X86()
+    /// ```
+    static fn unity2023_1_0f1X86() -> Il2CppProfile {
+        return Il2CppProfile {
+            pointerSize: PointerSize.Bit32,
+            assemblyImage: 0x0,
+            assemblyName: None,
+            imageAssemblyName: Some(0x4),
+            imageTypeCount: 0xc,
+            imageTypeStart: Il2CppTypeStart.handle(0x18),
+            className: 0x8,
+            classNamespace: 0xc,
+            classDeclaring: Some(0x28),
+            classParent: 0x2c,
+            classFields: 0x40,
+            classStatics: 0x5c,
+            classInstanceSize: Some(0x80),
+            classFieldCount: 0xac,
+            genericCachedClass: Some(0xc),
+            typeData: Some(0x0),
+            typeKind: Some(0x6),
+            fieldName: 0x0,
+            fieldType: Some(0x4),
+            fieldValue: 0xc,
+            fieldStride: 0x14,
+        }
+    }
+
+    /// Measured UNITY_2023_1_22F1_X86_64; player file version 2023.1.22.16744.
+    ///
+    /// Returns the complete layout measured from this player's GameAssembly PDB.
+    ///
+    /// # Example
+    ///
+    /// Select this measured layout
+    ///
+    /// ```splitscript
+    /// let measured = Il2CppProfile.unity2023_1_22f1X64()
+    /// ```
+    static fn unity2023_1_22f1X64() -> Il2CppProfile {
+        return Il2CppProfile {
+            pointerSize: PointerSize.Bit64,
+            assemblyImage: 0x0,
+            assemblyName: None,
+            imageAssemblyName: Some(0x8),
+            imageTypeCount: 0x18,
+            imageTypeStart: Il2CppTypeStart.handle(0x28),
+            className: 0x10,
+            classNamespace: 0x18,
+            classDeclaring: Some(0x50),
+            classParent: 0x58,
+            classFields: 0x80,
+            classStatics: 0xb8,
+            classInstanceSize: Some(0xf8),
+            classFieldCount: 0x124,
+            genericCachedClass: Some(0x18),
+            typeData: Some(0x0),
+            typeKind: Some(0xa),
+            fieldName: 0x0,
+            fieldType: Some(0x8),
+            fieldValue: 0x18,
+            fieldStride: 0x20,
+        }
+    }
+
+    /// Measured UNITY_2023_1_22F1_X86; player file version 2023.1.22.16744.
+    ///
+    /// Returns the complete layout measured from this player's GameAssembly PDB.
+    ///
+    /// # Example
+    ///
+    /// Select this measured layout
+    ///
+    /// ```splitscript
+    /// let measured = Il2CppProfile.unity2023_1_22f1X86()
+    /// ```
+    static fn unity2023_1_22f1X86() -> Il2CppProfile {
+        return Il2CppProfile {
+            pointerSize: PointerSize.Bit32,
+            assemblyImage: 0x0,
+            assemblyName: None,
+            imageAssemblyName: Some(0x4),
+            imageTypeCount: 0xc,
+            imageTypeStart: Il2CppTypeStart.handle(0x18),
+            className: 0x8,
+            classNamespace: 0xc,
+            classDeclaring: Some(0x28),
+            classParent: 0x2c,
+            classFields: 0x40,
+            classStatics: 0x5c,
+            classInstanceSize: Some(0x80),
+            classFieldCount: 0xac,
+            genericCachedClass: Some(0xc),
+            typeData: Some(0x0),
+            typeKind: Some(0x6),
+            fieldName: 0x0,
+            fieldType: Some(0x4),
+            fieldValue: 0xc,
+            fieldStride: 0x14,
+        }
+    }
+
+    /// Measured UNITY_6000_2_12F1_X86_64; player file version 6000.2.12.40285.
+    ///
+    /// Returns the complete layout measured from this player's GameAssembly PDB.
+    ///
+    /// # Example
+    ///
+    /// Select this measured layout
+    ///
+    /// ```splitscript
+    /// let measured = Il2CppProfile.unity6000_2_12f1X64()
+    /// ```
+    static fn unity6000_2_12f1X64() -> Il2CppProfile {
+        return Il2CppProfile {
+            pointerSize: PointerSize.Bit64,
+            assemblyImage: 0x0,
+            assemblyName: None,
+            imageAssemblyName: Some(0x8),
+            imageTypeCount: 0x18,
+            imageTypeStart: Il2CppTypeStart.handle(0x28),
+            className: 0x10,
+            classNamespace: 0x18,
+            classDeclaring: Some(0x50),
+            classParent: 0x58,
+            classFields: 0x80,
+            classStatics: 0xb8,
+            classInstanceSize: Some(0xf8),
+            classFieldCount: 0x124,
+            genericCachedClass: Some(0x18),
+            typeData: Some(0x0),
+            typeKind: Some(0xa),
+            fieldName: 0x0,
+            fieldType: Some(0x8),
+            fieldValue: 0x18,
+            fieldStride: 0x20,
+        }
+    }
+
+    /// Measured UNITY_6000_2_12F1_X86; player file version 6000.2.12.40285.
+    ///
+    /// Returns the complete layout measured from this player's GameAssembly PDB.
+    ///
+    /// # Example
+    ///
+    /// Select this measured layout
+    ///
+    /// ```splitscript
+    /// let measured = Il2CppProfile.unity6000_2_12f1X86()
+    /// ```
+    static fn unity6000_2_12f1X86() -> Il2CppProfile {
+        return Il2CppProfile {
+            pointerSize: PointerSize.Bit32,
+            assemblyImage: 0x0,
+            assemblyName: None,
+            imageAssemblyName: Some(0x4),
+            imageTypeCount: 0xc,
+            imageTypeStart: Il2CppTypeStart.handle(0x18),
+            className: 0x8,
+            classNamespace: 0xc,
+            classDeclaring: Some(0x28),
+            classParent: 0x2c,
+            classFields: 0x40,
+            classStatics: 0x5c,
+            classInstanceSize: Some(0x80),
+            classFieldCount: 0xac,
+            genericCachedClass: Some(0xc),
+            typeData: Some(0x0),
+            typeKind: Some(0x6),
+            fieldName: 0x0,
+            fieldType: Some(0x4),
+            fieldValue: 0xc,
+            fieldStride: 0x14,
+        }
+    }
+
+    /// Measured UNITY_6000_3_21F1_X86_64; player file version 6000.3.21.9777.
+    ///
+    /// Returns the complete layout measured from this player's GameAssembly PDB.
+    ///
+    /// # Example
+    ///
+    /// Select this measured layout
+    ///
+    /// ```splitscript
+    /// let measured = Il2CppProfile.unity6000_3_21f1X64()
+    /// ```
+    static fn unity6000_3_21f1X64() -> Il2CppProfile {
+        return Il2CppProfile {
+            pointerSize: PointerSize.Bit64,
+            assemblyImage: 0x0,
+            assemblyName: None,
+            imageAssemblyName: Some(0x8),
+            imageTypeCount: 0x18,
+            imageTypeStart: Il2CppTypeStart.handle(0x28),
+            className: 0x10,
+            classNamespace: 0x18,
+            classDeclaring: Some(0x50),
+            classParent: 0x58,
+            classFields: 0x80,
+            classStatics: 0xb8,
+            classInstanceSize: Some(0xf8),
+            classFieldCount: 0x124,
+            genericCachedClass: Some(0x18),
+            typeData: Some(0x0),
+            typeKind: Some(0xa),
+            fieldName: 0x0,
+            fieldType: Some(0x8),
+            fieldValue: 0x18,
+            fieldStride: 0x20,
+        }
+    }
+
+    /// Measured UNITY_6000_3_21F1_X86; player file version 6000.3.21.9777.
+    ///
+    /// Returns the complete layout measured from this player's GameAssembly PDB.
+    ///
+    /// # Example
+    ///
+    /// Select this measured layout
+    ///
+    /// ```splitscript
+    /// let measured = Il2CppProfile.unity6000_3_21f1X86()
+    /// ```
+    static fn unity6000_3_21f1X86() -> Il2CppProfile {
+        return Il2CppProfile {
+            pointerSize: PointerSize.Bit32,
+            assemblyImage: 0x0,
+            assemblyName: None,
+            imageAssemblyName: Some(0x4),
+            imageTypeCount: 0xc,
+            imageTypeStart: Il2CppTypeStart.handle(0x18),
+            className: 0x8,
+            classNamespace: 0xc,
+            classDeclaring: Some(0x28),
+            classParent: 0x2c,
+            classFields: 0x40,
+            classStatics: 0x5c,
+            classInstanceSize: Some(0x80),
+            classFieldCount: 0xac,
+            genericCachedClass: Some(0xc),
+            typeData: Some(0x0),
+            typeKind: Some(0x6),
+            fieldName: 0x0,
+            fieldType: Some(0x4),
+            fieldValue: 0xc,
+            fieldStride: 0x14,
+        }
+    }
+
+    /// Measured UNITY_6000_5_10F1_X86_64; player file version 6000.5.10.54518.
+    ///
+    /// Returns the complete layout measured from this player's GameAssembly PDB.
+    ///
+    /// # Example
+    ///
+    /// Select this measured layout
+    ///
+    /// ```splitscript
+    /// let measured = Il2CppProfile.unity6000_5_10f1X64()
+    /// ```
+    static fn unity6000_5_10f1X64() -> Il2CppProfile {
+        return Il2CppProfile {
+            pointerSize: PointerSize.Bit64,
+            assemblyImage: 0x0,
+            assemblyName: None,
+            imageAssemblyName: Some(0x8),
+            imageTypeCount: 0x18,
+            imageTypeStart: Il2CppTypeStart.handle(0x28),
+            className: 0x10,
+            classNamespace: 0x18,
+            classDeclaring: Some(0x50),
+            classParent: 0x58,
+            classFields: 0x80,
+            classStatics: 0xa0,
+            classInstanceSize: Some(0xf8),
+            classFieldCount: 0x124,
+            genericCachedClass: Some(0x18),
+            typeData: Some(0x0),
+            typeKind: Some(0xa),
+            fieldName: 0x0,
+            fieldType: Some(0x8),
+            fieldValue: 0x18,
+            fieldStride: 0x20,
+        }
+    }
+
+    /// Measured UNITY_6000_5_10F1_X86; player file version 6000.5.10.54518.
+    ///
+    /// Returns the complete layout measured from this player's GameAssembly PDB.
+    ///
+    /// # Example
+    ///
+    /// Select this measured layout
+    ///
+    /// ```splitscript
+    /// let measured = Il2CppProfile.unity6000_5_10f1X86()
+    /// ```
+    static fn unity6000_5_10f1X86() -> Il2CppProfile {
+        return Il2CppProfile {
+            pointerSize: PointerSize.Bit32,
+            assemblyImage: 0x0,
+            assemblyName: None,
+            imageAssemblyName: Some(0x4),
+            imageTypeCount: 0xc,
+            imageTypeStart: Il2CppTypeStart.handle(0x18),
+            className: 0x8,
+            classNamespace: 0xc,
+            classDeclaring: Some(0x28),
+            classParent: 0x2c,
+            classFields: 0x40,
+            classStatics: 0x50,
+            classInstanceSize: Some(0x80),
+            classFieldCount: 0xac,
+            genericCachedClass: Some(0xc),
+            typeData: Some(0x0),
+            typeKind: Some(0x6),
+            fieldName: 0x0,
+            fieldType: Some(0x4),
+            fieldValue: 0xc,
+            fieldStride: 0x14,
+        }
+    }
+
+    /// Measured UNITY_6000_7_0A3_X86_64; player file version 6000.7.0.5476.
+    ///
+    /// Returns the complete layout measured from this player's GameAssembly PDB.
+    ///
+    /// # Example
+    ///
+    /// Select this measured layout
+    ///
+    /// ```splitscript
+    /// let measured = Il2CppProfile.unity6000_7_0a3X64()
+    /// ```
+    static fn unity6000_7_0a3X64() -> Il2CppProfile {
+        return Il2CppProfile {
+            pointerSize: PointerSize.Bit64,
+            assemblyImage: 0x0,
+            assemblyName: None,
+            imageAssemblyName: Some(0x8),
+            imageTypeCount: 0x18,
+            imageTypeStart: Il2CppTypeStart.handle(0x28),
+            className: 0x10,
+            classNamespace: 0x18,
+            classDeclaring: Some(0x50),
+            classParent: 0x58,
+            classFields: 0x80,
+            classStatics: 0x98,
+            classInstanceSize: Some(0xf0),
+            classFieldCount: 0x11c,
+            genericCachedClass: Some(0x10),
+            typeData: Some(0x0),
+            typeKind: Some(0xa),
+            fieldName: 0x0,
+            fieldType: Some(0x8),
+            fieldValue: 0x18,
+            fieldStride: 0x20,
+        }
+    }
+
+    /// Measured UNITY_6000_7_0A3_X86; player file version 6000.7.0.5476.
+    ///
+    /// Returns the complete layout measured from this player's GameAssembly PDB.
+    ///
+    /// # Example
+    ///
+    /// Select this measured layout
+    ///
+    /// ```splitscript
+    /// let measured = Il2CppProfile.unity6000_7_0a3X86()
+    /// ```
+    static fn unity6000_7_0a3X86() -> Il2CppProfile {
+        return Il2CppProfile {
+            pointerSize: PointerSize.Bit32,
+            assemblyImage: 0x0,
+            assemblyName: None,
+            imageAssemblyName: Some(0x4),
+            imageTypeCount: 0xc,
+            imageTypeStart: Il2CppTypeStart.handle(0x18),
+            className: 0x8,
+            classNamespace: 0xc,
+            classDeclaring: Some(0x28),
+            classParent: 0x2c,
+            classFields: 0x40,
+            classStatics: 0x4c,
+            classInstanceSize: Some(0x80),
+            classFieldCount: 0xac,
+            genericCachedClass: Some(0x8),
+            typeData: Some(0x0),
+            typeKind: Some(0x6),
+            fieldName: 0x0,
+            fieldType: Some(0x4),
+            fieldValue: 0xc,
+            fieldStride: 0x14,
+        }
+    }
+    // END GENERATED IL2CPP PROFILES
 }
 
 /// Identifies the supported Unity Mono metadata layouts.

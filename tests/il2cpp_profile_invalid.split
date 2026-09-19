@@ -1,0 +1,31 @@
+// Every fact is provided explicitly; optional unknowns stay unknown.
+fn profile() -> Il2CppProfile {
+    return Il2CppProfile {
+        pointerSize: PointerSize.Bit64,
+        assemblyImage: 0,
+        assemblyName: None,
+        imageAssemblyName: Some(8),
+        imageTypeCount: 0x18,
+        imageTypeStart: Il2CppTypeStart.handle(0x28),
+        className: 0x10,
+        classNamespace: 0x18,
+        classDeclaring: None,
+        classParent: 0x58,
+        classFields: 0x80,
+        classStatics: 0xb8,
+        classInstanceSize: None,
+        classFieldCount: 0x124,
+        genericCachedClass: None,
+        typeData: None,
+        typeKind: None,
+        fieldName: 0,
+        fieldType: None,
+        fieldValue: 0x18,
+        fieldStride: 0,
+    }
+}
+image "Assembly-CSharp" {
+    class ProfileProbe { static i32 value; }
+}
+state Unity.il2cpp(profile()) ["game.exe"] { value = ProfileProbe.value?; }
+whileAttached { print(current.value) }

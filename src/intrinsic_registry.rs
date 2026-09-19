@@ -92,14 +92,6 @@ pub(crate) enum RuntimeHelperId {
     ProcessPath,
     RuntimeOperatingSystem,
     RuntimeArchitecture,
-    CStringEquality,
-    BackingFieldEquality,
-    UnityGetImage,
-    UnityGetClass,
-    UnityGetClassAny,
-    UnityGetFieldOffset,
-    UnityGetFieldAny,
-    UnityGetStaticInstance,
     JoinStrings,
     IndentDisplay,
     WrapDebugEntry,
@@ -515,24 +507,8 @@ const fn async_scratch(id: IntrinsicId) -> &'static [ScratchPolicy] {
             ty: ScratchType::Core(CoreTypeId::U64),
             slots: 5,
         }],
-        IntrinsicId::ProcessFollow
-        | IntrinsicId::ProcessReadRelative32
-        | IntrinsicId::UnityClassField
-        | IntrinsicId::UnityClassStaticInstance
-        | IntrinsicId::UnityClassStaticTable => &[ScratchPolicy {
+        IntrinsicId::ProcessFollow | IntrinsicId::ProcessReadRelative32 => &[ScratchPolicy {
             ty: ScratchType::Core(CoreTypeId::U64),
-            slots: 1,
-        }],
-        IntrinsicId::UnityModuleImage | IntrinsicId::UnityImageClass => &[ScratchPolicy {
-            ty: ScratchType::Expression,
-            slots: 1,
-        }],
-        IntrinsicId::UnityImageClassAny => &[ScratchPolicy {
-            ty: ScratchType::Standard(StdlibTypeId::UnityClass),
-            slots: 1,
-        }],
-        IntrinsicId::UnityClassProbeFieldAny => &[ScratchPolicy {
-            ty: ScratchType::Standard(StdlibTypeId::UnityField),
             slots: 1,
         }],
         _ => &[],
@@ -699,12 +675,6 @@ const fn dependency_roots(id: IntrinsicId) -> &'static [DependencyRoot] {
         IntrinsicId::ProcessPath => &[Helper(Runtime::ProcessPath)],
         IntrinsicId::RuntimeOperatingSystem => &[Helper(Runtime::RuntimeOperatingSystem)],
         IntrinsicId::RuntimeArchitecture => &[Helper(Runtime::RuntimeArchitecture)],
-        IntrinsicId::UnityModuleImage => &[Helper(Runtime::UnityGetImage)],
-        IntrinsicId::UnityImageClass => &[Helper(Runtime::UnityGetClass)],
-        IntrinsicId::UnityImageClassAny => &[Helper(Runtime::UnityGetClassAny)],
-        IntrinsicId::UnityClassField => &[Helper(Runtime::UnityGetFieldOffset)],
-        IntrinsicId::UnityClassProbeFieldAny => &[Helper(Runtime::UnityGetFieldAny)],
-        IntrinsicId::UnityClassStaticInstance => &[Helper(Runtime::UnityGetStaticInstance)],
         IntrinsicId::GBAEmulatorRead => &[Helper(Runtime::GBAReadMemory)],
         IntrinsicId::GCNEmulatorRead => &[Helper(Runtime::GCNReadMemory)],
         IntrinsicId::WiiEmulatorRead => &[Helper(Runtime::WiiReadMemory)],
@@ -733,7 +703,6 @@ const fn dependency_roots(id: IntrinsicId) -> &'static [DependencyRoot] {
         IntrinsicId::StringIsBlank => &[Helper(Runtime::StringIsBlank)],
         IntrinsicId::StringPadStart | IntrinsicId::StringPadEnd => &[Helper(Runtime::StringPad)],
         IntrinsicId::StringConcat | IntrinsicId::StringJoin => &[Helper(Runtime::JoinStrings)],
-        IntrinsicId::UnityClassStaticTable => &[HostImport(Host::ProcessRead)],
         IntrinsicId::NextTick
         | IntrinsicId::FutureRace
         | IntrinsicId::BoolNot
@@ -843,18 +812,6 @@ const MEMORY_RANGE_ACCESS: ContractTypeRef =
     ContractTypeRef::Standard(StdlibTypeId::MemoryRangeAccess);
 const TIMER_STATE: ContractTypeRef = ContractTypeRef::Standard(StdlibTypeId::TimerState);
 const INSTANT: ContractTypeRef = ContractTypeRef::Standard(StdlibTypeId::Instant);
-const UNITY_MODULE: ContractTypeRef = ContractTypeRef::Standard(StdlibTypeId::UnityModule);
-const UNITY_IMAGE: ContractTypeRef = ContractTypeRef::Standard(StdlibTypeId::UnityImage);
-const UNITY_CLASS: ContractTypeRef = ContractTypeRef::Standard(StdlibTypeId::UnityClass);
-const UNITY_CLASS_OPTION: ContractTypeRef = ContractTypeRef::Application {
-    constructor: StdlibTypeConstructorId::Option,
-    arguments: &[UNITY_CLASS],
-};
-const UNITY_FIELD: ContractTypeRef = ContractTypeRef::Standard(StdlibTypeId::UnityField);
-const UNITY_FIELD_OPTION: ContractTypeRef = ContractTypeRef::Application {
-    constructor: StdlibTypeConstructorId::Option,
-    arguments: &[UNITY_FIELD],
-};
 const GBA_EMULATOR: ContractTypeRef = ContractTypeRef::Standard(StdlibTypeId::GBAEmulator);
 const GCN_EMULATOR: ContractTypeRef = ContractTypeRef::Standard(StdlibTypeId::GCNEmulator);
 const WII_EMULATOR: ContractTypeRef = ContractTypeRef::Standard(StdlibTypeId::WiiEmulator);
@@ -2149,92 +2106,6 @@ pub(crate) const fn contract(id: IntrinsicId) -> IntrinsicContract {
             RUNTIME_READ_ALLOCATES,
             Everywhere,
             Retryable
-        ),
-        IntrinsicId::UnityModuleImage => contract!(
-            UnityModuleImage,
-            Method,
-            signature(
-                NO_TYPE_PARAMETERS,
-                Some(UNITY_MODULE),
-                params![value(STRING)],
-                UNITY_IMAGE,
-            ),
-            PROCESS_SUSPEND,
-            OnAttach,
-            Suspension
-        ),
-        IntrinsicId::UnityImageClass => contract!(
-            UnityImageClass,
-            Method,
-            signature(
-                NO_TYPE_PARAMETERS,
-                Some(UNITY_IMAGE),
-                params![value(STRING)],
-                UNITY_CLASS,
-            ),
-            PROCESS_SUSPEND,
-            OnAttach,
-            Suspension
-        ),
-        IntrinsicId::UnityImageClassAny => contract!(
-            UnityImageClassAny,
-            Method,
-            signature(
-                NO_TYPE_PARAMETERS,
-                Some(UNITY_IMAGE),
-                params![value(STRING_ARRAY)],
-                UNITY_CLASS_OPTION,
-            ),
-            PROCESS_SUSPEND,
-            OnAttach,
-            Suspension
-        ),
-        IntrinsicId::UnityClassField => contract!(
-            UnityClassField,
-            Method,
-            signature(
-                NO_TYPE_PARAMETERS,
-                Some(UNITY_CLASS),
-                params![value(STRING)],
-                U32,
-            ),
-            PROCESS_SUSPEND,
-            OnAttach,
-            Suspension
-        ),
-        IntrinsicId::UnityClassProbeFieldAny => contract!(
-            UnityClassProbeFieldAny,
-            Method,
-            signature(
-                NO_TYPE_PARAMETERS,
-                Some(UNITY_CLASS),
-                params![value(STRING_ARRAY)],
-                UNITY_FIELD_OPTION,
-            ),
-            PROCESS_SUSPEND,
-            OnAttach,
-            Suspension
-        ),
-        IntrinsicId::UnityClassStaticTable => contract!(
-            UnityClassStaticTable,
-            Method,
-            signature(NO_TYPE_PARAMETERS, Some(UNITY_CLASS), params![], ADDRESS,),
-            PROCESS_SUSPEND,
-            OnAttach,
-            Suspension
-        ),
-        IntrinsicId::UnityClassStaticInstance => contract!(
-            UnityClassStaticInstance,
-            Method,
-            signature(
-                NO_TYPE_PARAMETERS,
-                Some(UNITY_CLASS),
-                params![value(STRING_ARRAY)],
-                ADDRESS,
-            ),
-            PROCESS_SUSPEND,
-            OnAttach,
-            Suspension
         ),
         IntrinsicId::GBAEmulatorRead => contract!(
             GBAEmulatorRead,

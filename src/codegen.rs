@@ -60,7 +60,6 @@ mod script_functions;
 mod set_functions;
 mod settings;
 mod specialization;
-mod unity_layout;
 mod update;
 
 use self::array_functions::ArrayFunctions;
@@ -413,12 +412,6 @@ fn compile_internal(inputs: BackendProgram<'_>, report: Option<&mut CodegenRepor
             intrinsic_effect_errors.is_empty(),
             "invalid trusted intrinsic implementation contracts: {}",
             intrinsic_effect_errors.join("; ")
-        );
-        let unity_layout_errors = unity_layout::validate();
-        assert!(
-            unity_layout_errors.is_empty(),
-            "invalid trusted Unity/IL2CPP layout descriptors: {}",
-            unity_layout_errors.join("; ")
         );
     });
     let BackendProgram {

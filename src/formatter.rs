@@ -3219,7 +3219,7 @@ settings {
         assert!(
             format_source(include_str!("../examples/lunistice.split"))
                 .unwrap()
-                .contains("state Unity.il2cpp(2020) [\"Lunistice.exe\"")
+                .contains("state Unity.il2cpp(Il2CppProfile.unity2022_3_0f1X64()) [")
         );
     }
 
@@ -3323,8 +3323,8 @@ state Unity ["game.exe"] {
 
     #[test]
     fn formats_configured_state_provider_selectors_as_ordinary_calls() {
-        let source = r#"state Unity.il2cpp ( 2020 )["game.exe","demo.exe"]{}"#;
-        let expected = r#"state Unity.il2cpp(2020) ["game.exe", "demo.exe"] {}
+        let source = r#"state Unity.il2cpp ( Il2CppProfile.unity2021_3_11f1X64() )["game.exe","demo.exe"]{}"#;
+        let expected = r#"state Unity.il2cpp(Il2CppProfile.unity2021_3_11f1X64()) ["game.exe", "demo.exe"] {}
 "#;
         let formatted = format_source(source).unwrap();
         assert_eq!(formatted, expected);
