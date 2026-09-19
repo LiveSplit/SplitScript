@@ -6716,6 +6716,8 @@ fn compile_intrinsic_equality(
         Type::Standard(_)
             | Type::Struct(_)
             | Type::ManagedClass(_)
+            | Type::Set(_)
+            | Type::Application(_)
             | Type::Enum(_)
             | Type::Array(_)
             | Type::Option(_)

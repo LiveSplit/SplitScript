@@ -2166,6 +2166,48 @@ impl InferenceContext {
             .arguments
     }
 
+    pub(crate) fn finalize_constructed_types(&mut self) {
+        // Container families can nest in either direction. An application that
+        // becomes canonical after wrappers were visited can make two options,
+        // arrays, or sets identical in turn. Reach a shared fixed point before
+        // publishing nominal GC layouts, rather than relying on pass order.
+        loop {
+            let previous = (
+                self.canonical_arrays.clone(),
+                self.canonical_options.clone(),
+                self.canonical_results.clone(),
+                self.canonical_asyncs.clone(),
+                self.canonical_iterators.clone(),
+                self.canonical_callables.clone(),
+                self.canonical_ranges.clone(),
+                self.canonical_sets.clone(),
+                self.canonical_applications.clone(),
+            );
+            self.finalize_arrays();
+            self.finalize_wrappers();
+            self.finalize_ranges();
+            self.finalize_callables();
+            self.finalize_arrays();
+            self.finalize_sets();
+            self.finalize_applications();
+            if previous
+                == (
+                    self.canonical_arrays.clone(),
+                    self.canonical_options.clone(),
+                    self.canonical_results.clone(),
+                    self.canonical_asyncs.clone(),
+                    self.canonical_iterators.clone(),
+                    self.canonical_callables.clone(),
+                    self.canonical_ranges.clone(),
+                    self.canonical_sets.clone(),
+                    self.canonical_applications.clone(),
+                )
+            {
+                break;
+            }
+        }
+    }
+
     pub(crate) fn finalize_arrays(&mut self) {
         // Shape-polymorphic signatures have served their purpose once every
         // call has been checked. The semantic product and backend only need a
@@ -3037,10 +3079,14 @@ pub(crate) fn type_may_have_capability(
                         .type_constructor_has_capability(StdlibTypeConstructorId::Array, capability)
             }
             TypeKind::Set { .. } => {
-                library.type_constructor_has_capability(StdlibTypeConstructorId::Set, capability)
+                behavior == CapabilityBehavior::StructuralEquality
+                    || library
+                        .type_constructor_has_capability(StdlibTypeConstructorId::Set, capability)
             }
             TypeKind::Application { constructor, .. } => {
-                library.type_constructor_has_capability(*constructor, capability)
+                behavior == CapabilityBehavior::StructuralEquality
+                    && *constructor == StdlibTypeConstructorId::Map
+                    || library.type_constructor_has_capability(*constructor, capability)
             }
             TypeKind::GenericParameter { .. } => false,
         },
@@ -3075,9 +3121,11 @@ pub(crate) fn type_may_have_capability(
                     .type_constructor_has_capability(StdlibTypeConstructorId::Array, capability)
         }
         Type::Set(_) => {
-            library.type_constructor_has_capability(StdlibTypeConstructorId::Set, capability)
+            behavior == CapabilityBehavior::StructuralEquality
+                || library.type_constructor_has_capability(StdlibTypeConstructorId::Set, capability)
         }
-        Type::Application(application) => library.type_constructor_has_capability(
+        Type::Application(application) => {
+            let constructor =
             // Inference owns the constructor mapping; unresolved applications
             // are conservatively admitted and validated semantically later.
             match types.iter().find_map(|(_, kind)| match kind {
@@ -3090,9 +3138,11 @@ pub(crate) fn type_may_have_capability(
             }) {
                 Some(constructor) => constructor,
                 None => return true,
-            },
-            capability,
-        ),
+            };
+            behavior == CapabilityBehavior::StructuralEquality
+                && constructor == StdlibTypeConstructorId::Map
+                || library.type_constructor_has_capability(constructor, capability)
+        }
         Type::Variable(_) => false,
     }
 }

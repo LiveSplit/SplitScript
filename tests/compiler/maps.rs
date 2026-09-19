@@ -365,3 +365,42 @@ fn map_entry_pattern_fields_support_hover_and_binding_rename() {
     assert!(hover.markdown.contains("MapEntry<K, V>.key: K"));
     assert!(hover.markdown.contains("Key stored by this entry."));
 }
+
+#[test]
+fn nested_keyed_collections_derive_structural_equality() {
+    for profile in [
+        splitscript::BuildProfile::Debug,
+        splitscript::BuildProfile::Release,
+    ] {
+        let wasm = splitscript::compile_with_options(
+            include_str!("../keyed_equality.split"),
+            splitscript::CompilerOptions {
+                profile,
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        Validator::new_with_features(WasmFeatures::all())
+            .validate_all(&wasm)
+            .unwrap();
+    }
+}
+
+#[test]
+fn map_equality_requires_equatable_values_without_restricting_map_storage() {
+    let source = r#"
+        state "game.exe" {}
+        fn callback() {}
+        whileAttached {
+            let values = Map.new()
+            values["callback"] = callback
+            print(values.length())
+        }
+    "#;
+    splitscript::compile(source).unwrap();
+    let source = source.replace("print(values.length())", "print(values == values)");
+    let errors = splitscript::compile(&source)
+        .map(|wasm| wasm.len())
+        .unwrap_err();
+    assert!(format!("{errors:?}").contains("equality"));
+}

@@ -2359,3 +2359,61 @@ fn recursive_snapshot_equality_checks_every_field() {
         .unwrap_err();
     assert!(format!("{error:?}").contains("equality"));
 }
+
+#[test]
+fn snapshot_equality_composes_through_recursive_maps_and_sets() {
+    let source = r#"
+        image "Assembly-CSharp" {
+            class Node { Map<String, Set<Node?>> neighbors; }
+        }
+        state "game.exe" {}
+        fn same(left: Node, right: Node) -> bool { return left == right }
+        setup { let callback = same }
+    "#;
+    let (wasm, report) = release_emission(source);
+    Validator::new_with_features(WasmFeatures::all())
+        .validate_all(&wasm)
+        .unwrap();
+    for kind in ["Node", "map#", "set#"] {
+        assert!(
+            report
+                .functions
+                .iter()
+                .any(|(_, name)| name.starts_with(&format!("__splitscript::equals::{kind}")))
+        );
+    }
+    assert!(
+        !report
+            .functions
+            .iter()
+            .any(|(_, name)| name.contains("::managed::"))
+    );
+}
+
+#[test]
+fn storing_nested_collections_does_not_emit_collection_equality() {
+    for collection in [
+        "Map.new<String, Set<i32>>()",
+        "Set.new<Map<String, Set<i32>>>()",
+    ] {
+        let source = format!(
+            r#"
+            state "game.exe" {{}}
+            let values = {collection}
+            whileAttached {{ print(values.length()) }}
+        "#
+        );
+        let (wasm, report) = release_emission(&source);
+        Validator::new_with_features(WasmFeatures::all())
+            .validate_all(&wasm)
+            .unwrap();
+        assert!(
+            !report
+                .functions
+                .iter()
+                .any(|(_, name)| name.starts_with("__splitscript::equals::map#")
+                    || name.starts_with("__splitscript::equals::set#")),
+            "{collection}"
+        );
+    }
+}

@@ -10,7 +10,7 @@ use std::collections::HashMap;
 use crate::{
     ast::{EnumDecl, EnumId, ManagedClassId, StructDecl, StructId},
     semantic::SemanticModel,
-    stdlib::{StandardLibrary, StdlibCapabilityId},
+    stdlib::{StandardLibrary, StdlibCapabilityId, StdlibTypeConstructorId},
     structural::{StructuralTypeId, StructuralTypes},
     types::{TypeId, TypeKind},
 };
@@ -97,6 +97,19 @@ impl EqualityCapabilities {
             TypeKind::Array { element, .. } => self
                 .require(*element, semantics)
                 .map_err(|error| format!("array element does not support equality: {error}")),
+            TypeKind::Set { element, .. } => self
+                .require(*element, semantics)
+                .map_err(|error| format!("set element does not support equality: {error}")),
+            TypeKind::Application {
+                constructor: StdlibTypeConstructorId::Map,
+                arguments,
+                ..
+            } => {
+                self.require(arguments[0], semantics)
+                    .map_err(|error| format!("map key does not support equality: {error}"))?;
+                self.require(arguments[1], semantics)
+                    .map_err(|error| format!("map value does not support equality: {error}"))
+            }
             _ => Err("this type does not support equality".to_owned()),
         }
     }
@@ -178,7 +191,16 @@ impl EqualityCapabilities {
             ),
             TypeKind::Option { value, .. } => self.check_type(*value, semantics, visiting),
             TypeKind::Result { value, .. } => self.check_type(*value, semantics, visiting),
-            TypeKind::Array { element, .. } => self.check_type(*element, semantics, visiting),
+            TypeKind::Array { element, .. } | TypeKind::Set { element, .. } => {
+                self.check_type(*element, semantics, visiting)
+            }
+            TypeKind::Application {
+                constructor: StdlibTypeConstructorId::Map,
+                arguments,
+                ..
+            } => self
+                .check_type(arguments[0], semantics, visiting)
+                .and_then(|()| self.check_type(arguments[1], semantics, visiting)),
             _ => Err("the contained type does not support equality".to_owned()),
         };
         visiting.pop();

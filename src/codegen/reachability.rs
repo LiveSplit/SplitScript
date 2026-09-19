@@ -7,7 +7,8 @@ use crate::{
     },
     semantic::{ClosureInstance, FunctionInstance, FunctionValueInstance, SemanticModel},
     stdlib::{
-        IntrinsicId, RuntimeRepresentation, StandardLibrary, StdlibCapabilityId, StdlibTypeId,
+        IntrinsicId, RuntimeRepresentation, StandardLibrary, StdlibCapabilityId,
+        StdlibTypeConstructorId, StdlibTypeId,
     },
     types::{ResolvedArrayType, TypeId, TypeKind},
     wasm_ir::{self, BodyOwner, Visitor},
@@ -27,6 +28,8 @@ pub(super) struct Reachability {
     equality_arrays: BTreeSet<ArrayTypeId>,
     equality_options: BTreeSet<OptionTypeId>,
     equality_results: BTreeSet<ResultTypeId>,
+    equality_sets: BTreeSet<TypeApplicationId>,
+    equality_maps: BTreeSet<TypeApplicationId>,
     string_equality: bool,
     gc_standard: BTreeSet<StdlibTypeId>,
     gc_structs: BTreeSet<StructId>,
@@ -806,24 +809,6 @@ impl Reachability {
             standard_library,
             capabilities,
         );
-        // Every emitted Set layout currently owns its complete method suite,
-        // including contains/insert/remove. Those bodies require element
-        // equality even when the source only constructs or displays the set.
-        // Keep this dependency paired with the emitted body family rather
-        // than relying on an incidental call site to pull it in.
-        let set_elements = semantics
-            .types()
-            .iter()
-            .filter_map(|(_, kind)| match kind {
-                TypeKind::Set {
-                    layout, element, ..
-                } if reachable.gc_sets.contains(layout) => Some(*element),
-                _ => None,
-            })
-            .collect::<Vec<_>>();
-        for element in set_elements {
-            reachable.require_equality(element, semantics, standard_library, capabilities);
-        }
         reachable
     }
 
@@ -951,6 +936,14 @@ impl Reachability {
 
     pub fn requires_result_equality(&self, result: ResultTypeId) -> bool {
         self.equality_results.contains(&result)
+    }
+
+    pub fn requires_set_equality(&self, set: TypeApplicationId) -> bool {
+        self.equality_sets.contains(&set)
+    }
+
+    pub fn requires_map_equality(&self, map: TypeApplicationId) -> bool {
+        self.equality_maps.contains(&map)
     }
 
     pub fn requires_string_equality(&self) -> bool {
@@ -1282,6 +1275,22 @@ impl Reachability {
                 TypeKind::Result { layout, value } if self.equality_results.insert(*layout) => {
                     self.string_equality = true;
                     pending.push(*value);
+                }
+                TypeKind::Set {
+                    layout, element, ..
+                } if self.equality_sets.insert(*layout) => {
+                    // Reuse the byte-array representation for a private matching
+                    // bitmap; no String operations are needed by this storage.
+                    self.gc_standard.insert(StdlibTypeId::String);
+                    pending.push(*element);
+                }
+                TypeKind::Application {
+                    layout,
+                    constructor: StdlibTypeConstructorId::Map,
+                    arguments,
+                } if self.equality_maps.insert(*layout) => {
+                    self.gc_standard.insert(StdlibTypeId::String);
+                    pending.extend(arguments.iter().copied());
                 }
                 TypeKind::Struct(_)
                 | TypeKind::ManagedClass(_)

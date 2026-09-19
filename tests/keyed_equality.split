@@ -1,0 +1,66 @@
+state "game.exe" {}
+fn values(reverse: bool) -> Set<[i32]> {
+    let values = Set.new<[i32]>()
+    if reverse { values.insert([3]); values.insert([1, 2]) }
+    else { values.insert([1, 2]); values.insert([3]) }
+    return values
+}
+fn routes(reverse: bool) -> Map<String, Set<[i32]>> {
+    let result = Map.new<String, Set<[i32]>>()
+    if reverse { result["second"] = Set.new<[i32]>(); result["first"] = values(true) }
+    else { result["first"] = values(false); result["second"] = Set.new<[i32]>() }
+    return result
+}
+whileAttached {
+    let first = values(false)
+    let second = values(true)
+    setVariable("set order", first == second)
+    second.insert([4])
+    setVariable("set count", first != second)
+    second.remove([4])
+    setVariable("set spare capacity", first == second)
+    second.remove([3]); second.insert([9])
+    setVariable("set contents", first != second)
+    let left = routes(false)
+    let right = routes(true)
+    setVariable("map order", left == right)
+    let nested = Set.new<Map<String, Set<[i32]>>>()
+    nested.insert(left)
+    setVariable("nested duplicate", !nested.insert(right) && nested.length() == 1)
+    let lookup = Map.new<Map<String, Set<[i32]>>, String>()
+    lookup[left] = "found"
+    setVariable("map key", lookup.containsKey(right) && lookup[right] == "found")
+    let boxedLeft: Map<String, Set<[i32]>>? = left
+    let boxedRight: Map<String, Set<[i32]>>? = right
+    setVariable("optional map", boxedLeft == boxedRight)
+    setVariable("array map", [left] == [right])
+    right["first"].insert([4])
+    setVariable("map values", left != right)
+    right.remove("second"); right["other"] = Set.new<[i32]>()
+    setVariable("map keys", left != right)
+    let x = [1]
+    let y = [2]
+    let duplicates = Set.new<[i32]>()
+    duplicates.insert(x); duplicates.insert(y); y[0] = 1
+    let distinct = Set.new<[i32]>()
+    distinct.insert([1]); distinct.insert([2])
+    setVariable("one to one", duplicates != distinct && distinct != duplicates)
+    let a = [1]
+    let b = [2]
+    let c = [1]
+    let d = [2]
+    let collisionLeft = Map.new<[i32], i32>()
+    collisionLeft[a] = 10; collisionLeft[b] = 20; b[0] = 1
+    let collisionRight = Map.new<[i32], i32>()
+    collisionRight[c] = 20; collisionRight[d] = 10; d[0] = 1
+    setVariable("pair matching", collisionLeft == collisionRight && collisionRight == collisionLeft)
+    let nan = f64.fromBits(0x7ff8000000001234u64)
+    let nans = Set.new<f64>()
+    nans.insert(nan)
+    setVariable("NaN set", nans != nans)
+    let nanMap = Map.new<i32, f64>()
+    nanMap[0] = nan
+    setVariable("NaN map", nanMap != nanMap)
+    setVariable("empty set", Set.new<i32>() == Set.new<i32>())
+    setVariable("empty map", Map.new<i32, i32>() == Map.new<i32, i32>())
+}

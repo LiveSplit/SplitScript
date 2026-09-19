@@ -9,7 +9,7 @@ use crate::{
     semantic::{ClosureInstance, FunctionInstance, FunctionValueInstance, SemanticModel},
     stdlib::{IntrinsicId, RuntimeRepresentation, StandardLibrary, StdlibTypeConstructorId},
     structural::{StructuralTypeId, StructuralTypes},
-    types::{ResolvedArrayType, ResolvedOptionType, ResolvedResultType, ResolvedSetType},
+    types::{ResolvedArrayType, ResolvedOptionType, ResolvedResultType, ResolvedSetType, TypeKind},
 };
 
 use super::{
@@ -272,6 +272,32 @@ pub(super) fn encode<'a>(
             );
             equality.results.insert(result.id, function);
         }
+    }
+
+    for (_, kind) in semantics.types().iter() {
+        let (layout, ty, name, functions) = match kind {
+            TypeKind::Set { layout, .. } if reachability.requires_set_equality(*layout) => {
+                (*layout, Type::Set(*layout), "set", &mut equality.sets)
+            }
+            TypeKind::Application {
+                layout,
+                constructor: StdlibTypeConstructorId::Map,
+                ..
+            } if reachability.requires_map_equality(*layout) => (
+                *layout,
+                Type::Application(*layout),
+                "map",
+                &mut equality.maps,
+            ),
+            _ => continue,
+        };
+        let value_type = gc.val_type(ty);
+        let function = declarations.declare(
+            || format!("__splitscript::equals::{name}#{}", layout.index()),
+            vec![value_type, value_type],
+            vec![ValType::I32],
+        );
+        functions.insert(layout, function);
     }
 
     let mut displays = DisplayFunctions {

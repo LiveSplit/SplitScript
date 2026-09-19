@@ -3125,8 +3125,10 @@ capability Equatable {
     ///
     /// This method is also the implementation of the
     /// [`==`](operator@Equatable.equals) operator. Structs,
-    /// enums, arrays, options, and results compare their complete structure;
-    /// strings compare UTF-8 contents. Array equality compares lengths and then
+    /// enums, owned class snapshots, arrays, options, and results compare their
+    /// complete structure; strings compare UTF-8 contents. Sets and maps compare
+    /// elements or key-value pairs without depending on insertion order; map
+    /// equality requires equatable keys and values. Array equality compares lengths and then
     /// elements in order. Floating-point equality follows IEEE 754, so NaN is
     /// not equal to itself.
     ///
@@ -4467,7 +4469,9 @@ typeConstructor T..=T {
 ///
 /// A set keeps its allocation and contents across ticks. Mutating operations
 /// update the same set value, so a global set can track visited checkpoints
-/// without rebuilding a collection on every update.
+/// without rebuilding a collection on every update. Equality compares complete
+/// element values independently of insertion order. Sets can themselves be set
+/// elements or map keys, including recursively nested collections.
 ///
 /// In Unity schemas, sets describe managed hash sets. Elements must support
 /// [`ManagedReadable`] and local equality. Reads recursively create owned,
@@ -4690,7 +4694,10 @@ typeConstructor MapEntry<K, V> {
 /// across ticks, so aliases observe every mutation. Indexing returns the
 /// stored value and traps when the key is absent; use [`Map.containsKey`] first
 /// when absence is expected. This keeps maps whose values are themselves
-/// optional unambiguous without adding another lookup operation.
+/// optional unambiguous without adding another lookup operation. Maps support
+/// equality when both keys and values are equatable; it compares key-value pairs
+/// independently of insertion order. Such maps can themselves be set elements
+/// or map keys.
 ///
 /// In Unity schemas, maps describe managed dictionaries. Both keys and values
 /// must support [`ManagedReadable`]. Reads produce owned, deeply immutable maps,

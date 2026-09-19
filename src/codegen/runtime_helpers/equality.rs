@@ -1,14 +1,16 @@
 //! Structural equality body generation for runtime and source aggregates.
 
+mod keyed;
+
 use wasm_encoder::{BlockType, Function, Instruction, ValType};
 
 use crate::{
     ast::{ArrayTypeId, OptionTypeId, ResultTypeId},
     intrinsic_registry::RuntimeHelperId,
     semantic::SemanticModel,
-    stdlib::{DeclaredTypeRef, RuntimeRepresentation, StdlibTypeId},
+    stdlib::{DeclaredTypeRef, RuntimeRepresentation, StdlibTypeConstructorId, StdlibTypeId},
     structural::{StructuralMemberId, StructuralType, StructuralTypeId, StructuralTypes},
-    types::{ResolvedArrayType, ResolvedOptionType, ResolvedResultType},
+    types::{ResolvedArrayType, ResolvedOptionType, ResolvedResultType, TypeKind},
 };
 
 use super::super::{
@@ -127,6 +129,27 @@ pub(in crate::codegen) fn compile_equality(
         }
     }
 
+    for (ty, kind) in semantics.types().iter() {
+        let demanded = match kind {
+            TypeKind::Set { layout, .. } => equality_functions.sets.contains_key(layout),
+            TypeKind::Application {
+                layout,
+                constructor: StdlibTypeConstructorId::Map,
+                ..
+            } => equality_functions.maps.contains_key(layout),
+            _ => false,
+        };
+        if demanded {
+            equality.push(keyed::compile(
+                ty,
+                arrays,
+                semantics,
+                equality_functions,
+                string_equality,
+                gc,
+            ));
+        }
+    }
     equality
 }
 
@@ -583,6 +606,8 @@ pub(in crate::codegen) fn emit_value_equality(
         Type::Array(array) => Instruction::Call(equality_functions.arrays[&array]),
         Type::Option(option) => Instruction::Call(equality_functions.options[&option]),
         Type::Result(result) => Instruction::Call(equality_functions.results[&result]),
+        Type::Set(set) => Instruction::Call(equality_functions.sets[&set]),
+        Type::Application(map) => Instruction::Call(equality_functions.maps[&map]),
         Type::None => Instruction::RefEq,
         Type::F32 => Instruction::F32Eq,
         Type::F64 => Instruction::F64Eq,

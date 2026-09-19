@@ -8,7 +8,7 @@ const layouts = {
     V2: {32:[0x2c,0x30,0x20,0x60,0xa4,0x1e,0x94],64:[0x48,0x50,0x30,0x98,0x100,0x2a,0xf0]},
     V3: {32:[0x2c,0x30,0x20,0x60,0x9c,0xf,0x8c],64:[0x48,0x50,0x30,0x98,0x100,0x1b,0xf0]},
 };
-export function createKeyedCollectionFixture({family='V2', width=64, dictionary=true, parallel=false, reversed=false, renamed=false, inline=false}={}) {
+export function createKeyedCollectionFixture({family='V2', width=64, dictionary=true, parallel=false, reversed=false, renamed=false, inline=false, base=0n}={}) {
     const mono = family !== 'il2cpp', wide = width === 64, bytes = width / 8, header = 2 * bytes;
     const fixture = mono ? createMonoPeFixture(profiles.builds.find(p=>p.width===width && p.version===family))
         : createIl2cppPeFixture({width, version:[2022,3,0,37029]});
@@ -26,19 +26,19 @@ export function createKeyedCollectionFixture({family='V2', width=64, dictionary=
     const text = (at,value)=> {const data=new Uint8Array(256);data.set(new TextEncoder().encode(value));write(at,data);};
     const [nameOffset,namespaceOffset,parentOffset,fieldsOffset,countOffset,kindOffset,genericOffset] = mono ? layouts[family][width]
         : wide ? [0x10,0x18,0x58,0x80,0x124] : [8,0xc,0x2c,0x40,0xac];
-    const root=0x30000n, owner=0x31000n, definition=0x32000n, entry=0x33000n, entryDefinition=0x34000n;
-    const object=0x70000n,vtable=0x71000n;
-    const vectorType=0x50000n,elementType=0x50100n,intType=0x50200n,hashType=0x50300n,valueType=0x50400n,keyType=0x50500n;
+    const root=(0x30000n + base), owner=(0x31000n + base), definition=(0x32000n + base), entry=(0x33000n + base), entryDefinition=(0x34000n + base);
+    const object=(0x70000n + base),vtable=(0x71000n + base);
+    const vectorType=(0x50000n + base),elementType=(0x50100n + base),intType=(0x50200n + base),hashType=(0x50300n + base),valueType=(0x50400n + base),keyType=(0x50500n + base);
     for(const klass of [root,owner,definition,entry,entryDefinition])for(let i=0n;i<0x200n;i++)memory.set(klass+i,0);
     const named=(klass,at,name,namespace)=>{
         ptr(klass+BigInt(nameOffset),at);text(at,name);
         ptr(klass+BigInt(namespaceOffset),at+256n);text(at+256n,namespace);
     };
-    named(root,0x40000n,'DerivedCollection','Game');
-    named(owner,0x40200n,dictionary?'Dictionary`2':'HashSet`1','System.Collections.Generic');
+    named(root,(0x40000n + base),'DerivedCollection','Game');
+    named(owner,(0x40200n + base),dictionary?'Dictionary`2':'HashSet`1','System.Collections.Generic');
     ptr(root+BigInt(parentOffset),owner);
     number(vectorType+BigInt(bytes+2),1,0x1d);ptr(vectorType,mono?entry:elementType);
-    number(elementType+BigInt(bytes+2),1,0x15);ptr(elementType,0x36000n);ptr(0x36000n+BigInt(3*bytes),entry);
+    number(elementType+BigInt(bytes+2),1,0x15);ptr(elementType,(0x36000n + base));ptr((0x36000n + base)+BigInt(3*bytes),entry);
     number(intType+BigInt(bytes+2),1,0x08);number(hashType+BigInt(bytes+2),1,0x09);
     number(valueType+BigInt(bytes+2),1,inline?0x11:0x0e);number(keyType+BigInt(bytes+2),1,inline?0x05:0x0e);
     const keyBytes=inline?1:bytes, valueBytes=inline?16:bytes;
@@ -55,20 +55,20 @@ export function createKeyedCollectionFixture({family='V2', width=64, dictionary=
         ptr(klass+BigInt(fieldsOffset),at);number(counted+BigInt(countOffset),mono?4:2,entries.length);
         if(mono&&kindOffset!==null){
             number(klass+BigInt(kindOffset),1,3);
-            const descriptor=klass===owner?0x35000n:0x39000n;
+            const descriptor=klass===owner?(0x35000n + base):(0x39000n + base);
             ptr(klass+BigInt(genericOffset),descriptor);ptr(descriptor,counted);number(klass+BigInt(countOffset),4,0x7fffffff);
         }
         entries.forEach(([name,offset,type],i)=>{
-            const field=at+BigInt(i*(wide?32:mono?16:20)),nameAddress=0x44000n+BigInt(nameIndex++*256);
+            const field=at+BigInt(i*(wide?32:mono?16:20)),nameAddress=(0x44000n + base)+BigInt(nameIndex++*256);
             ptr(field+BigInt(mono?bytes:0),nameAddress);text(nameAddress,name);ptr(field+BigInt(mono?0:bytes),type);
             number(field+BigInt(wide?0x18:0xc),4,offset);
         });
     };
-    fields(owner,mono&&kindOffset!==null?definition:owner,0x37000n,outer);
-    fields(entry,mono&&kindOffset!==null?entryDefinition:entry,0x38000n,members);
+    fields(owner,mono&&kindOffset!==null?definition:owner,(0x37000n + base),outer);
+    fields(entry,mono&&kindOffset!==null?entryDefinition:entry,(0x38000n + base),members);
     number(entry+BigInt(mono?(wide?0x1c:0x10):(wide?0xf8:0x80)),4,stride+header);
     ptr(object,mono?vtable:root);ptr(vtable,root);
-    number(0x60000n,8,object);number(0x60008n,1,dictionary?0:1);number(0x60009n,1,0);
-    number(0x6000an,1,family==='V1Cattrs'?1:family==='V3'?3:2);
+    number((0x60000n + base),8,object);number((0x60008n + base),1,dictionary?0:1);number((0x60009n + base),1,0);
+    number((0x6000an + base),1,family==='V1Cattrs'?1:family==='V3'?3:2);
     return {...fixture,number,ptr,object,vtable,root,owner,width,bytes,outer,stride,hash,next,key,value,keyBytes,valueBytes};
 }

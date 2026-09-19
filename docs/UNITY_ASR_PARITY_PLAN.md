@@ -1321,6 +1321,53 @@ are still needed. Remote type/stride compatibility, raw UTF-16, structured neste
 errors, shared metadata/comparison work, complete profiles/platforms, and the
 explicit Lunistice size target remain part of the active Unity goal.
 
+### Equality for nested maps and sets
+
+`Map<K,V>` now derives equality when both keys and values support it, and
+`Set<T>` derives equality from its elements. Comparisons match complete entries
+or elements independently of insertion order. Matching is one-to-one, including
+when mutable local child values have made previously distinct entries equal;
+no identity shortcut bypasses floating-point NaN semantics. Generated helpers
+use a private GC byte-array matching bitmap, emitted only for demanded keyed
+comparisons. This does not add Unity metadata discovery or managed reads to
+ordinary local equality. A stale reachability rule that retained equality for
+all set element types has been removed: actual equality operations, set lookup/
+mutation methods, and managed duplicate detection supply the dependencies.
+Merely storing or constructing a nested collection does not retain its comparison
+helpers.
+
+The same equality graph composes with arrays, nullable wrappers, and immutable
+class snapshots, including recursive class schemas through maps and sets.
+Remote fixtures now materialize `Set<Map<String, [String?]>>` and
+`Map<Set<[String?]>, [String?]>` using opposite inner/outer collection storage
+layouts. They cover content mutations, insertion-order changes, duplicate
+outer keys/elements under decoded equality, failed nested reads, retained old
+snapshots, and mutation rejection throughout the captured graph.
+
+Optional maps exposed a type-normalization bug: identical nested applications
+could leave distinct nominal wrapper layouts after the application pass ran.
+Constructed-type normalization now iterates all container families to a common
+fixed point before publishing GC identities. This is needed for correctly typed
+nested values to compile; it is not a collection representation change.
+
+Validation: the full suite passes 443 library tests (one ignored), 673 compiler
+tests, and four baseline unit tests. After the final reachability adjustment,
+all 15 equality-focused and 18 set-focused compiler tests pass again. The current
+runtime catalog validates 126 artifacts and 156 scenarios, including 384 new
+remote nesting cases and 34 local keyed-equality assertions across Debug and
+Release. Formatting, Clippy with warnings denied, and all 558 generated
+documentation pages pass. All 34 existing optimized fixtures retain exact module/
+section sizes, function/type counts, sorted body sizes, and emission metadata.
+The strict gate and Lunistice base/DLC fixtures pass; explicit Lunistice is still
+58,178 bytes. No live game was launched.
+
+Owned-list constraints remain the next composition gap: schema `List<T>` must
+be checked using its owned array projection where Map/Set require equality.
+The shared managed comparison budget currently charges outer duplicate-check
+pairs, not every recursive equality operation; that accounting remains open,
+along with the other metadata, profile/platform, error, UTF-16, and Lunistice
+requirements in the full plan.
+
 ## Source map for implementation
 
 Upstream links below are pinned to the reviewed tip; the PR table provides the historical changes.

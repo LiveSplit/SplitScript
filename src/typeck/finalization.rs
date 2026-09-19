@@ -60,13 +60,7 @@ pub(super) fn finish(mut checker: Checker, program: &Program) -> RecoveringCheck
                 .resolve_state_poll_result(field.id, poll_result);
         }
     }
-    checker.finalize_array_types();
-    checker.inference.finalize_wrappers();
-    checker.inference.finalize_ranges();
-    checker.inference.finalize_callables();
-    checker.finalize_array_types();
-    checker.inference.finalize_sets();
-    checker.inference.finalize_applications();
+    checker.inference.finalize_constructed_types();
     checker.inference.intern_resolved_constructed_types();
     let source_associated_types = checker
         .inference
@@ -493,10 +487,6 @@ impl Checker {
 
     pub(super) fn resolved_type(&mut self, ty: Type) -> Type {
         self.inference.resolve(ty)
-    }
-
-    pub(super) fn finalize_array_types(&mut self) {
-        self.inference.finalize_arrays();
     }
 }
 
