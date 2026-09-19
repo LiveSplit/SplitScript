@@ -58,6 +58,22 @@ impl BackendDependencies {
             let declaration = program
                 .managed_class(class)
                 .expect("reachable managed classes belong to the program");
+            if declaration
+                .all_fields()
+                .filter(|field| !field.is_static)
+                .any(|field| {
+                    semantics.managed_field_snapshot_type(field.id)
+                        != semantics.managed_field_value_type(field.id)
+                })
+                || declaration
+                    .all_fields()
+                    .filter(|field| !field.is_static)
+                    .count()
+                    > crate::managed_read::MAX_SNAPSHOT_WORK as usize
+            {
+                dependencies.require(RuntimeHelperId::EnterManagedObject);
+                dependencies.require(RuntimeHelperId::ChargeManagedWork);
+            }
             for field in declaration.all_fields().filter(|field| !field.is_static) {
                 dependencies.require_managed_field_reader(
                     field.id,

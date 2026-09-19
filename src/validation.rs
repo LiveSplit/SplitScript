@@ -533,7 +533,15 @@ fn validate_remote_memory_layouts(
             let ty = semantics
                 .managed_field_value_type(field.id)
                 .expect("checked managed fields have semantic types");
-            if matches!(semantics.types().kind(ty), TypeKind::ManagedReference(_)) {
+            let reference = match semantics.types().kind(ty) {
+                TypeKind::ManagedReference(_) => true,
+                TypeKind::Option { value, .. } => matches!(
+                    semantics.types().kind(*value),
+                    TypeKind::ManagedReference(_)
+                ),
+                _ => false,
+            };
+            if reference {
                 continue;
             }
             let Err(error) =
@@ -562,6 +570,23 @@ fn validate_remote_memory_layouts(
         }
     }
 
+    for (expression, call) in semantics.calls() {
+        if let crate::semantic::ResolvedCall::ManagedSnapshot { class, .. } = call {
+            let ty = semantics.types().id_for_managed_class(*class);
+            if let Err(error) =
+                capabilities.require(ty, StdlibCapabilityId::ManagedReadable, semantics)
+                && let Some(expression) = hir.expression(expression)
+            {
+                diagnostics.push(
+                    Diagnostic::semantic(
+                        "managed class snapshot contains a value without a managed decoder",
+                        expression.span,
+                    )
+                    .with_note(error),
+                );
+            }
+        }
+    }
     diagnostics
 }
 

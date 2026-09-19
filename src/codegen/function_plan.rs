@@ -420,6 +420,15 @@ pub(super) fn encode<'a>(
                 _ => None,
             })
             .expect("reachable managed snapshot calls have Result layouts");
+        let mut parameters = vec![ValType::I64];
+        if runtime_helpers
+            .optional_function(crate::intrinsic_registry::RuntimeHelperId::EnterManagedObject)
+            .is_some()
+        {
+            parameters.push(gc.val_type(Type::Standard(
+                crate::stdlib::StdlibTypeId::ManagedReadContext,
+            )));
+        }
         managed_snapshot_functions.insert(
             class,
             declarations.declare(
@@ -430,7 +439,7 @@ pub(super) fn encode<'a>(
                         .name;
                     format!("__splitscript::managed::{class_name}::snapshot")
                 },
-                vec![ValType::I64],
+                parameters,
                 vec![gc.val_type(Type::Result(result))],
             ),
         );

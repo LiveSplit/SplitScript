@@ -130,7 +130,8 @@ impl CapabilityAnalysis {
             .collect();
         let memory =
             MemoryLayouts::build_with_library(structs, enums, semantics, standard_library.clone());
-        let managed = crate::managed_read::ManagedReadTypes::build(&memory, semantics);
+        let managed =
+            crate::managed_read::ManagedReadTypes::build(&memory, semantics, managed_classes);
         Self {
             standard_library: standard_library.clone(),
             equality: EqualityCapabilities::build_with_structural(

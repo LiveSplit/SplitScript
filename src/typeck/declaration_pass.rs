@@ -840,6 +840,9 @@ fn collect_managed_field(
     metadata_names: &mut HashMap<String, (String, Span)>,
 ) {
     let field_ty = checker.syntax_type(field.ty);
+    // Materialize nullable live-reference projections even for declarations
+    // that are not read, so semantic binding plans remain read-only queries.
+    checker.managed_read_value_type(field.ty);
     let managed_string = managed_string_kind(checker, field_ty);
     match (managed_string, field.max_length) {
         (Some(_), None) => {

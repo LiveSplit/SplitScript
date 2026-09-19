@@ -718,7 +718,7 @@ fn reachable_managed_snapshot_types_have_gc_layouts() {
             return manager.points
         }
 
-        fn player(manager: GameManager) -> Player.Ref {
+        fn player(manager: GameManager) -> Player {
             return manager.player
         }
 
@@ -795,7 +795,7 @@ fn managed_reference_snapshot_reads_the_complete_layout_refined_shape() {
             print(current.manager)
             print(current.manager.points)
             let player = current.manager.player
-            let health = player.health else 0.0
+            let health = player.health
             print(health)
             if edition == Edition.Base {
                 print(current.manager.level)
@@ -828,6 +828,12 @@ fn managed_reference_snapshot_reads_the_complete_layout_refined_shape() {
             .any(|(_, name)| name == "__splitscript::debug::GameManager"),
         "displaying a managed snapshot should materialize its structural formatter"
     );
+    assert!(
+        names
+            .iter()
+            .any(|(_, name)| name == "__splitscript::managed::Player::snapshot"),
+        "nested class snapshots must retain their child reader"
+    );
 
     let unused = splitscript::compile_with_options(
         r#"
@@ -851,6 +857,91 @@ fn managed_reference_snapshot_reads_the_complete_layout_refined_shape() {
     assert!(
         names.iter().all(|(_, name)| !name.ends_with("::snapshot")),
         "snapshot readers must be generated only when reachable: {names:#?}"
+    );
+}
+
+#[test]
+fn recursive_managed_classes_have_distinct_live_and_owned_projections() {
+    let checked = splitscript::check(
+        splitscript::parse(
+            r#"
+        image "Assembly-CSharp" {
+            class Node { Node? next; String text maxLength 8; }
+        }
+        state Unity ["game.exe"] {}
+        fn live(node: Node.Ref) -> Node.Ref?! { return node.next }
+        fn owned(node: Node) -> Node? { return node.next }
+    "#,
+        )
+        .unwrap(),
+    )
+    .expect("live access and owned projections must coexist");
+    let class = checked.syntax().managed_class_declarations()[0].id;
+    let semantics = checked.semantics();
+    let capability = splitscript::compiler::stdlib::StdlibCapabilityId::ManagedReadable;
+    assert!(checked.capabilities().has(
+        semantics.types().id_for_managed_class(class),
+        capability,
+        semantics
+    ));
+    assert!(!checked.capabilities().has(
+        semantics.types().id_for_managed_reference(class),
+        capability,
+        semantics
+    ));
+}
+
+#[test]
+fn managed_snapshots_reject_explicit_live_references_inside_the_owned_value() {
+    let errors = splitscript::compile(
+        r#"
+        image "Assembly-CSharp" {
+            class Node { static Node instance; Node.Ref live; }
+        }
+        state Unity ["game.exe"] {}
+        whileAttached { let root = Node.instance else return; let value = root.snapshot(); }
+    "#,
+    )
+    .expect_err("snapshot materialization cannot hide an explicitly live field");
+    assert!(
+        errors.iter().any(|error| error
+            .message
+            .contains("snapshot contains a value without a managed decoder")),
+        "{errors:#?}"
+    );
+}
+
+#[test]
+fn unused_nested_managed_classes_do_not_retain_a_read_context() {
+    let source = r#"
+        image "Assembly-CSharp" {
+            class Flat { static Flat instance; i32 value; }
+        }
+        state Unity.il2cpp(Il2CppProfile.unity2022_3_0f1X64()) ["game.exe"] {
+            value = Flat.instance?.snapshot()?;
+        }
+    "#;
+    let extended = format!(
+        r#"{source}
+        image "Unused" {{ class Recursive {{ Recursive? next; }} }}
+    "#
+    );
+    let options = splitscript::CompilerOptions {
+        profile: splitscript::BuildProfile::Release,
+        ..Default::default()
+    };
+    assert_eq!(
+        splitscript::compile_with_options(source, options).unwrap(),
+        splitscript::compile_with_options(&extended, options).unwrap()
+    );
+    let debug = splitscript::compile(source).unwrap();
+    let (_, names) = debug_function_names(&debug).unwrap();
+    assert!(
+        names
+            .iter()
+            .all(|(_, name)| !name.contains("EnterManagedObject")
+                && !name.contains("ChargeManagedWork")),
+        "{names:#?}"
     );
 }
 

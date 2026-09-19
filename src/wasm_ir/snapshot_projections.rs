@@ -61,7 +61,7 @@ pub(super) fn plan(
             },
             |member| {
                 semantics
-                    .managed_field_value_type(member)
+                    .managed_field_snapshot_type(member)
                     .expect("checked managed fields have semantic value types")
             },
         );

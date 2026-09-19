@@ -1561,6 +1561,23 @@ impl SemanticModel {
         let declared = self.managed_field_type(field)?;
         Some(match self.types.kind(declared) {
             TypeKind::ManagedClass(class) => self.types.id_for_managed_reference(*class),
+            TypeKind::Option { value, .. }
+                if matches!(self.types.kind(*value), TypeKind::ManagedClass(_)) =>
+            {
+                let TypeKind::ManagedClass(class) = self.types.kind(*value) else {
+                    unreachable!()
+                };
+                let live = self.types.id_for_managed_reference(*class);
+                self.types
+                    .iter()
+                    .find_map(|(id, kind)| {
+                        matches!(kind, TypeKind::Option { value, .. } if *value == live)
+                            .then_some(id)
+                    })
+                    .expect(
+                        "nullable managed reference projections are materialized during checking",
+                    )
+            }
             _ => declared,
         })
     }
@@ -1569,6 +1586,12 @@ impl SemanticModel {
         self.managed_field_types
             .iter()
             .map(|(field, ty)| (*field, *ty))
+    }
+
+    /// The owned value stored in a class snapshot. A declared child class
+    /// remains a class value here; only live access projects it to `C.Ref`.
+    pub fn managed_field_snapshot_type(&self, field: ManagedFieldId) -> Option<TypeId> {
+        self.managed_field_type(field)
     }
 
     pub fn standard_field_type(&self, field: StdlibFieldId) -> Option<TypeId> {

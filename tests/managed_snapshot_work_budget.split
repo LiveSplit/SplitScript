@@ -1,0 +1,38 @@
+image "Assembly-CSharp" {
+    class ProfileProbe {
+        static ProfileProbe instance;
+        ProfileProbe? left;
+        ProfileProbe? right;
+        String text maxLength 8;
+        u32 value0;
+        u32 value1;
+        u32 value2;
+        u32 value3;
+        u32 value4;
+        u32 value5;
+        u32 value6;
+        u32 value7;
+        u32 value8;
+        u32 value9;
+        u32 value10;
+        u32 value11;
+        u32 value12;
+        u32 value13;
+    }
+}
+fn count(value: ProfileProbe) -> u32 {
+    let left = match value.left { Some(child) => count(child), None => 0 }
+    let right = match value.right { Some(child) => count(child), None => 0 }
+    return 1 + left + right
+}
+state Unity ["game.exe"] { tree = ProfileProbe.instance?.snapshot()?; }
+whileAttached {
+    setVariable("count", count(current.tree))
+    setVariable("old", count(old.tree))
+    setVariable("text", current.tree.text)
+    let root = ProfileProbe.instance else return
+    setVariable("result", match root.snapshot() {
+        Ok(_) => "ok",
+        Err(error) => error,
+    })
+}

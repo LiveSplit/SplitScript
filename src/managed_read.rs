@@ -4,7 +4,14 @@
 
 use std::collections::HashMap;
 
+pub(crate) const MAX_SNAPSHOT_DEPTH: u32 = 64;
+pub(crate) const MAX_SNAPSHOT_OBJECTS: i64 = 1024;
+pub(crate) const MAX_SNAPSHOT_WORK: i64 = 16_384;
+/// Depth, object visits, field visits, then the active object path.
+pub(crate) const SNAPSHOT_CONTEXT_SLOTS: u32 = 3 + MAX_SNAPSHOT_DEPTH;
+
 use crate::{
+    ast::{ManagedClassDecl, ManagedClassId},
     memory::MemoryLayouts,
     semantic::SemanticModel,
     stdlib::StdlibTypeId,
@@ -17,6 +24,9 @@ pub(crate) enum ManagedDecoder {
     /// implication (`MemoryReadable` itself implies `ManagedReadable`).
     Memory,
     String,
+    Class {
+        class: ManagedClassId,
+    },
     /// A nullable object slot; the payload is decoded by its interned node.
     Optional {
         value: TypeId,
@@ -29,7 +39,11 @@ pub(crate) struct ManagedReadTypes {
 }
 
 impl ManagedReadTypes {
-    pub(crate) fn build(memory: &MemoryLayouts, semantics: &SemanticModel) -> Self {
+    pub(crate) fn build(
+        memory: &MemoryLayouts,
+        semantics: &SemanticModel,
+        classes: &[&ManagedClassDecl],
+    ) -> Self {
         let mut nodes = HashMap::new();
         for (ty, kind) in semantics.types().iter() {
             let node = match kind {
@@ -37,7 +51,7 @@ impl ManagedReadTypes {
                 TypeKind::Option { value, .. }
                     if matches!(
                         semantics.types().kind(*value),
-                        TypeKind::Standard(StdlibTypeId::String)
+                        TypeKind::Standard(StdlibTypeId::String) | TypeKind::ManagedClass(_)
                     ) =>
                 {
                     ManagedDecoder::Optional { value: *value }
@@ -46,6 +60,42 @@ impl ManagedReadTypes {
                 _ => continue,
             };
             nodes.insert(ty, node);
+        }
+        // Intern all class nodes before checking children. Recursive schemas
+        // are finite graphs; object cycles are rejected by the runtime path.
+        for class in classes {
+            nodes.insert(
+                semantics.types().id_for_managed_class(class.id),
+                ManagedDecoder::Class { class: class.id },
+            );
+        }
+        loop {
+            let mut invalid = classes
+                .iter()
+                .filter_map(|class| {
+                    let ty = semantics.types().id_for_managed_class(class.id);
+                    (nodes.contains_key(&ty)
+                        && class
+                            .all_fields()
+                            .filter(|field| !field.is_static)
+                            .any(|field| {
+                                !nodes.contains_key(
+                                    &semantics.managed_field_snapshot_type(field.id).unwrap(),
+                                )
+                            }))
+                    .then_some(ty)
+                })
+                .collect::<Vec<_>>();
+            invalid.extend(nodes.iter().filter_map(|(ty, node)| {
+                matches!(node, ManagedDecoder::Optional { value } if !nodes.contains_key(value))
+                    .then_some(*ty)
+            }));
+            if invalid.is_empty() {
+                break;
+            }
+            for ty in invalid {
+                nodes.remove(&ty);
+            }
         }
         Self { nodes }
     }

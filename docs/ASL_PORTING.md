@@ -1511,10 +1511,15 @@ fields use their declared fixed-width type without allocating a new GC object.
 The class name `T` is an immutable local snapshot type and `T.Ref` is a live
 remote reference. Each live hop returns [`T!`]. Postfix [`?`] propagates a
 failure into the surrounding state field, function, or [`retry`] boundary.
-`reference.snapshot()` reads all active fields before constructing `T`, so a
-failed member never publishes a partially populated object. Snapshots, arrays,
-strings, and completed instance searches materialize owned values; generated
-support is retained only when reachable.
+`reference.snapshot()` recursively copies all active fields before constructing
+`T`, so a failed nested member never publishes a partially populated object.
+A child declared `Child` becomes an owned `Child` inside the snapshot; the same
+field on a live parent yields `Child.Ref`. Nullable children preserve [`None`].
+Remote changes do not mutate an existing snapshot. Recursive class schemas are
+supported, but remote object cycles fail. Nested reads share limits of 64 active
+objects, 1,024 object visits, and 16,384 active field reads per operation.
+Snapshots, arrays, strings, and completed instance searches materialize owned
+values; generated support is retained only when reachable.
 
 A managed string leaf is declared as an ordinary [`String`] or optional [`T?`]
 field with an explicit [`maxLength`](syntax@maxLength) read policy. The bound is

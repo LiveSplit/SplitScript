@@ -136,7 +136,7 @@ impl StructuralTypes {
                             source: StructuralMemberId::ManagedField(field.id),
                             ty: Some(
                                 semantics
-                                    .managed_field_value_type(field.id)
+                                    .managed_field_snapshot_type(field.id)
                                     .expect("checked managed fields have semantic value types"),
                             ),
                         })

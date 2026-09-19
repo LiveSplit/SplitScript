@@ -54,7 +54,7 @@ stateProvider Native as process {}
 /// A declared class name such as `PlayerController` is an immutable local
 /// snapshot type. `PlayerController.Ref` is a live remote reference. Following
 /// a live static or instance field is fallible and rereads replaceable object
-/// pointers on every state poll. Calling `.snapshot()` reads all active fields
+/// pointers on every state poll. Calling `.snapshot()` recursively reads all active fields
 /// transactionally. Scalar live reads allocate no GC objects; snapshots,
 /// strings, arrays, and instance-search results materialize owned values.
 /// Generated binders, readers, and runtime discovery are retained only when
@@ -3545,8 +3545,8 @@ capability MemoryReadable: ManagedReadable {}
 /// Every [`MemoryReadable`] type satisfies this capability. [`String`] and
 /// nullable strings additionally decode managed object references and own their
 /// resulting text. String schema fields still require [`maxLength`] to bound the
-/// read. This initial decoder graph does not yet accept managed collections or
-/// deep class snapshots; their nodes are added with their runtime implementations.
+/// read. Declared class snapshots recursively materialize child classes and
+/// nullable child classes. Managed collection nodes are not yet implemented.
 /// [`ManagedReadable`] does not make a type usable with [`Process.read`], which
 /// still requires [`MemoryReadable`].
 ///
@@ -3563,6 +3563,22 @@ capability MemoryReadable: ManagedReadable {}
 /// ```
 @behavior(structuralManagedRead)
 capability ManagedReadable {}
+
+/// Compiler-owned counters and active object path for one managed read.
+///
+/// # Example
+///
+/// Materialize a recursive schema with a compiler-created read context
+///
+/// ```splitscript
+/// image "Assembly-CSharp" {
+///     class Node { static Node instance; Node? next; }
+/// }
+/// state Unity ["game.exe"] { node = Node.instance?.snapshot()?; }
+/// ```
+@representation(gcArray, i64, mutable, nullable)
+@valueUsage(localVariable)
+private intrinsic type ManagedReadContext {}
 
 /// Reads typed values and bounded strings from an address space.
 ///

@@ -83,6 +83,8 @@ pub(crate) enum RuntimeHelperId {
     Utf8StringFromMemory,
     ReadUtf8String,
     ReadUtf16LeString,
+    EnterManagedObject,
+    ChargeManagedWork,
     ReadManagedString,
     ReadManagedStringField,
     ReadOptionalManagedStringField,

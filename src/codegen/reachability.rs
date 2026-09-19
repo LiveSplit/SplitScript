@@ -670,6 +670,31 @@ impl Reachability {
         if !program.settings.is_empty() || !reachable.derived_debugs.is_empty() {
             type_roots.push(semantics.types().id_for_standard(StdlibTypeId::String));
         }
+        // A snapshot recursively materializes declared child classes. These
+        // generated calls are not explicit Wasm IR expression roots.
+        let mut pending_snapshots = reachable
+            .managed_snapshots
+            .iter()
+            .copied()
+            .collect::<Vec<_>>();
+        while let Some(class) = pending_snapshots.pop() {
+            let declaration = program.managed_class(class).expect("snapshot class exists");
+            for field in declaration.all_fields().filter(|field| !field.is_static) {
+                let ty = semantics
+                    .managed_field_snapshot_type(field.id)
+                    .expect("snapshot field type exists");
+                let child_type = match semantics.types().kind(ty) {
+                    TypeKind::Option { value, .. } => *value,
+                    _ => ty,
+                };
+                if let TypeKind::ManagedClass(child) = semantics.types().kind(child_type)
+                    && reachable.managed_snapshots.insert(*child)
+                {
+                    pending_snapshots.push(*child);
+                    type_roots.push(ty);
+                }
+            }
+        }
         reachable.require_types(
             type_roots,
             program,
@@ -919,15 +944,30 @@ impl Reachability {
                 | TypeKind::GenericParameter { .. } => {}
                 TypeKind::ManagedClass(class) => {
                     self.gc_managed_classes.insert(*class);
+                    if self.managed_snapshots.contains(class) {
+                        pending.extend(semantics.types().iter().find_map(|(id, kind)| {
+                            matches!(kind, TypeKind::Result { value, .. } if *value == ty)
+                                .then_some(id)
+                        }));
+                    }
                     let declaration = program
                         .managed_class(*class)
                         .expect("semantic managed classes belong to source declarations");
                     for field in declaration.all_fields().filter(|field| !field.is_static) {
                         let value = semantics
-                            .managed_field_value_type(field.id)
+                            .managed_field_snapshot_type(field.id)
                             .expect("checked managed fields have semantic value types");
                         pending.push(value);
                         if self.managed_snapshots.contains(class) {
+                            // Live pointer readers supply child object addresses
+                            // before the owned snapshot decoder is invoked.
+                            let live = semantics.managed_field_value_type(field.id).unwrap();
+                            if live != value {
+                                pending.push(live);
+                                pending.extend(semantics.types().iter().find_map(|(id, kind)| {
+                                    matches!(kind, TypeKind::Result { value: candidate, .. } if *candidate == live).then_some(id)
+                                }));
+                            }
                             let result = semantics
                                 .types()
                                 .iter()

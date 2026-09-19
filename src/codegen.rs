@@ -1255,7 +1255,7 @@ fn managed_snapshot_field_type(
 ) -> Type {
     semantic_type(
         semantics
-            .managed_field_value_type(field)
+            .managed_field_snapshot_type(field)
             .expect("checked managed fields have semantic value types"),
         semantics,
     )

@@ -2828,7 +2828,7 @@ pub(super) fn emit_path_fields(
                 (
                     context.gc.index(Type::ManagedClass(class.id)),
                     field_index,
-                    semantic_type(field.value_type, context.semantics),
+                    semantic_type(field.snapshot_type, context.semantics),
                 )
             }
         };
@@ -3023,10 +3023,23 @@ fn emit_managed_read_at_address(
         return Type::Result(result);
     }
 
-    if matches!(
-        context.semantics.types().kind(field.value_type),
-        crate::types::TypeKind::ManagedReference(_)
-    ) {
+    let reference_option = match context.semantics.types().kind(field.value_type) {
+        crate::types::TypeKind::Option { layout, value }
+            if matches!(
+                context.semantics.types().kind(*value),
+                crate::types::TypeKind::ManagedReference(_)
+            ) =>
+        {
+            Some(*layout)
+        }
+        _ => None,
+    };
+    if reference_option.is_some()
+        || matches!(
+            context.semantics.types().kind(field.value_type),
+            crate::types::TypeKind::ManagedReference(_)
+        )
+    {
         function.instruction(&Instruction::I32Const(context.abi_read.destination(8)));
         emit_managed_binding_field(function, MANAGED_POINTER_SIZE_FIELD, context);
         function
@@ -3042,16 +3055,28 @@ fn emit_managed_read_at_address(
             .instruction(&Instruction::If(BlockType::Result(
                 context.gc.val_type(Type::Result(result)),
             )));
-        emit_result_error(
-            function,
-            result,
-            value_type,
-            "managed field contained a null reference",
-            context.gc,
-            context.failure_payloads,
-        );
+        if let Some(option) = reference_option {
+            function.instruction(&Instruction::RefNull(HeapType::Concrete(
+                context.gc.index(Type::Option(option)),
+            )));
+            emit_result_success(function, result, context.gc);
+        } else {
+            emit_result_error(
+                function,
+                result,
+                value_type,
+                "managed field contained a null reference",
+                context.gc,
+                context.failure_payloads,
+            );
+        }
         function.instruction(&Instruction::Else);
         emit_managed_pointer_from_scratch(function, context);
+        if let Some(option) = reference_option {
+            function.instruction(&Instruction::StructNew(
+                context.gc.index(Type::Option(option)),
+            ));
+        }
         emit_result_success(function, result, context.gc);
         function.instruction(&Instruction::End);
         function.instruction(&Instruction::Else);
@@ -4069,6 +4094,19 @@ fn compile_expr_unconverted(
             }
             wasm_ir::CallTarget::ManagedSnapshot { class, .. } => {
                 compile_receiver(function, target, context);
+                if context
+                    .runtime_helpers
+                    .optional_function(RuntimeHelperId::EnterManagedObject)
+                    .is_some()
+                {
+                    function
+                        .instruction(&Instruction::I32Const(
+                            crate::managed_read::SNAPSHOT_CONTEXT_SLOTS as i32,
+                        ))
+                        .instruction(&Instruction::ArrayNewDefault(
+                            context.gc.standard_index(StdlibTypeId::ManagedReadContext),
+                        ));
+                }
                 function.instruction(&Instruction::Call(
                     context.managed_snapshot_functions[class],
                 ));

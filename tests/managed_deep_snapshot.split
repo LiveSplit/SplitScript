@@ -1,0 +1,23 @@
+image "Assembly-CSharp" {
+    class ProfileProbe {
+        static ProfileProbe instance;
+        Leaf left;
+        Leaf right;
+    }
+    class Leaf {
+        String text maxLength 8;
+    }
+}
+state Unity ["game.exe"] {
+    tree = ProfileProbe.instance?.snapshot()?;
+}
+whileAttached {
+    setVariable("left", current.tree.left.text)
+    setVariable("right", current.tree.right.text)
+    setVariable("old", old.tree.left.text)
+    let root = ProfileProbe.instance else return
+    setVariable("result", match root.snapshot() {
+        Ok(_) => "ok",
+        Err(error) => error,
+    })
+}

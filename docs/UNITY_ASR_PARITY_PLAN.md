@@ -703,6 +703,66 @@ string declarations, retain their sizes and emission plans. This small reader co
 not resolve the earlier metadata size regression: the explicit artifact must
 still return below 30,000 bytes before the Unity work is complete.
 
+### Recursive owned class snapshots (2026-09-19)
+
+Declared classes now have separate live and owned field projections. Reading a
+`Child` field through its parent's live reference returns `Child.Ref!`; reading
+the same field on the parent's snapshot returns an owned `Child`. Nullable
+children similarly project to `Child.Ref?` or `Child?`. Snapshot generation
+recursively invokes each child reader and constructs the parent only after all
+active fields succeed. Explicit live-reference fields are rejected when a
+snapshot would materialize them. Structural operations, GC layouts, semantic
+member access, and snapshot projection analysis use the owned field types.
+
+The interned managed-decoder graph includes declared classes and nullable
+classes. Class placeholders permit recursive schemas without recursive compiler
+expansion; unreadable child types invalidate their containing class plans.
+Generated child readers, metadata bindings, Result layouts, and observed error
+messages have explicit transitive demand edges.
+
+Recursive materialization uses one root context with an active-address path,
+object visits, and field work. It rejects active-path cycles, depth above 64,
+more than 1,024 object visits, or more than 16,384 active field reads. Repeated
+shared children are copied independently after their previous traversal has
+finished. Inactive conditional fields do not consume field work. Failed nested
+reads retain the previous complete state, including its nested strings.
+Ordinary flat snapshots do not allocate a context or retain its helpers; unused
+recursive class declarations do not introduce them either.
+
+This is another part of Step 8, not completion of managed materialization.
+Shared byte/element budgets, checked remote-slot arithmetic at every entry
+point, structured nested error paths, raw UTF-16 output, and recursive
+collection nodes remain unfinished. In particular, class field-address addition
+still needs a checked base-plus-offset operation before the existing payload
+span checks; malformed high object addresses must not wrap into readable low
+memory. Collection layout discovery and transitive container immutability remain
+required by Steps 9–12.
+
+Four fixture sources run in Debug and Release, producing 216 new cases across
+Mono/IL2CPP and x86/x64. They cover required and nullable children, recursive
+schemas, repeated shared subtrees, string mutation, child replacement, unreadable
+slots/payloads, cycles, depth and object limits, aggregate field work exhaustion,
+observed errors, and unchanged previous snapshots. Compiler tests cover the
+distinct live/owned projections, rejection of explicit live fields in snapshots,
+and absence of context helpers for unused recursive classes.
+
+Validation passed 662 compiler tests, 441 library tests (one ignored), 106
+syntax tests, 29 loader tests, 19 compiler CLI tests, one language-server CLI
+test, and four baseline tests. All 98 Wasm artifacts validate and all 128
+registered runtime scenarios pass. The complete runtime catalog was rerun
+separately after correcting the new work fixture's profile spelling in xtask;
+the product code did not change after the compiler suite passed. Clippy,
+formatting, and 558 generated documentation pages pass.
+
+All 22 existing baseline artifacts retain their total and section sizes,
+function counts and body sizes, type counts, scratch allocations, and initial
+pages. Explicit Lunistice remains 56,808 bytes and automatic Lunistice 123,677.
+The only emission-report changes are internal formatter type ordinals caused by
+the added private context type; comparing reports with those ordinals normalized
+confirms that all other non-timing fields match. The reviewed report was recorded
+and the strict gate, including base/DLC behavior, passed. The game stayed closed
+throughout this slice. The below-30,000-byte completion requirement is unchanged.
+
 ## Source map for implementation
 
 Upstream links below are pinned to the reviewed tip; the PR table provides the historical changes.

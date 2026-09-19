@@ -3103,7 +3103,9 @@ fn completion_receiver_type(
             semantics.value_type(*field)
         }
         ResolvedMember::StructField(field) => semantics.struct_field_type(*field),
-        ResolvedMember::ManagedField(field) => semantics.managed_field_value_type(*field),
+        // Managed members have distinct live and owned projections. Let the
+        // repair path check the concrete receiver instead of guessing here.
+        ResolvedMember::ManagedField(_) => None,
         // Constructor fields may depend on the concrete receiver's type
         // arguments. Keep the repair path until those substitutions are known.
         ResolvedMember::StandardField(_) => None,

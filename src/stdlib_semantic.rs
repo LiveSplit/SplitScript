@@ -189,7 +189,9 @@ fn semantic_type_may_have_capability(
         return semantic_type_may_have_capability(library, ty, StdlibCapabilityId::MemoryReadable)
             || matches!(
                 ty,
-                TypeKind::Standard(crate::stdlib::StdlibTypeId::String) | TypeKind::Option { .. }
+                TypeKind::Standard(crate::stdlib::StdlibTypeId::String)
+                    | TypeKind::Option { .. }
+                    | TypeKind::ManagedClass(_)
             );
     }
     match ty {

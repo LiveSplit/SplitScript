@@ -135,6 +135,9 @@ impl FailurePayloadDemand {
         }
         for class in reachability.managed_snapshots() {
             let targets = &results[&semantics.types().id_for_managed_class(class)];
+            for target in targets {
+                dependencies.entry(*target).or_default().extend(targets);
+            }
             let binding = managed
                 .classes
                 .iter()
@@ -149,6 +152,21 @@ impl FailurePayloadDemand {
                         .entry(*target)
                         .or_default()
                         .extend(&results[&field.value_type]);
+                    dependencies
+                        .entry(*target)
+                        .or_default()
+                        .extend(&results[&field.snapshot_type]);
+                    if let TypeKind::Option { value, .. } =
+                        semantics.types().kind(field.snapshot_type)
+                        && matches!(semantics.types().kind(*value), TypeKind::ManagedClass(_))
+                    {
+                        for optional in &results[&field.snapshot_type] {
+                            dependencies
+                                .entry(*optional)
+                                .or_default()
+                                .extend(&results[value]);
+                        }
+                    }
                 }
             }
         }

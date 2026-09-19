@@ -26,6 +26,7 @@ mod float_parse;
 mod gba;
 mod gcn;
 mod genesis;
+mod managed_context;
 mod md5;
 mod process;
 mod provider;
@@ -36,6 +37,14 @@ mod strings;
 mod wii;
 
 pub(super) use equality::{compile_equality, emit_value_equality};
+
+pub(super) fn build_enter_managed_object(inputs: &RuntimeHelperInputs<'_>) -> Function {
+    managed_context::enter(inputs.gc)
+}
+
+pub(super) fn build_charge_managed_work(inputs: &RuntimeHelperInputs<'_>) -> Function {
+    managed_context::charge_work(inputs.gc)
+}
 
 pub(super) struct RuntimeHelperInputs<'a> {
     pub abi: &'a Abi,

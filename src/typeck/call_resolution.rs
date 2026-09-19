@@ -1106,16 +1106,40 @@ impl Checker {
             }
             return None;
         }
-        let declaration = self
-            .declarations
-            .managed_classes
-            .iter()
-            .find(|candidate| candidate.id == class)
-            .cloned()
-            .expect("managed snapshot receivers have class declarations");
-        for field in declaration.all_fields().filter(|field| !field.is_static) {
-            let value = self.managed_read_value_type(field.ty);
-            self.inference.result_type(value);
+        let mut pending = vec![class];
+        let mut visited = std::collections::HashSet::new();
+        while let Some(current) = pending.pop() {
+            if !visited.insert(current) {
+                continue;
+            }
+            let declaration = self
+                .declarations
+                .managed_classes
+                .iter()
+                .find(|candidate| candidate.id == current)
+                .cloned()
+                .expect("managed snapshot receivers have class declarations");
+            let snapshot = Type::Known(self.inference.type_store().id_for_managed_class(current));
+            self.inference.result_type(snapshot);
+            for field in declaration.all_fields().filter(|field| !field.is_static) {
+                let live = self.managed_read_value_type(field.ty);
+                self.inference.result_type(live);
+                let owned = self.syntax_type(field.ty);
+                self.inference.result_type(owned);
+                let child = match self.inference.shallow(owned) {
+                    Type::Option(option) => self.inference.option_value(option),
+                    Type::Known(id) => match self.inference.type_store().kind(id) {
+                        TypeKind::Option { value, .. } => Type::Known(*value),
+                        _ => owned,
+                    },
+                    _ => owned,
+                };
+                if let Type::Known(id) = child
+                    && let TypeKind::ManagedClass(child) = self.inference.type_store().kind(id)
+                {
+                    pending.push(*child);
+                }
+            }
         }
         let snapshot = Type::Known(self.inference.type_store().id_for_managed_class(class));
         let result = Type::Result(self.inference.result_type(snapshot));
@@ -2773,23 +2797,7 @@ impl Checker {
             && let Some(field) = self.visible_managed_field(*class_id, false, field)
         {
             let declared = self.syntax_type(field.ty);
-            let value = match declared {
-                Type::Known(declared_id)
-                    if matches!(
-                        self.inference.type_store().kind(declared_id),
-                        TypeKind::ManagedClass(_)
-                    ) =>
-                {
-                    let TypeKind::ManagedClass(class) =
-                        self.inference.type_store().kind(declared_id)
-                    else {
-                        unreachable!()
-                    };
-                    Type::Known(self.inference.type_store().id_for_managed_reference(*class))
-                }
-                _ => declared,
-            };
-            return Some((value, ResolvedMember::ManagedField(field.id)));
+            return Some((declared, ResolvedMember::ManagedField(field.id)));
         }
         if let Type::Known(id) = ty
             && let TypeKind::ManagedReference(class_id) = self.inference.type_store().kind(id)
@@ -2818,8 +2826,22 @@ impl Checker {
         }
     }
 
-    fn managed_read_value_type(&mut self, declared: crate::ast::TypeRef) -> Type {
+    pub(super) fn managed_read_value_type(&mut self, declared: crate::ast::TypeRef) -> Type {
         let declared = self.syntax_type(declared);
+        let optional_child = match self.inference.shallow(declared) {
+            Type::Option(option) => Some(self.inference.option_value(option)),
+            Type::Known(id) => match self.inference.type_store().kind(id) {
+                TypeKind::Option { value, .. } => Some(Type::Known(*value)),
+                _ => None,
+            },
+            _ => None,
+        };
+        if let Some(Type::Known(id)) = optional_child
+            && let TypeKind::ManagedClass(class) = self.inference.type_store().kind(id)
+        {
+            let live = Type::Known(self.inference.type_store().id_for_managed_reference(*class));
+            return Type::Option(self.inference.option_type(live));
+        }
         match declared {
             Type::Known(id)
                 if matches!(

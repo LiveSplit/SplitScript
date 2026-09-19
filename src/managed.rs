@@ -65,6 +65,8 @@ pub(crate) struct ManagedFieldBinding {
     /// Value produced by a field read. Direct managed class fields become the
     /// corresponding `T.Ref`; terminal fields retain their declared type.
     pub value_type: TypeId,
+    /// Owned value produced when this field participates in a deep snapshot.
+    pub snapshot_type: TypeId,
     /// How the remote field storage is decoded after its metadata offset has
     /// been resolved. Keeping this policy in the binding plan prevents Mono,
     /// IL2CPP, snapshots, and live reads from growing separate string rules.
@@ -230,6 +232,9 @@ fn field_binding(field: &ManagedFieldDecl, semantics: &SemanticModel) -> Managed
         },
         declared_type,
         value_type,
+        snapshot_type: semantics
+            .managed_field_snapshot_type(field.id)
+            .expect("checked managed fields have snapshot types"),
         read,
         metadata_names: field_metadata_candidates(field),
     }

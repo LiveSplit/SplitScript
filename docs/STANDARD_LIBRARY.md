@@ -429,10 +429,22 @@ The declared class name `T` is an immutable local snapshot, while `T.Ref` is a
 live remote object reference. Each instance-field hop from `T.Ref` is fallible.
 Use postfix `?` to propagate a failed hop to the surrounding state field,
 function, or `retry` boundary. Calling `reference.snapshot()` reads every
-active instance field before constructing `T`; if any field fails, the whole
-operation returns an error and no partial snapshot escapes. Conditional fields
-follow the active attachment shape, and snapshot readers are generated only
-when used:
+active instance field before constructing `T`. Declared child classes become
+owned child snapshots recursively: a field declared `Child` is `Child.Ref` on
+the live parent and `Child` on its snapshot; `Child?` similarly becomes
+`Child.Ref?` or `Child?`. A null optional child becomes `None`, while unreadable
+memory still fails. Explicit `Child.Ref` fields cannot be materialized in an
+owned snapshot.
+
+If any nested field fails, the whole operation returns an error and no partial
+snapshot escapes. Previous snapshots keep their values when remote objects
+change or a later read fails. Recursive schemas are allowed, but an object
+cycle along the active read path fails; a shared child reached through separate
+completed paths is copied independently. Each nested snapshot operation is
+limited to 64 active objects, 1,024 total object visits, and 16,384 active field
+reads. Conditional fields follow the active attachment shape and inactive
+fields do not consume this work budget. Snapshot readers and the shared read
+context are generated only when needed:
 
 ```splitscript
 state Unity ["game.exe"] {
