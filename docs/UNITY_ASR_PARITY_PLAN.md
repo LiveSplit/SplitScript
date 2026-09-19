@@ -1648,6 +1648,47 @@ adds only this new demanded fixture and refreshes generated expression names.
 macOS Mono UUID profile selection, Intel/ARM64 assembly-list instructions,
 attachment integration, and native game validation remain unfinished.
 
+## macOS Mono automatic attachment (2026-09-19)
+
+Automatic Unity discovery now recognizes `libmono.0.dylib` and
+`libmonobdwgc-2.0.dylib`, validates the active Mach-O64 CPU type, and resolves
+`_mono_assembly_foreach`. Intel uses the bounded Unix x64 instruction scan.
+ARM64 requires the measured `ADRP x23` / `LDR x0, [x23, #offset]` pattern at an
+aligned instruction address. Its 21-bit page displacement is sign-extended,
+the 12-bit load displacement is scaled by eight, and both arithmetic and the
+complete resulting pointer slot are checked before accepting a candidate.
+Invalid candidates are skipped within the bounded function window.
+
+The pinned importer now includes ASR's two measured UUIDs for Unity
+6000.5.10f1 (x86_64 and arm64), with CPU/UUID mismatches rejected, plus all four
+Mach-O fallback layouts. UUID bytes retain their stored order. Exact identity
+skips player-version discovery; unknown/missing/unreadable UUIDs use the old
+image/class probe or `UnityPlayer.dylib` version markers. Unmeasured optional
+facts remain absent in fallback profiles. Synchronous UUID selection is kept
+outside the attachment continuation so its branches do not duplicate later
+async discovery code.
+
+The focused fixtures cover both CPU slices, every fallback family, exact UUID
+precedence, unknown/unreadable UUIDs, wrong CPU types, signed positive/negative
+page displacements, scaled offsets, arithmetic overflow/underflow, invalid
+registers/opcodes, truncated/unreadable instructions, false candidates, process
+closure, and reattachment across CPU architectures. Native macOS smoke tests
+are still unavailable and remain outstanding; synthetic success does not close
+that validation requirement. Explicit platform profiles, removal of the legacy
+version API, and the remaining full-plan requirements are not completed here.
+
+Validation passes 46 macOS scenarios in both Debug and Release, 31 Linux
+scenarios, and 62 Windows scenarios. The importer verifies all pinned catalogs,
+and formatting passes. The size review preserves all 32 non-automatic fixtures'
+module/section sizes, function/type counts, and function-body size multisets.
+The four automatic fixtures grow by 37,644–37,743 bytes for the new platform
+paths. Explicit Lunistice stays 58,178 bytes; automatic Lunistice is 201,662
+bytes, with base/DLC behavior passing. Moving synchronous UUID branches outside
+the async attachment body reduced that body's initial 62,880-byte emission to
+21,057 bytes without changing its behavior. Shared async continuation emission
+remains relevant to the eventual size work, but no unrelated compiler
+optimization was added in this milestone.
+
 ## Source map for implementation
 
 Upstream links below are pinned to the reviewed tip; the PR table provides the historical changes.

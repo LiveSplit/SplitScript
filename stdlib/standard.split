@@ -38,9 +38,10 @@ stateProvider Native as process {}
 
 /// Attaches to a Unity game and binds declared managed metadata schemas.
 ///
-/// Automatic mode detects Windows IL2CPP and Windows or Linux Mono runtimes.
+/// Automatic mode detects Windows IL2CPP and Windows, Linux, or macOS Mono runtimes.
 /// Mono uses measured runtime build identities when available, with platform
-/// layout fallbacks for unknown builds. Linux support requires x86-64; a player
+/// layout fallbacks for unknown builds. macOS supports x86-64 and ARM64.
+/// Linux support requires x86-64; a player
 /// build ID is used only when the Mono runtime has no readable ID of its own.
 /// Use an explicit selector only when the target's exact metadata family is
 /// known and automatic detection is inappropriate.
@@ -1323,6 +1324,18 @@ namespace Unity {
             match linuxMono {
                 Some(module) => {
                     let runtime = await MonoModule.discoverLinux(module)
+                    return UnityRuntime { backend: UnityRuntimeBackend.Mono, il2cpp: None, mono: Some(runtime) }
+                },
+                None => {},
+            }
+
+            let macMono = match process.loadedModule("libmono.0.dylib") {
+                Some(module) => Some(module),
+                None => process.loadedModule("libmonobdwgc-2.0.dylib"),
+            }
+            match macMono {
+                Some(module) => {
+                    let runtime = await MonoModule.discoverMac(module)
                     return UnityRuntime { backend: UnityRuntimeBackend.Mono, il2cpp: None, mono: Some(runtime) }
                 },
                 None => {},
@@ -12348,6 +12361,177 @@ private struct MonoLayout {
             vtable: 0x48,
         }
     }
+
+    private static fn forMacVersion(version: MonoVersion) -> MonoLayout {
+        if version == MonoVersion.V3 {
+            return MonoLayout {
+                version: MonoVersion.V3,
+                assemblyName: Some(0x10),
+                assemblyImage: 0x60,
+                imageAssemblyName: None,
+                imageClassCache: 0x4d0,
+                hashSize: 0x18,
+                hashTable: 0x20,
+                classKind: None,
+                classInstanceSize: None,
+                classParent: 0x28,
+                classDeclaring: None,
+                className: 0x40,
+                classNamespace: 0x48,
+                classVtableSize: 0x54,
+                classFields: 0x90,
+                classRuntimeInfo: 0xc8,
+                classFieldCount: 0xf8,
+                classNextCache: 0x100,
+                genericClass: None,
+                genericContainer: None,
+                typeData: None,
+                typeKind: None,
+                fieldType: None,
+                fieldName: 0x8,
+                fieldValue: 0x18,
+                fieldStride: 0x20,
+                vtable: 0x48,
+            }
+        }
+        if version == MonoVersion.V2 {
+            return MonoLayout {
+                version: MonoVersion.V2,
+                assemblyName: Some(0x10),
+                assemblyImage: 0x60,
+                imageAssemblyName: None,
+                imageClassCache: 0x4c0,
+                hashSize: 0x18,
+                hashTable: 0x20,
+                classKind: None,
+                classInstanceSize: None,
+                classParent: 0x28,
+                classDeclaring: None,
+                className: 0x40,
+                classNamespace: 0x48,
+                classVtableSize: 0x54,
+                classFields: 0x90,
+                classRuntimeInfo: 0xc8,
+                classFieldCount: 0xf8,
+                classNextCache: 0x100,
+                genericClass: None,
+                genericContainer: None,
+                typeData: None,
+                typeKind: None,
+                fieldType: None,
+                fieldName: 0x8,
+                fieldValue: 0x18,
+                fieldStride: 0x20,
+                vtable: 0x40,
+            }
+        }
+        if version == MonoVersion.V1Cattrs {
+            return MonoLayout {
+                version: MonoVersion.V1Cattrs,
+                assemblyName: Some(0x10),
+                assemblyImage: 0x58,
+                imageAssemblyName: None,
+                imageClassCache: 0x3d0,
+                hashSize: 0x18,
+                hashTable: 0x20,
+                classKind: None,
+                classInstanceSize: None,
+                classParent: 0x28,
+                classDeclaring: None,
+                className: 0x48,
+                classNamespace: 0x50,
+                classVtableSize: 0x18,
+                classFields: 0xa8,
+                classRuntimeInfo: 0xf8,
+                classFieldCount: 0x94,
+                classNextCache: 0x100,
+                genericClass: None,
+                genericContainer: None,
+                typeData: None,
+                typeKind: None,
+                fieldType: None,
+                fieldName: 0x8,
+                fieldValue: 0x18,
+                fieldStride: 0x20,
+                vtable: 0x48,
+            }
+        }
+        return MonoLayout {
+            version: MonoVersion.V1,
+            assemblyName: Some(0x10),
+            assemblyImage: 0x58,
+            imageAssemblyName: None,
+            imageClassCache: 0x3d0,
+            hashSize: 0x18,
+            hashTable: 0x20,
+            classKind: None,
+            classInstanceSize: None,
+            classParent: 0x28,
+            classDeclaring: None,
+            className: 0x40,
+            classNamespace: 0x48,
+            classVtableSize: 0x18,
+            classFields: 0xa0,
+            classRuntimeInfo: 0xf0,
+            classFieldCount: 0x8c,
+            classNextCache: 0xf8,
+            genericClass: None,
+            genericContainer: None,
+            typeData: None,
+            typeKind: None,
+            fieldType: None,
+            fieldName: 0x8,
+            fieldValue: 0x18,
+            fieldStride: 0x20,
+            vtable: 0x48,
+        }
+    }
+
+    private static fn forMacBuild(identity: [u8; 16], cpuType: u32) -> MonoLayout?! {
+        // 6000.5.10f1, x86_64
+        if identity == [127, 178, 225, 147, 135, 60, 60, 47, 176, 69, 79, 7, 75, 208, 105, 150] {
+            if cpuType != 0x1000007 { throw "Mono UUID has the wrong CPU architecture" }
+            return Ok(Some(MonoLayout.macBuild0()))
+        }
+        // 6000.5.10f1, arm64
+        if identity == [233, 197, 224, 106, 98, 229, 58, 154, 157, 93, 84, 240, 209, 111, 255, 168] {
+            if cpuType != 0x100000c { throw "Mono UUID has the wrong CPU architecture" }
+            return Ok(Some(MonoLayout.macBuild0()))
+        }
+        return Ok(None)
+    }
+
+    private static fn macBuild0() -> MonoLayout {
+        return MonoLayout {
+            version: MonoVersion.V3,
+            assemblyName: Some(0x10),
+            assemblyImage: 0x60,
+            imageAssemblyName: None,
+            imageClassCache: 0x4d0,
+            hashSize: 0x18,
+            hashTable: 0x20,
+            classKind: Some(0x1b),
+            classInstanceSize: Some(0x1c),
+            classParent: 0x28,
+            classDeclaring: Some(0x30),
+            className: 0x40,
+            classNamespace: 0x48,
+            classVtableSize: 0x54,
+            classFields: 0x90,
+            classRuntimeInfo: 0xc8,
+            classFieldCount: 0xf8,
+            classNextCache: 0x100,
+            genericClass: Some(0xe8),
+            genericContainer: Some(0x0),
+            typeData: Some(0x0),
+            typeKind: Some(0xa),
+            fieldType: Some(0x0),
+            fieldName: 0x8,
+            fieldValue: 0x18,
+            fieldStride: 0x20,
+            vtable: 0x48,
+        }
+    }
     // END GENERATED MONO PROFILES
 }
 
@@ -12450,7 +12634,7 @@ private struct MonoModule {
                 Err(_) => await nextTick(),
             }
         }
-        let assemblies = await MonoModule.scanLinuxAssemblies(runtime, assemblyForeach)
+        let assemblies = await MonoModule.scanUnixX64Assemblies(runtime, assemblyForeach)
         match layout {
             Some(measured) => {
                 print("Unity Mono: exact ELF build profile")
@@ -12463,14 +12647,17 @@ private struct MonoModule {
                 assemblies, version: MonoVersion.V1, pointerSize: PointerSize.Bit64,
                 layout: MonoLayout.forLinuxVersion(MonoVersion.V1),
             }),
-            None => await MonoModule.detectLinuxVersion(),
+            None => {
+                let player = await process.module("UnityPlayer.so")
+                await MonoModule.detectUnixVersion(player)
+            },
         }
         return MonoModule { assemblies, version, pointerSize: PointerSize.Bit64, layout: MonoLayout.forLinuxVersion(version) }
     }
 
     // Kept separate from PE discovery so unused Linux support adds no frames
     // or signature arguments to explicit Windows Mono readers.
-    private static fn scanLinuxAssemblies(runtime: Module, assemblyForeach: address) -> async address {
+    private static fn scanUnixX64Assemblies(runtime: Module, assemblyForeach: address) -> async address {
         if assemblyForeach < runtime.address || (assemblyForeach as u64) - (runtime.address as u64) >= runtime.size {
             print("Mono assembly export lies outside its module")
             await process.closed()
@@ -12493,8 +12680,7 @@ private struct MonoModule {
         await process.closed()
     }
 
-    private static fn detectLinuxVersion() -> async MonoVersion {
-        let player = await process.module("UnityPlayer.so")
+    private static fn detectUnixVersion(player: Module) -> async MonoVersion {
         let marker = await process.scanOnce(player.address, player.size, sig"00 32 30 32 ?? 2E")
         if marker == None {
             marker = await process.scanOnce(player.address, player.size, sig"00 36 30 30 30 2E")
@@ -12509,6 +12695,106 @@ private struct MonoModule {
         return if text[0] == 54 || text[3] > 49 || text[3] == 49 && text[5] >= 50 {
             MonoVersion.V3
         } else { MonoVersion.V2 }
+    }
+
+    private static fn macLayout(runtime: Module, cpuType: u32) -> MonoLayout?! {
+        return match runtime.machUuid() {
+            Ok(Some(identity)) => {
+                let layout = MonoLayout.forMacBuild(identity, cpuType)?
+                match layout {
+                    None => print("Unity Mono: unknown Mach-O UUID; using family fallback"),
+                    Some(_) => {},
+                }
+                Ok(layout)
+            },
+            Ok(None) => {
+                print("Unity Mono: no Mach-O UUID; using family fallback")
+                Ok(None)
+            },
+            Err(_) => {
+                print("Unity Mono: unreadable Mach-O UUID; using family fallback")
+                Ok(None)
+            },
+        }
+    }
+
+    private static fn discoverMac(runtime: Module) -> async MonoModule {
+        let header = retry process.read<[u32; 2]>(runtime.boundedAddress(0, 8)?)
+        if header[0] != 0xfeedfacf || (header[1] != 0x1000007 && header[1] != 0x100000c) {
+            print("Mac Mono requires an x86-64 or ARM64 Mach-O runtime")
+            await process.closed()
+        }
+        let layout = MonoModule.macLayout(runtime, header[1]) else {
+            print("Mono UUID has the wrong CPU architecture")
+            await process.closed()
+        }
+        let assemblyForeach: address = 0
+        loop {
+            match await runtime.machExport("_mono_assembly_foreach") {
+                Ok(value) => { assemblyForeach = value; break },
+                Err(_) => await nextTick(),
+            }
+        }
+        let assemblies = if header[1] == 0x100000c {
+            await MonoModule.scanMacArmAssemblies(runtime, assemblyForeach)
+        } else { await MonoModule.scanUnixX64Assemblies(runtime, assemblyForeach) }
+        match layout {
+            Some(measured) => {
+                print("Unity Mono: exact Mach-O UUID profile")
+                return MonoModule { assemblies, version: measured.version, pointerSize: PointerSize.Bit64, layout: measured }
+            },
+            None => {},
+        }
+        let version = match process.loadedModule("libmono.0.dylib") {
+            Some(_) => await MonoModule.detectOldLayout(MonoModule {
+                assemblies, version: MonoVersion.V1, pointerSize: PointerSize.Bit64,
+                layout: MonoLayout.forMacVersion(MonoVersion.V1),
+            }),
+            None => {
+                let player = await process.module("UnityPlayer.dylib")
+                await MonoModule.detectUnixVersion(player)
+            },
+        }
+        return MonoModule { assemblies, version, pointerSize: PointerSize.Bit64, layout: MonoLayout.forMacVersion(version) }
+    }
+
+    private static fn scanMacArmAssemblies(runtime: Module, assemblyForeach: address) -> async address {
+        if assemblyForeach < runtime.address || (assemblyForeach as u64) - (runtime.address as u64) >= runtime.size
+            || ((assemblyForeach as u64) & 3) != 0 {
+            print("Mono ARM64 assembly export is invalid")
+            await process.closed()
+        }
+        let remaining = runtime.size - ((assemblyForeach as u64) - (runtime.address as u64))
+        let span: u64 = if remaining < 0x100 { remaining } else { 0x100 }
+        let cursor: u64 = 0
+        while cursor + 8 <= span {
+            let instruction = assemblyForeach.add(cursor)
+            cursor += 4
+            let words = process.read<[u32; 2]>(instruction) else continue
+            // ADRP x23, page; LDR x0, [x23, #imm12 * 8].
+            if (words[0] & 0x9f00001f) != 0x90000017 || (words[1] & 0xffc003ff) != 0xf94002e0 { continue }
+            let immediate = (((words[0] >> 5) & 0x7ffff) << 2) | ((words[0] >> 29) & 3)
+            let pages = if immediate >= 0x100000 { (immediate as i64) - 0x200000 } else { immediate as i64 }
+            let page = (instruction as u64) & 0xfffffffffffff000
+            let target = if pages < 0 {
+                let distance = ((-pages) as u64) * 4096
+                if distance > page { continue }
+                page - distance
+            } else {
+                let distance = (pages as u64) * 4096
+                if distance > 0xffffffffffffffff - page { continue }
+                page + distance
+            }
+            let loadOffset = (((words[1] >> 10) & 0xfff) as u64) * 8
+            if loadOffset > 0xffffffffffffffff - target { continue }
+            target += loadOffset
+            if target >= (runtime.address as u64) {
+                let checked = runtime.boundedAddress(target - (runtime.address as u64), 8)
+                match checked { Ok(address) => return address, Err(_) => {} }
+            }
+        }
+        print("Mono ARM64 assembly-list instruction was not found in the exported function")
+        await process.closed()
     }
 
     // Exact identity lookup is a separate root from explicit family selection.
