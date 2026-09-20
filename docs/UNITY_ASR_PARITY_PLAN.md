@@ -1819,6 +1819,36 @@ work-charge closures/calls, and type-adapter plumbing. No new counter storage or
 scratch allocation is needed. Both Lunistice edition scenarios pass; the final
 explicit size target remains open.
 
+## Observed nested managed error paths (2026-09-20)
+
+Snapshot failures now prepend source field names; recursive Array/List readers
+prepend zero-based indices, and Map/Set readers distinguish key, value, and set
+element positions. Paths are relative to the requested value. Keyed positions
+are live traversal ordinals, not stable public indices. Optional children remain
+transparent. Container metadata/header failures remain at the container's path;
+this does not add attachment-discovery error context or resumable metadata cursors.
+
+Two internal formatting helpers are requested after error-payload demand
+propagation. A field-only snapshot does not require numeric formatting, and
+unobserved failures do not request either helper. Formatting preserves the
+original cause; additional outer segments are omitted if their combined UTF-8
+length would exceed the internal 4,096-byte diagnostic bound. Existing null
+payloads are preserved without dereferencing them. No source keyword is added.
+
+Runtime checks cover snapshot field paths, source aliases, optional children,
+nested array/List indices including index 12, Map key/value and Set element
+paths, and deep recursive errors that reach the diagnostic bound while retaining
+the cause. All 22 affected artifacts validate and pass their public runtime
+fixtures in Debug and Release. Compiler coverage checks observed and discarded
+errors across snapshots, arrays, Lists, Maps, and Sets, including unused schema
+fields. Six intrinsic/helper-contract checks pass.
+
+All 38 existing size fixtures pass unchanged, along with both Lunistice edition
+behavior cases. Explicit Lunistice remains 58,178 bytes; automatic selection
+remains 182,416 bytes. This closes nested materialization error context, not the
+remaining runtime type/generic proofs, attachment metadata traversal, native
+platform validation, or final sub-30,000-byte acceptance requirement.
+
 ## Source map for implementation
 
 Upstream links below are pinned to the reviewed tip; the PR table provides the historical changes.

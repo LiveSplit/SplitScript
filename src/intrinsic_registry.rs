@@ -87,6 +87,8 @@ pub(crate) enum RuntimeHelperId {
     ReadManagedMemory,
     EnterManagedObject,
     ChargeManagedWork,
+    ManagedErrorField,
+    ManagedErrorIndex,
     ChargeManagedBytes,
     ChargeManagedElements,
     ChargeManagedScan,

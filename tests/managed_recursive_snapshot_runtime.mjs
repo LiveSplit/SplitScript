@@ -5,6 +5,7 @@ import { createMonoPeFixture } from './support/mono_pe_fixture.mjs';
 import { createIl2cppPeFixture } from './support/il2cpp_pe_fixture.mjs';
 
 const [wasm, policy] = process.argv.slice(2);
+const boundedPaths = policy === '--bounded-paths';
 const workBudget = policy === '--work-budget';
 const profiles = JSON.parse(await readFile(new URL('./fixtures/mono-pe-profiles.json', import.meta.url)));
 let cases = 0;
@@ -76,6 +77,13 @@ for (const mono of [true, false]) for (const width of [32, 64]) {
         assert.equal(host.variables.get('text'), failed ? 'x' : 'y', label);
         if (failed) assert.match(host.variables.get('result'), /managed/, label);
         else assert.equal(host.variables.get('result'), 'ok', label);
+        if (boundedPaths && mode === 'depth overflow') {
+            const result = host.variables.get('result');
+            assert(Buffer.byteLength(result) <= 4096, label);
+            assert(Buffer.byteLength(result) > 3900, `${label}: lost inner context`);
+            assert.match(result, /depth/, label);
+            assert(result.startsWith('left_context_'), `${label}: source alias missing`);
+        }
         if (mode === 'work overflow') assert.match(host.variables.get('result'), /work limit/, label);
         assert(reads < (workBudget ? 40000 : 11000), `${label}: unbounded object traversal`);
         cases++;

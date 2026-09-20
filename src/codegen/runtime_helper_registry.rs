@@ -149,6 +149,8 @@ pub(super) const DESCRIPTORS: &[RuntimeHelperDescriptor] = &[
     helper!(ReadManagedMemory, (I64, I64, I32, I32, I32) -> (I32), deps [], imports [ProcessRead], build_read_managed_memory),
     helper!(EnterManagedObject, (Standard(StdlibTypeId::ManagedReadContext), I64) -> (I32), deps [], imports [], build_enter_managed_object),
     helper!(ChargeManagedWork, (Standard(StdlibTypeId::ManagedReadContext)) -> (I32), deps [], imports [], build_charge_managed_work),
+    helper!(ManagedErrorField, (StringValue, StringValue) -> (StringValue), deps [], imports [], build_managed_error_field),
+    helper!(ManagedErrorIndex, (StringValue, I32, StringValue) -> (StringValue), deps [FormatI64], imports [], build_managed_error_index),
     helper!(ChargeManagedBytes, (Standard(StdlibTypeId::ManagedReadContext), I64) -> (I32), deps [], imports [], build_charge_managed_bytes),
     helper!(ChargeManagedElements, (Standard(StdlibTypeId::ManagedReadContext), I64) -> (I32), deps [], imports [], build_charge_managed_elements),
     helper!(ChargeManagedScan, (Standard(StdlibTypeId::ManagedReadContext), I64) -> (I32), deps [], imports [], build_charge_managed_scan),

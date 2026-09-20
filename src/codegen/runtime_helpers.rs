@@ -27,6 +27,7 @@ mod gba;
 mod gcn;
 mod genesis;
 mod managed_context;
+mod managed_errors;
 mod md5;
 pub(super) mod process;
 mod provider;
@@ -39,6 +40,14 @@ mod wii;
 pub(super) use equality::{
     compile_equality, compile_managed_equality, emit_equality_call, emit_value_equality,
 };
+
+pub(super) fn build_managed_error_field(inputs: &RuntimeHelperInputs<'_>) -> Function {
+    managed_errors::field(inputs)
+}
+
+pub(super) fn build_managed_error_index(inputs: &RuntimeHelperInputs<'_>) -> Function {
+    managed_errors::index(inputs)
+}
 
 pub(super) fn build_enter_managed_object(inputs: &RuntimeHelperInputs<'_>) -> Function {
     managed_context::enter(inputs.gc)

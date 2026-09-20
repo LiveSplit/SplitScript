@@ -1873,3 +1873,66 @@ fn owned_collection_constraints_reject_non_equatable_nested_values() {
         "{errors:?}"
     );
 }
+
+#[test]
+fn managed_error_paths_follow_observed_payloads() {
+    for (ty, read, field, index) in [
+        ("Child", "root.snapshot()", true, false),
+        ("[String?]", "Probe.values", false, true),
+        ("List<[String?]>", "Probe.values", false, true),
+        ("Map<String, Child>", "Probe.values", true, true),
+        ("Set<[String?]>", "Probe.values", false, true),
+    ] {
+        for observed in [false, true] {
+            let action = if observed {
+                format!(
+                    r#"setVariable("error", match {read} {{ Ok(_) => "ok", Err(error) => error }})"#
+                )
+            } else {
+                format!("let value = {read} else return")
+            };
+            let prefix = if ty == "Child" {
+                "let root = Probe.values else return"
+            } else {
+                ""
+            };
+            let action = format!("{prefix}\n{action}");
+            let source = format!(
+                r#"
+                image "Assembly-CSharp" {{
+                    class Probe {{ static {ty} values; static Map<String, Child> unused; }}
+                    class Child {{ String text; }}
+                }}
+                state Unity.il2cpp(Il2CppProfile.unity2022_3_0f1X64()) ["game.exe"] {{}}
+                whileAttached {{ {action} }}
+            "#
+            );
+            let checked = splitscript::check(splitscript::parse(&source).unwrap()).unwrap();
+            let (wasm, report) = splitscript::compiler::codegen_with_report(
+                &checked,
+                splitscript::CompilerOptions {
+                    profile: splitscript::BuildProfile::Release,
+                    ..Default::default()
+                },
+            );
+            Validator::new_with_features(WasmFeatures::all())
+                .validate_all(&wasm)
+                .unwrap();
+            if field && !index {
+                assert!(
+                    !report
+                        .runtime_helpers
+                        .iter()
+                        .any(|helper| helper == "FormatI64")
+                );
+            }
+            for (name, used) in [("ManagedErrorField", field), ("ManagedErrorIndex", index)] {
+                assert_eq!(
+                    report.runtime_helpers.iter().any(|helper| helper == name),
+                    observed && used,
+                    "{ty}, observed={observed}: {name}"
+                );
+            }
+        }
+    }
+}

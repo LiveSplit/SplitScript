@@ -78,6 +78,7 @@ for (const mono of [true, false]) for (const width of [32, 64]) {
         const result = host.variables.get('result');
         if (['shared', 'mutate', 'replace'].includes(mode) || (optionalLeft && mode === 'null child')) assert.equal(result, 'ok', label);
         else assert.match(result, /managed/, `${label}: failure message missing`);
+        if (mode === 'unreadable string') assert.match(result, /^left: text: managed string/, label);
         if (mode === 'cycle') assert.match(result, /cycle/, label);
         if (mode === 'shared byte budget') assert.match(result, /budget/, label);
         assert(reads.length < 100, `${label}: unbounded traversal`);

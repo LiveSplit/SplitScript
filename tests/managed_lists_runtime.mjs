@@ -8,7 +8,7 @@ const [wasm] = process.argv.slice(2);
 const profiles = JSON.parse(await readFile(new URL('./fixtures/mono-pe-profiles.json', import.meta.url)));
 const modes = ['seed', 'mutate', 'empty', 'large spare capacity', 'null empty backing',
     'negative count', 'count exceeds capacity', 'element budget', 'null backing', 'null list',
-    'unreadable size', 'unreadable backing slot', 'unreadable live slot', 'unreadable string',
+    'indexed string', 'unreadable size', 'unreadable backing slot', 'unreadable live slot', 'unreadable string',
     'null nested list', 'class cycle', 'shared element budget', 'capacity overflow',
     'list field overflow', 'backing bounds', 'runtime class replacement', 'cached layout',
     'reattach', 'retry discovery', 'freeze outer', 'freeze nested', 'freeze snapshot',
@@ -147,6 +147,7 @@ for (const backend of [...Object.keys(monoLayouts), 'il2cpp']) for (const width 
     if (mode === 'unreadable backing slot') memory.delete(rows + BigInt(2 * bytes));
     if (mode === 'unreadable live slot') memory.delete(rowsArray + BigInt(4 * bytes));
     if (mode === 'unreadable string') memory.delete(string + BigInt(2 * bytes + 4));
+    if (mode === 'indexed string') { vector(row, [...Array(12).fill(0n), string]); memory.delete(string + BigInt(2 * bytes + 4)); }
     if (mode === 'null nested list') ptr(nestedArray + BigInt(4 * bytes), 0);
     if (mode === 'class cycle') ptr(childrenArray + BigInt(4 * bytes), root);
     if (mode === 'shared element budget') {
@@ -214,6 +215,9 @@ for (const backend of [...Object.keys(monoLayouts), 'il2cpp']) for (const width 
     }
     const directSuccess = success || ['null nested list', 'class cycle', 'depth overflow', 'object overflow', 'torn size', 'torn backing'].includes(mode);
     assert.equal(host.variables.get('result') === 'ok', directSuccess, `${label}: ${host.variables.get('result')}`);
+    if (mode === 'indexed string') assert.match(host.variables.get('result'), /^\[0\]: \[12\]: managed string/, label);
+    if (mode === 'class cycle') assert.match(host.variables.get('treeResult'), /^children: \[0\]: /, label);
+    if (mode === 'unreadable string') assert.match(host.variables.get('result'), /^\[0\]: \[0\]: managed string/, label);
     if (!directSuccess) assert(host.variables.get('result').length > 0, `${label}: error payload was lost`);
     if (mode === 'local arrays mutable') assert.equal(host.variables.get('local'), '2', label);
     if (mode === 'large spare capacity' || mode === 'seed') {

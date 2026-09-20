@@ -563,7 +563,7 @@ fn compile_internal(inputs: BackendProgram<'_>, report: Option<&mut CodegenRepor
                 || semantics.state_provider() == Some(crate::stdlib::StdlibStateProviderId::Unity)
         })
     };
-    let dependencies = BackendDependencies::analyze(
+    let mut dependencies = BackendDependencies::analyze(
         program,
         semantics,
         wasm_ir,
@@ -581,6 +581,22 @@ fn compile_internal(inputs: BackendProgram<'_>, report: Option<&mut CodegenRepor
     );
     let failure_payloads =
         FailurePayloadDemand::analyze(semantics, wasm_ir, &reachability, &managed, capabilities);
+    if dependencies.require_managed_error_paths(
+        program,
+        semantics,
+        &reachability,
+        capabilities,
+        &failure_payloads,
+    ) {
+        reachability.require_runtime_helper_types(
+            &dependencies,
+            array_types,
+            program,
+            semantics,
+            &standard_library,
+            capabilities,
+        );
+    }
     let static_data = StaticData::collect(
         program,
         &process_names,

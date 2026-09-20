@@ -140,6 +140,8 @@ for (const parallel of [false, true]) for (const mode of modes) {
         assert.equal(normalize(host.variables.get(field)), expected, `${label}: ${field}`);
     }
     assert.equal(host.variables.get('result') === 'ok', success, `${label}: ${host.variables.get('result')}`);
+    if (mode === 'unreadable value') assert.match(host.variables.get('result'), /^set element\[0\]: \[0\]: /, label);
+    if (mode === 'unreadable string') assert.match(host.variables.get('result'), /^set element\[0\]: \[0\]: managed string/, label);
     if (mode === 'local mutable') assert.equal(host.variables.get('local'), '1', label);
     if (mode === 'retry') {
         ptr(row + BigInt(4 * bytes), text); string(text, 'new');

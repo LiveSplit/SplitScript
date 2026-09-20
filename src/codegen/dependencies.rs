@@ -530,6 +530,51 @@ impl BackendDependencies {
         dependencies
     }
 
+    // Error paths are demanded after propagation analysis. These helpers use
+    // only strings and numeric values, and introduce no additional Result flows.
+    pub fn require_managed_error_paths(
+        &mut self,
+        program: &Program,
+        semantics: &SemanticModel,
+        reachability: &super::reachability::Reachability,
+        capabilities: &crate::capabilities::CapabilityAnalysis,
+        payloads: &super::failure_payload::FailurePayloadDemand,
+    ) -> bool {
+        let before = self.helpers.len();
+        let observed = |ty| {
+            semantics.types().iter().any(|(_, kind)| {
+                matches!(kind, TypeKind::Result { layout, value }
+                    if *value == ty && payloads.is_demanded(*layout))
+            })
+        };
+        for class in reachability.managed_snapshots() {
+            if observed(semantics.types().id_for_managed_class(class))
+                && program
+                    .managed_class(class)
+                    .unwrap()
+                    .all_fields()
+                    .any(|field| !field.is_static)
+            {
+                self.require(RuntimeHelperId::ManagedErrorField);
+            }
+        }
+        for source in reachability.managed_decoders() {
+            let decoder = capabilities.managed_decoder(source).unwrap();
+            if observed(decoder.output)
+                && matches!(
+                    decoder.kind,
+                    crate::managed_read::ManagedDecoderKind::Array { .. }
+                        | crate::managed_read::ManagedDecoderKind::List { .. }
+                        | crate::managed_read::ManagedDecoderKind::Map { .. }
+                        | crate::managed_read::ManagedDecoderKind::Set { .. }
+                )
+            {
+                self.require(RuntimeHelperId::ManagedErrorIndex);
+            }
+        }
+        before != self.helpers.len()
+    }
+
     fn require_managed_field_reader(
         &mut self,
         field: ManagedFieldId,

@@ -1026,6 +1026,20 @@ const RUNTIME_FIXTURES: &[RuntimeFixture] = &[
         extra_arguments: &["--work-budget"],
     },
     RuntimeFixture {
+        source: "tests/managed_error_path_bound.split",
+        output: "managed_error_path_bound.wasm",
+        profile: "release",
+        harness: "tests/managed_recursive_snapshot_runtime.mjs",
+        extra_arguments: &["--bounded-paths"],
+    },
+    RuntimeFixture {
+        source: "tests/managed_error_path_bound.split",
+        output: "managed_error_path_bound_debug.wasm",
+        profile: "debug",
+        harness: "tests/managed_recursive_snapshot_runtime.mjs",
+        extra_arguments: &["--bounded-paths"],
+    },
+    RuntimeFixture {
         source: "tests/managed_recursive_snapshot.split",
         output: "managed_recursive_snapshot.wasm",
         profile: "release",

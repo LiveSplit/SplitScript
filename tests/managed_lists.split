@@ -35,6 +35,8 @@ whileAttached {
         Ok(_) => "ok",
         Err(error) => error,
     })
+    let root = ProfileProbe.instance else return
+    setVariable("treeResult", match root.snapshot() { Ok(_) => "ok", Err(error) => error })
     let mutation = process.read<i32>(0x6f000) else return
     if mutation == 1 { current.rows.clear() }
     if mutation == 2 { current.nested[0].clear() }

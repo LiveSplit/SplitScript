@@ -178,6 +178,22 @@ pub(super) fn compile(
             2,
             Type::Standard(crate::stdlib::StdlibTypeId::String),
         );
+        if lowering.failure_payloads.is_demanded(result) {
+            let name = &lowering
+                .program
+                .managed_class(class)
+                .unwrap()
+                .all_fields()
+                .find(|declaration| declaration.id == field.id)
+                .unwrap()
+                .name;
+            super::emit_string_literal(&mut function, name, lowering.gc);
+            function.instruction(&Instruction::Call(
+                lowering
+                    .runtime_helpers
+                    .function(crate::intrinsic_registry::RuntimeHelperId::ManagedErrorField),
+            ));
+        }
         function
             .instruction(&Instruction::LocalSet(error_local))
             .instruction(&Instruction::Br(1))

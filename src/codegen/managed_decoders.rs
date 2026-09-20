@@ -321,7 +321,33 @@ impl Reader<'_, '_> {
         self.forward_result_failure(f, result_for(self.output(child), self.lowering), local);
     }
 
+    fn forward_failure_at(
+        &self,
+        f: &mut Function,
+        child: TypeId,
+        local: u32,
+        index: u32,
+        label: &str,
+    ) {
+        self.forward_result_failure_with_path(
+            f,
+            result_for(self.output(child), self.lowering),
+            local,
+            Some((index, label)),
+        );
+    }
+
     fn forward_result_failure(&self, f: &mut Function, result: ResultTypeId, local: u32) {
+        self.forward_result_failure_with_path(f, result, local, None);
+    }
+
+    fn forward_result_failure_with_path(
+        &self,
+        f: &mut Function,
+        result: ResultTypeId,
+        local: u32,
+        path: Option<(u32, &str)>,
+    ) {
         self.result_field(f, result, local, 1, Type::I32);
         f.instruction(&I::If(BlockType::Empty));
         self.leave(f);
@@ -332,6 +358,15 @@ impl Reader<'_, '_> {
         );
         f.instruction(&I::I32Const(1));
         self.result_field(f, result, local, 2, Type::Standard(StdlibTypeId::String));
+        if self.lowering.failure_payloads.is_demanded(self.result)
+            && let Some((index, label)) = path
+        {
+            f.instruction(&I::LocalGet(index));
+            super::emit_string_literal(f, label, self.lowering.gc);
+            f.instruction(&I::Call(
+                self.lowering.runtime_helpers.function(H::ManagedErrorIndex),
+            ));
+        }
         f.instruction(&I::StructNew(
             self.lowering.gc.index(Type::Result(self.result)),
         ))
@@ -635,7 +670,7 @@ impl Reader<'_, '_> {
             .instruction(&I::I32Const(0))
             .instruction(&I::Call(l.managed_decoder_functions[&element]))
             .instruction(&I::LocalSet(10));
-        self.forward_failure(f, element, 10);
+        self.forward_failure_at(f, element, 10, 7, "");
         f.instruction(&I::LocalGet(9))
             .instruction(&I::RefAsNonNull)
             .instruction(&I::LocalGet(7));

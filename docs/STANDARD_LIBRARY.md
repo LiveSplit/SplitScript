@@ -461,6 +461,16 @@ and collection metadata discovery share that work counter across nested values.
 Metadata charges each class/field visit and bounded type/count operation before
 performing it. Cached layouts skip field-table discovery. Conditional snapshot
 fields follow the active attachment shape; skipped fields do not charge a read.
+Observed managed-read errors include the path relative to the requested value,
+such as `children: [2]: tags: [0]: managed string ...`. Snapshot fields use their
+source names, including aliases. Array/List indices are zero-based; `map key[n]`,
+`map value[n]`, and `set element[n]` identify the nth live entry encountered during
+that read, not a stable Map/Set index. Optional values add no path segment.
+Container layout/header failures identify the container itself. Error messages
+remain `String` values. Path formatting is emitted only when the corresponding
+error payload is observed. If more context would exceed the internal 4,096-byte
+diagnostic limit, the existing inner path and cause are preserved intact.
+
 Snapshot readers and the shared read context are generated only when needed:
 
 ```splitscript

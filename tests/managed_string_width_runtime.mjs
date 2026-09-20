@@ -105,7 +105,8 @@ for (const backend of ["mono", "il2cpp"]) for (const width of [32, 64]) for (con
             : mode === "null string" ? "managed field contained a null string"
             : mode === "unreadable optional" ? "managed string field pointer could not be read"
             : "managed string payload is invalid, unreadable, or exceeds the read budget";
-        assert.equal(host.variables.get("result"), error, `${backend}/${width}/${mode}: snapshot error payload`);
+        const field = ["unreadable optional", "shared budget exhausted"].includes(mode) ? "optional" : "text";
+        assert.equal(host.variables.get("result"), error === "ok" ? error : `${field}: ${error}`, `${backend}/${width}/${mode}: snapshot error payload`);
     }
     for (const [address, length] of reads) assert(address + BigInt(length - 1) <= limit, `${mode}: read beyond target width`);
     if (mode === "read budget" || mode === "negative length") assert(!reads.some(([address]) => address === string + payloadOffset), "invalid string read its payload");

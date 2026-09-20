@@ -323,7 +323,17 @@ pub(super) fn compile(
             .instruction(&I::I32Const(0))
             .instruction(&I::Call(l.managed_decoder_functions[&child]))
             .instruction(&I::LocalSet(local));
-        r.forward_failure(&mut f, child, local);
+        r.forward_failure_at(
+            &mut f,
+            child,
+            local,
+            16,
+            if dictionary {
+                if local == 11 { "map key" } else { "map value" }
+            } else {
+                "set element"
+            },
+        );
     }
     r.child_field(&mut f, key, if dictionary { 11 } else { 12 }, 0, key_type);
     f.instruction(&I::LocalSet(19));
