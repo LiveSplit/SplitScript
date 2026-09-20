@@ -512,8 +512,9 @@ impl ManagedFieldDecl {
     /// order.
     ///
     /// An omitted `from` accepts both the source name and the conventional C#
-    /// automatic-property backing field. Explicit `from` spellings are exact
-    /// alternatives and are never expanded implicitly.
+    /// automatic-property backing field. Explicit `from` spellings are kept
+    /// as written here; the Unity runtime matcher also recognizes their
+    /// conventional backing-field forms.
     pub fn binding_name_candidates(&self) -> Vec<(String, Span, ManagedBindingNameKind)> {
         let mut candidates = Vec::new();
         for (name, span) in self.metadata_name_candidates() {

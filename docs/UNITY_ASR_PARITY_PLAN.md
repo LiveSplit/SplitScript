@@ -12,7 +12,7 @@ Bring the improvements from ero-qt's ASR Unity series into SplitScript's schema-
 
 The explicit-profile Lunistice Release artifact must return **below 30,000 bytes**
 before this work is complete, aiming for its earlier 23–28 KB range. The current
-roughly 42 KB artifact is a temporary regression, not an accepted final budget.
+roughly 40 KB artifact is a temporary regression, not an accepted final budget.
 Focus the reduction on the Unity discovery code introduced by this migration:
 specialize known profile facts and avoid unnecessarily large generated async
 walks. Preserve the actual script, metadata correctness, and behavior checks;
@@ -139,9 +139,12 @@ Mono remains different: exact PE/ELF/Mach-O identity selection followed by forma
 - ASR collection support is for the specific metadata shapes implemented upstream. It does not provide recursively composed high-level decoders, multidimensional/jagged-array decoding, every new HashSet layout, all generic type forms, or arbitrary CLR object graphs. **SplitScript must add recursive composition, including jagged arrays, beyond that baseline.** Multidimensional CLR arrays remain a separate layout feature; arbitrary object graphs are not followed implicitly beyond declared schema fields.
 - ASR's shared walker retains some permissive/unbounded historical behavior, such as a signed Mono bucket count cast to `u64` and parent walks without a global cycle budget. Copy the supported layouts and behavior, but retain/add SplitScript's bounded, cancellable execution model.
 
-## What SplitScript already has, and what is missing
+## SplitScript at the planning baseline
 
-| Area | Current evidence | Required action |
+This table records the pre-migration state, not current missing features. See
+[the finish audit](UNITY_FINISH.md) for the implemented requirements and open gates.
+
+| Area | Baseline evidence | Planned action |
 | --- | --- | --- |
 | Schema-based Unity workflow | `image`/`namespace`/`class`, `from` alternatives, conditional shapes, `UnityRuntime`/`UnityMetadataClass` adapters in `stdlib/standard.split`; binding plan in `src/managed.rs` | Keep this as the public workflow. ASR's low-level Rust objects are implementation references, not an API to reproduce verbatim. |
 | Managed strings | `ManagedFieldRead::ManagedString`; stored UTF-16 lengths; nullable strings, failed-read propagation, replacement decoding, embedded NUL, static/live/snapshot readers | Extend rather than recreate. The object decoder hardcodes length at `0x10` and characters at `0x14`; make these `2 * pointerBytes` and `2 * pointerBytes + 4`. Its field-pointer reader already branches on width, which does **not** make the payload decoder 32-bit-capable. |
@@ -451,28 +454,29 @@ Avoid a huge blind Cartesian product: test every profile's data/selection invari
 | Runtime integration | Static/live/conditional/deep-snapshot paths; collection shape caching; replacement class; current/old stability after remote and attempted local mutation; failure at a deep leaf rejects the root; process restart; instances/components |
 | Cost | Bounded attachment polls and shared root scan/decode work; no per-tick metadata walks after cache resolution; per-step Lunistice size deltas; unused feature discovery/readers/data/scratch absent; exact transitive demand for nested decoders |
 
-The implementation is complete when all 14 PRs have an outcome in this checklist:
+The per-PR implementation audit is recorded in [UNITY_FINISH.md](UNITY_FINISH.md).
+The remaining unchecked items below still prevent completion:
 
 - [x] #142 identities and equivalent generated-Wasm test infrastructure.
 - [x] #143 Windows Mono exact profiles and image-name routing.
 - [x] #144 measured IL2CPP layouts, x86 discovery, and corrected reads; superseded selection intentionally omitted.
-- [ ] #145 shared metadata operations with SplitScript-specific scheduling/ambiguity semantics.
-- [ ] #146 nested/generic handling and owner-aware static regression coverage.
-- [ ] #147 width-correct strings and bounded value arrays (raw-unit access excluded).
-- [ ] #148 runtime-validated lists with cached layouts.
-- [ ] #150 validated dictionary layouts and complete live-pair reads.
-- [ ] #151 hash sets with correct high-water/count semantics.
-- [ ] #152 old parallel-array shapes and distinct liveness rules.
-- [ ] #153 reference array/list elements and direct string-object decoding.
-- [ ] #155 Linux exact identities/profiles and required discovery support.
-- [ ] #156 macOS UUID profiles and required discovery support.
+- [x] #145 shared metadata operations with SplitScript-specific scheduling/ambiguity semantics.
+- [x] #146 nested/generic handling and owner-aware static regression coverage.
+- [x] #147 width-correct strings and bounded value arrays (raw-unit access excluded).
+- [x] #148 runtime-validated lists with cached layouts.
+- [x] #150 validated dictionary layouts and complete live-pair reads.
+- [x] #151 hash sets with correct high-water/count semantics.
+- [x] #152 old parallel-array shapes and distinct liveness rules.
+- [x] #153 reference array/list elements and direct string-object decoding.
+- [x] #155 Linux exact identities/profiles and required discovery support.
+- [x] #156 macOS UUID profiles and required discovery support.
 - [x] #160 complete explicit/custom IL2CPP profiles, final auto selection, and removal of year buckets.
-- [ ] Beyond ASR: recursive `ManagedReadable`, with `MemoryReadable` base cases and generic constraint support.
-- [ ] Beyond ASR: natural nested arrays/lists/maps/sets/strings and declared class snapshots through one decoder graph.
-- [ ] Beyond ASR: transitive immutable snapshot ownership, per-root budgets, nested nullability/failures, cycle handling, and retained-state safety.
+- [x] Beyond ASR: recursive `ManagedReadable`, with `MemoryReadable` base cases and generic constraint support.
+- [x] Beyond ASR: natural nested arrays/lists/maps/sets/strings and declared class snapshots through one decoder graph.
+- [x] Beyond ASR: transitive immutable snapshot ownership, per-root budgets, nested nullability/failures, cycle handling, and retained-state safety.
 - [ ] Every implementation step has a Lunistice size/behavior report; all positive size deltas have a reachable-feature explanation.
 - [ ] Explicit-profile Lunistice Release is below 30,000 bytes under the existing baseline pipeline (target range 23–28 KB), with base/DLC behavior preserved.
-- [ ] Unused feature resolvers, readers, metadata names, profile data, GC types, and scratch storage are absent from generated Wasm.
+- [x] Unused feature resolvers, readers, metadata names, profile data, GC types, and scratch storage are absent from generated Wasm.
 
 ## IL2CPP integration evidence (2026-09-19)
 

@@ -396,9 +396,11 @@ snapshots, so `old` remains stable if Unity later unloads or reuses the native
 scene address. Native scene discovery does not also trigger managed-runtime
 metadata discovery unless a managed schema is reachable.
 
-`from "name"` supplies an exact metadata name and `from ["first", "second"]`
-supplies alternative names. Instance fields without `from` also recognize
-the conventional C# automatic-property backing-field spelling. Nested classes
+`from "name"` supplies a metadata name and `from ["first", "second"]`
+supplies alternative names. Static and instance field lookup also recognizes
+the conventional C# automatic-property backing-field spelling for each name,
+including explicit `from` aliases, as ASR does. For example, `from "Instance"`
+can find `<Instance>k__BackingField` without listing it separately. Nested classes
 use .NET names such as `class Leaf from "Game.Outer+Middle+Leaf"`. Both backends
 check every enclosing class, require the outermost class to have no further
 declaring parent, and read the namespace from that outermost class. Unqualified
@@ -430,10 +432,11 @@ within that class on both backends.
 List/Map/Set readers validate available runtime element kinds and storage widths
 before reading their payloads, including old corlib collections with separate
 key/value arrays. Cached layouts are checked against each requested schema;
-using a cached class through an incompatible schema still fails. Mono generic
-elements use the cached instantiated class to distinguish reference storage
-from inline values and to obtain the latter's exact size. Full generic type
-identity validation and IL2CPP generic storage classification are not yet implemented.
+using a cached class through an incompatible schema still fails. Both backends
+use the cached instantiated class to distinguish generic reference storage
+from inline values and to obtain the latter's exact size. Recursive collection
+schemas also check nested element metadata, including empty containers, and
+class leaves must match the declared class or an accepted derived class.
 
 Class-typed
 static and instance fields are live references: every state poll rereads the

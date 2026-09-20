@@ -9510,21 +9510,6 @@ private struct UnityModule {
         return Ok(if count == 65535 { 0 } else { count as i32 })
     }
 
-    private fn probeFields(class: address, names: [String]) -> async UnityField? {
-        let fields = UnityFields {
-            names: UnityClassNames { width: self.pointerSize as u64,
-                name: self.profile.className, namespace: self.profile.classNamespace, declaring: None },
-            parent: self.profile.classParent, fields: self.profile.classFields,
-            fieldName: self.profile.fieldName, fieldValue: self.profile.fieldValue,
-            stride: self.profile.fieldStride,
-        }
-        return await fields.find(class, names, current => self.fieldCount(current, fields.names))
-    }
-
-    private fn statics(class: address) -> async address {
-        return retry self.readPointerMember(class, self.profile.classStatics)
-    }
-
 }
 
 /// Describes a Unity assembly image.
@@ -9703,21 +9688,16 @@ private struct UnityClass {
         return field
     }
 
-    // Completes after one successful metadata traversal. Index !0 is the
-    // compiler-private ambiguity sentinel returned by the raw backend probe.
+    // Shared traversal reports ambiguity before returning a completed result.
     private fn probeFieldAny(names: [String]) -> async UnityField? {
-        let candidate = await self.rawProbeFieldAny(names)
-        match candidate {
-            Some(field) if field.index == !0 => {
-                print(`multiple Unity fields match metadata names {names}`)
-                await process.closed()
-            },
-            _ => return candidate,
+        let fields = UnityFields {
+            names: UnityClassNames { width: self.module.pointerSize as u64,
+                name: self.module.profile.className, namespace: self.module.profile.classNamespace, declaring: None },
+            parent: self.module.profile.classParent, fields: self.module.profile.classFields,
+            fieldName: self.module.profile.fieldName, fieldValue: self.module.profile.fieldValue,
+            stride: self.module.profile.fieldStride,
         }
-    }
-
-    private fn rawProbeFieldAny(names: [String]) -> async UnityField? {
-        return await self.module.probeFields(self.address, names)
+        return await fields.find(self.address, names, current => self.module.fieldCount(current, fields.names))
     }
 
     // Resolves static storage against the field's declaring runtime class.
@@ -9769,7 +9749,7 @@ private struct UnityClass {
     /// let staticTable = await gameManager.staticTable()
     /// ```
     fn staticTable() -> async address {
-        return await self.module.statics(self.address)
+        return retry self.module.readPointerMember(self.address, self.module.profile.classStatics)
     }
 
     /// Finds a static singleton instance.
