@@ -30,7 +30,8 @@ These are stored measurements, inspected without rebuilding:
 | `8a759ae` | 60,345 | Latest committed implementation |
 | Before class-scan change | 57,399 | Pending discovery consolidation |
 | `57ed738` | 49,437 | Bounded synchronous class scan |
-| Current tested working tree | 43,627 | Bounded image scan and fixed-width discovery |
+| `7545e6f` | 43,627 | Bounded image scan and fixed-width discovery |
+| Current tested working tree | 41,504 | Debug-only descriptor sanity checks |
 
 Historical evidence: `tests/baselines/unity.json` at each revision. Current
 evidence: `target/unity-baseline/report.json` (ephemeral build artifact).
@@ -157,3 +158,24 @@ validation also pass under the resource guard.
 The explicit artifact remains 13,628 bytes above the largest size permitted by
 the completion requirement. The original parity audit and final size acceptance
 remain open; this checkpoint does not add another feature requirement.
+
+## Debug-only descriptor sanity checks
+
+Following the user's request, IL2CPP descriptor alignment, offset, and stride
+sanity checks now use the existing `debug` statement. Debug still rejects the
+malformed custom-profile fixture before discovery. Release omits the validator
+for both measured and custom profiles. Target pointer-width validation remains
+in both build profiles, as do checked reads, bounded traversal, and snapshot
+failure behavior. No separate trusted-profile API or compiler routing was added.
+
+Explicit Lunistice shrinks **43,627 -> 41,504 bytes** (-2,123), with both editions
+passing. Automatic selection remains 170,339 bytes. All 38 size fixtures shrink
+or stay unchanged; runtime helper sets, scratch capacity, and memory pages are
+unchanged. The 49 profile/code-generation tests pass, including Debug retention
+and Release exclusion of descriptor validation. All five relevant runtime
+artifacts validate and pass 56 cases, covering measured profiles, custom profiles,
+wrong target widths, reattachment, and malformed descriptors in Debug.
+Documentation validation passes. Builds and tests ran through the resource guard.
+
+Final size acceptance remains open: 11,505 bytes must still be removed to reach
+an artifact strictly below 30,000 bytes. The parity audit also remains open.

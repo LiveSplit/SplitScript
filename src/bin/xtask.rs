@@ -1231,7 +1231,7 @@ const RUNTIME_FIXTURES: &[RuntimeFixture] = &[
     RuntimeFixture {
         source: "tests/il2cpp_profile_invalid.split",
         output: "il2cpp_profile_invalid.wasm",
-        profile: "release",
+        profile: "debug",
         harness: "tests/il2cpp_profiles_runtime.mjs",
         extra_arguments: &["invalid"],
     },

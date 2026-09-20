@@ -4,7 +4,7 @@ Current finish scope and execution order: [Unity finish audit](UNITY_FINISH.md).
 That document supersedes the sequencing and stale completion checklist below;
 the historical research and implementation evidence remain useful.
 
-Status: core recursive managed values and snapshots, measured IL2CPP profiles, and Windows/Linux/macOS Mono automatic attachment are implemented. Explicit Windows/Linux/macOS Mono family selectors are also implemented. Nested materialization error paths, recursive collection contracts, and runtime class checks for snapshots and live references are implemented. Remaining work includes shared metadata traversal/scheduling, the final parity and coverage audit, native platform validation, and final size acceptance. See [implementation progress](#implementation-progress).
+Status: core recursive managed values and snapshots, measured IL2CPP profiles, and Windows/Linux/macOS Mono automatic attachment are implemented. Explicit Windows/Linux/macOS Mono family selectors are also implemented. Nested materialization error paths, recursive collection contracts, and runtime class checks for snapshots and live references are implemented. Current work addresses final size acceptance and the final parity/coverage audit. Native Linux/macOS live-game behavior remains unverified; existing platform coverage uses fixtures. See [implementation progress](#implementation-progress).
 
 ## Objective and baseline
 
@@ -12,14 +12,15 @@ Bring the improvements from ero-qt's ASR Unity series into SplitScript's schema-
 
 The explicit-profile Lunistice Release artifact must return **below 30,000 bytes**
 before this work is complete, aiming for its earlier 23–28 KB range. The current
-roughly 44 KB artifact is a temporary regression, not an accepted final budget.
+roughly 42 KB artifact is a temporary regression, not an accepted final budget.
 Focus the reduction on the Unity discovery code introduced by this migration:
 specialize known profile facts and avoid unnecessarily large generated async
 walks. Preserve the actual script, metadata correctness, and behavior checks;
 do not meet the target by removing functionality or changing the measurement
 pipeline. Merely proving that oversized general-purpose code is reachable is
-not sufficient justification. Continue managed features alongside this focused
-work, without unrelated compiler optimization.
+not sufficient justification. Finish this focused size correction and the parity audit; add functional work
+only for demonstrated gaps in the requested behavior, without unrelated compiler
+optimization.
 
 The comparison is pinned to:
 
@@ -250,7 +251,7 @@ The compiler may know every profile and decoder. The generated autosplitter must
 2. **Traverse only demanded decoder-plan nodes.** `Map<String, [String]>` demands dictionary shape resolution, string decoding, vector/list decoding as actually required, local map construction/equality, and their shared primitives. It does not demand set scanning or unrelated class snapshots. Deduplicate shared nodes/helpers across all roots and monomorphizations.
 3. **Track discovery separately from payload decoding.** A dictionary root demands dictionary ancestor/field/type resolution; a scalar or string root does not. Keep list/dictionary/set shape resolvers as separately reachable functions. Do not emit a universal runtime `match` covering all managed shapes that makes all branches reachable. The compiler-side plan graph may use enums; generated calls should be specialized to reachable nodes.
 4. **Prune the whole dependency chain.** Apply demand to function bodies, async continuation/frame fields, GC types, globals, type/field-name strings, signatures, profile members, failure strings, data segments, and scratch reservations. Reuse `reachability.rs`, `dependencies.rs`, `function_plan.rs`, `data_plan.rs`, and `runtime_helper_registry.rs`; a parallel feature registry with independent retention rules would invite drift.
-5. **Make metadata capabilities conditional.** Scalar/static reads must not demand dictionary-entry `instance_size` or type-to-class machinery. Complete profiles are validated in the compiler; emitted representations can project only members needed by the reachable operations. Optional nested/generic capabilities should not drag all collection walkers into every attachment.
+5. **Make metadata capabilities conditional.** Scalar/static reads must not demand dictionary-entry `instance_size` or type-to-class machinery. Profile construction is exhaustive at compile time; descriptor sanity checks run in Debug builds, while target-width and memory-read checks remain in Release. Emitted representations can project only members needed by the reachable operations. Optional nested/generic capabilities should not drag all collection walkers into every attachment.
 6. **Separate automatic and explicit profile roots.** Explicit IL2CPP profile selection excludes the auto-selection table and unnecessary version/identity readers. Explicit backend selection excludes the other backend. Auto selection may legitimately retain the candidate profiles/backends it can choose; account for this data and code separately from collection growth. When one output type allows multiple remote shapes, retain only those genuinely unresolved by the chosen storage policy, and offer an explicit hint to specialize further.
 7. **Classify conditional use correctly.** An unused class or never-read field adds no decoder demand. A compile-time unreachable branch adds none. A runtime-selected conditional schema field that can participate in a reachable snapshot needs its decoder; calling that code unused merely because one test selects the other variant would be wrong.
 
@@ -292,7 +293,7 @@ Each step is a reviewable change with its own acceptance gate **and the mandator
 1. Define common assembly/class/field offsets plus backend-specific Mono and IL2CPP descriptors. Include format/architecture/width, assembly-name route, field stride, declaring type, instance size, type data/kind, generic routes, static storage mode, and field-count representation.
 2. Model IL2CPP image start as an explicit `Inline(offset)` or `Handle(offset)` variant; never derive it indirectly from a year number. Include class-field count and all class/image/field offsets that now live in `OBJECT_LAYOUT`.
 3. Model Mono V1/V1Cattrs static storage separately from the newer `vtable + methodCount * pointerBytes` route. Include generic-definition count routing and type metadata capabilities.
-4. Validate descriptors: supported target formats/architectures, pointer width, member sizes/strides, overflow, required name routes, and impossible combinations. A custom profile is exhaustive; future fields require an explicit choice.
+4. Validate target format/architecture and pointer width in all builds. Check descriptor sizes/strides, alignment, name routes, and impossible combinations in Debug builds; preserve checked remote-address arithmetic in Release. A custom profile is exhaustive; future fields require an explicit choice.
 5. Thread selected descriptors through `UnityModule`, `MonoModule`, provider bindings, async state storage, runtime-helper signatures, static-table reads, and instance-header/component logic.
 6. Remove the four-entry `VERSION_LAYOUTS`, fixed IL2CPP `POINTER_SIZE`, and generic hardcoded `OBJECT_LAYOUT` once all consumers move. Keep each measured fact in one authoritative location. Ensure the emitted descriptor representation can omit unreachable profile tables and unused feature-specific members.
 

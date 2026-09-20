@@ -363,9 +363,10 @@ the GameAssembly pointer width and omits player-version lookup and the catalog.
 For a separately measured player, construct an `Il2CppProfile` struct literal
 with every field supplied. Optional unknown facts must be `None`; offsets are
 never filled in from another profile. A provider argument may call a constructor
-function whose body only returns a value composed from constant inputs. Custom
-profiles are validated before metadata scanning; malformed layouts and pointer
-width mismatches reject the attachment until that process closes.
+function whose body only returns a value composed from constant inputs. Debug
+builds check descriptor offsets, alignment, and field strides before metadata
+scanning. Release omits these authoring checks. Both profiles reject target
+pointer-width mismatches and retain checked memory reads and bounded traversal.
 
 On Windows, automatic Mono selection first matches the runtime DLL's PDB GUID
 and age against 26 measured profiles and verifies its pointer width. Missing,

@@ -54,12 +54,36 @@ fn explicit_il2cpp_width_omits_opposite_discovery() {
             assert_eq!(retained("Il2CppTable32::poll"), width == 32);
             assert_eq!(retained("Il2CppNameReference32::poll"), width == 32);
             assert!(
-                retained("Il2CppProfileIsValid"),
-                "specialization must preserve validation"
+                !retained("Il2CppProfileIsValid"),
+                "Release must omit authoring-only profile validation"
             );
         }
     }
-    let (_, report) = release_emission(include_str!("../il2cpp_profile_custom.split"));
+    let custom = include_str!("../il2cpp_profile_custom.split");
+    let (_, report) = release_emission(custom);
+    assert!(
+        !report
+            .functions
+            .iter()
+            .any(|(_, name)| name.contains("Il2CppProfileIsValid")),
+        "Release custom profiles must omit authoring-only validation"
+    );
+    let checked =
+        splitscript::check(splitscript::lower(splitscript::parse(custom).unwrap())).unwrap();
+    let (_, debug) = splitscript::compiler::codegen_with_report(
+        &checked,
+        splitscript::CompilerOptions {
+            profile: splitscript::BuildProfile::Debug,
+            ..Default::default()
+        },
+    );
+    assert!(
+        debug
+            .functions
+            .iter()
+            .any(|(_, name)| name.contains("Il2CppProfileIsValid")),
+        "Debug custom profiles must retain authoring validation"
+    );
     assert!(
         !report
             .functions

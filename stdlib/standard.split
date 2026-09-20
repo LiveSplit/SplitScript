@@ -1448,7 +1448,13 @@ namespace Unity {
     private fn il2cppRuntime(profile: Il2CppProfile) -> async Module {
         let runtime = await process.module("GameAssembly.dll")
         let width = retry runtime.pointerSize()
-        if width != profile.pointerSize || !profile.isValid() {
+        if width != profile.pointerSize {
+            print("IL2CPP profile is invalid or has the wrong pointer width")
+            await process.closed()
+        }
+        // Descriptor sanity is an authoring check. Release keeps target-width
+        // validation and the checked reads performed by each metadata reader.
+        debug if !profile.isValid() {
             print("IL2CPP profile is invalid or has the wrong pointer width")
             await process.closed()
         }
