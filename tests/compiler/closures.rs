@@ -7,6 +7,23 @@ use splitscript::tooling::{
 };
 use wasmparser::{Operator, Parser, Payload, Validator, WasmFeatures};
 
+#[test]
+fn effect_analysis_does_not_capture_unreferenced_sibling_closures() {
+    let mut source = String::from("state \"game.exe\" {}\nfn select(seed: u32) -> () -> u32 {\n");
+    for index in 0..48 {
+        source.push_str(&format!(
+            "let sibling{index}: () -> u32 = () => seed + {index}u32\n"
+        ));
+    }
+    // A nested closure still needs its transitive lexical capture. Before the
+    // fix, each sibling also copied every earlier sibling into its effect model.
+    source.push_str("return () => { let nested: () -> u32 = () => sibling47(); nested() }\n}\nwhileAttached { print(select(2)()) }\n");
+    let wasm = splitscript::compile(&source).expect("independent closure models must stay bounded");
+    Validator::new_with_features(WasmFeatures::all())
+        .validate_all(&wasm)
+        .unwrap();
+}
+
 fn call_ref_count(wasm: &[u8]) -> usize {
     Parser::new(0)
         .parse_all(wasm)

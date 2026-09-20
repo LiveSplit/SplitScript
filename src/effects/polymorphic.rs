@@ -17,13 +17,53 @@ use crate::{
         TypedStatementKind,
     },
     semantic::{
-        DynamicCallCallee, ResolvedCall, ResolvedMember, ResolvedStructFieldId, ResolvedValue,
-        SemanticModel,
+        DynamicCallCallee, ResolvedCall, ResolvedMember, ResolvedReceiver, ResolvedStructFieldId,
+        ResolvedValue, SemanticModel,
     },
     stdlib::{Availability, CoreTypeId, Effect, StdlibItemId, StdlibTypeConstructorId},
     types::TypeKind,
 };
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
+
+// Value identities are lexical, so only referenced values already present in
+// the outer environment can be captures. Include nested closure bodies: their
+// free values must survive in the enclosing closure's model as well.
+fn referenced_values(body: ExprId, program: &TypedProgram) -> BTreeSet<ValueId> {
+    struct References(BTreeSet<ValueId>);
+    impl crate::hir::TypedVisitor for References {
+        fn visit_statement(&mut self, statement: &TypedStatement, program: &TypedProgram) {
+            if let TypedStatementKind::Assign { assignment, .. } = &statement.kind {
+                self.0.insert(assignment.target);
+            }
+            crate::hir::walk_typed_statement(self, statement, program);
+        }
+        fn visit_expression(&mut self, expression: &TypedExpression, program: &TypedProgram) {
+            let value = match &expression.resolution {
+                Some(ExpressionResolution::ValuePath { root, .. }) => *root,
+                Some(ExpressionResolution::Call(call)) => match call.receiver() {
+                    Some(ResolvedReceiver::Path { root, .. }) => Some(*root),
+                    _ => None,
+                },
+                Some(ExpressionResolution::DynamicCall(DynamicCallCallee::Value(value))) => {
+                    self.0.insert(*value);
+                    None
+                }
+                _ => None,
+            };
+            if let Some(value) = value.and_then(ResolvedValue::source_value) {
+                self.0.insert(value);
+            }
+            crate::hir::walk_typed_expression(self, expression, program);
+        }
+    }
+    let mut references = References(BTreeSet::new());
+    crate::hir::TypedVisitor::visit_expression(
+        &mut references,
+        program.expression(body).unwrap(),
+        program,
+    );
+    references.0
+}
 
 const MAX_ABSTRACT_VALUES: usize = 32;
 const MAX_FIXPOINT_ROUNDS: usize = 64;
@@ -655,10 +695,9 @@ impl<'a> Evaluator<'a> {
             TypedExpressionKind::Closure { parameters, body } => SymbolicValue::Closure {
                 parameters: parameters.iter().map(|parameter| parameter.value).collect(),
                 body: *body,
-                captures: self
-                    .env
-                    .iter()
-                    .map(|(id, value)| (*id, value.clone()))
+                captures: referenced_values(*body, self.program)
+                    .into_iter()
+                    .filter_map(|id| self.env.get(&id).map(|value| (id, value.clone())))
                     .collect(),
                 generator: crate::hir::typed_expression_contains_yield(*body, self.program),
             },
