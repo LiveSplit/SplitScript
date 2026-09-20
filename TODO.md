@@ -65,10 +65,11 @@ complete, the approved finite `process.scanOnce` primitive now reports
 bounded-range exhaustion without changing waiting scans, and suspending
 `whileAttached` now supports cancellable post-attachment rediscovery without
 running timer decisions against stale snapshots. Continue with the remaining
-P0 porting gaps below. Do not begin managed collection support itself until ASR
-has a tested representation, and bring every language, standard-library,
-provider, or host-surface decision below back to the user. Large foreign-input
-recovery is now bounded and prompt, and the current corpus-proven exact
+P0 porting gaps below. The active Unity migration and managed collection work
+follows the finite completion scope in [UNITY_FINISH.md](docs/UNITY_FINISH.md).
+Bring new language, standard-library, provider, or host-surface decisions below
+back to the user. Large foreign-input recovery is now bounded and prompt, and
+the current corpus-proven exact
 migration searches lead to canonical facilities or honest pending-design
 pages. Runtime-dependent timer, writable-file, file-metadata, JSON, and module
 enumeration work remains explicitly deferred until its host contracts are
@@ -325,18 +326,23 @@ to inference or code generation.
 - [x] Add managed-string fields as `String field` and `String? field`, with
   shared decoding for static, live, and snapshot reads. Object headers supply
   the length; nullability is typed and malformed UTF-16 uses replacement decoding.
-- [ ] After ASR has a tested managed-array and managed-list representation,
-  align the schema syntax and runtime model with it rather than independently
-  fixing target layouts in SplitScript. Both should materialize as `[T]`; do
-  not reintroduce a public `List<T>` value type. Use Alba and A Short Hike as
-  acceptance ports once that dependency is ready. Separate stable
-  singleton/field chains handled by declarations from collection enumeration
-  that genuinely needs new support. Alba can retain discovered task addresses,
-  names, required values, and previous readings in ordinary growable arrays;
-  it does not need runtime-created state fields. Keep ASR's target families
-  explicit rather than guessing offsets. Dictionaries and A Short Hike's
-  dynamic typed tag values need a separately approved language design based on
-  representative ports.
+- [ ] Finish the active ASR Unity migration using
+  [the finite finish scope](docs/UNITY_FINISH.md). Profiles, nested managed
+  String/array/List/Map/Set reads, and owned class snapshots are implemented.
+  Restore explicit-profile Lunistice below 30,000 bytes, resolve demonstrated
+  parity defects, and complete the relevant verification and documentation.
+  General Release compiler optimizations remain the separate P1 project below.
+- [ ] Exercise the managed collection surface when revisiting Alba and A Short
+  Hike. Arrays and remote `List<T>` materialize as `[T]`; remote maps and sets
+  retain `Map` and `Set` semantics. Keep dynamic typed tag values as a separate
+  language-design question driven by those ports.
+- [ ] Decide explicit Unity field-versus-property binding after the current
+  Unity migration. Prefer explicit intent over automatically trying a C#
+  property's backing-field name for every field alias. Consider whether a
+  property marker is needed, but do not choose or introduce syntax yet. Keep
+  existing automatic matching and Lunistice declarations unchanged until that
+  design is settled; then align schema binding, diagnostics, docs, and tests.
+
 ## P0 — make docs-first ASL porting semantically reliable
 
 The first clean-folder exercise had only the compiler and legacy ASL inputs. It
@@ -1703,7 +1709,7 @@ remaining work is product hardening and distribution.
    compiler/editor performance, release hardening, hosted IDE, and debugging
    work after the correctness and product-design sequence above.
 3. Keep only the portions of shared readable-memory helpers that need a new
-   host primitive, the PS2 low-memory domain, `unity.time`, Sega CD, SNES, and
-   managed collections gated on tested ASR evidence. Keep writes/injection,
+   host primitive, the PS2 low-memory domain, `unity.time`, Sega CD, and SNES
+   gated on tested ASR evidence. Keep writes/injection,
    physical `None` specialization, and other broad host powers deferred until
    their explicit dependencies and policies are ready.
