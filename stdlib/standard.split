@@ -1445,36 +1445,63 @@ namespace Unity {
     }
 
     // Explicit profiles do not retain player-version lookup or the profile catalog.
-    private fn il2cpp(profile: Il2CppProfile) -> async UnityModule {
+    private fn il2cppRuntime(profile: Il2CppProfile) -> async Module {
         let runtime = await process.module("GameAssembly.dll")
         let width = retry runtime.pointerSize()
         if width != profile.pointerSize || !profile.isValid() {
             print("IL2CPP profile is invalid or has the wrong pointer width")
             await process.closed()
         }
+        return runtime
+    }
+
+    private fn il2cpp(profile: Il2CppProfile) -> async UnityModule {
+        let runtime = await Unity.il2cppRuntime(profile)
         return await Unity.discoverIl2cpp(runtime, profile)
     }
 
+    // Generated state preparation selects these roots when a constructor's
+    // pointer width is known. Dynamic callers retain ordinary profile dispatch.
+    private fn providerIl2cpp64(profile: Il2CppProfile) -> async UnityModule {
+        let runtime = await Unity.il2cppRuntime(profile)
+        return await Unity.discoverIl2cpp64(runtime, profile)
+    }
+
+    private fn providerIl2cpp32(profile: Il2CppProfile) -> async UnityModule {
+        let runtime = await Unity.il2cppRuntime(profile)
+        return await Unity.discoverIl2cpp32(runtime, profile)
+    }
+
     private fn discoverIl2cpp(runtime: Module, profile: Il2CppProfile) -> async UnityModule {
-        let wide = profile.pointerSize == PointerSize.Bit64
-        let width: u64 = if wide { 8 } else { 4 }
-        let assemblies = await Unity.il2cppAssemblies(runtime, wide)
+        return if profile.pointerSize == PointerSize.Bit64 {
+            await Unity.discoverIl2cpp64(runtime, profile)
+        } else { await Unity.discoverIl2cpp32(runtime, profile) }
+    }
+
+    private fn discoverIl2cpp64(runtime: Module, profile: Il2CppProfile) -> async UnityModule {
+        let assemblies = await Unity.il2cppAssemblies(runtime, true)
         let metadata = await runtime.scan(sig"67 6C 6F 62 61 6C 2D 6D 65 74 61 64 61 74 61 2E 64 61 74 00")
-        let table = if wide {
-            let reference = await runtime.scanRelative32Target(sig"48 8D 0D ?? ?? ?? ??", 3, metadata)
-            let shift = await Unity.il2cppScanWindow(runtime, reference.add(3), 0x200, sig"48 C1 E9 ??")
-            let store = await Unity.il2cppScanWindow(runtime, shift.add(4), 0x100, sig"48 89 05 ?? ?? ?? ??")
-            retry process.readRelative32(store.add(3))
-        } else {
-            let reference = await Unity.il2cppNameReference32(runtime, metadata)
-            await Unity.il2cppTable32(runtime, reference.add(1))
-        }
-        let inside = Unity.il2cppInside(runtime, table, width)
-        if !inside {
+        let reference = await runtime.scanRelative32Target(sig"48 8D 0D ?? ?? ?? ??", 3, metadata)
+        let shift = await Unity.il2cppScanWindow(runtime, reference.add(3), 0x200, sig"48 C1 E9 ??")
+        let store = await Unity.il2cppScanWindow(runtime, shift.add(4), 0x100, sig"48 89 05 ?? ?? ?? ??")
+        let table = retry process.readRelative32(store.add(3))
+        if !Unity.il2cppInside(runtime, table, 8) {
             print("IL2CPP type table lies outside its module")
             await process.closed()
         }
-        return UnityModule { assemblies, typeInfoTable: table, profile, pointerSize: width as u32 }
+        return UnityModule { assemblies, typeInfoTable: table, profile, pointerSize: 8 }
+    }
+
+    private fn discoverIl2cpp32(runtime: Module, profile: Il2CppProfile) -> async UnityModule {
+        let assemblies = await Unity.il2cppAssemblies(runtime, false)
+        let metadata = await runtime.scan(sig"67 6C 6F 62 61 6C 2D 6D 65 74 61 64 61 74 61 2E 64 61 74 00")
+        let reference = await Unity.il2cppNameReference32(runtime, metadata)
+        let table = await Unity.il2cppTable32(runtime, reference.add(1))
+        if !Unity.il2cppInside(runtime, table, 4) {
+            print("IL2CPP type table lies outside its module")
+            await process.closed()
+        }
+        return UnityModule { assemblies, typeInfoTable: table, profile, pointerSize: 4 }
     }
 
     private fn il2cppInside(runtime: Module, at: address, width: u64) -> bool {
@@ -2109,6 +2136,31 @@ private struct UnityClassNames {
         }
         return Ok(false)
     }
+}
+
+/// A bounded IL2CPP assembly scan owned by one image lookup.
+///
+/// # Example
+///
+/// Bind a managed assembly
+///
+/// ```splitscript
+/// image "Assembly-CSharp" { class AssemblyProbe {} }
+/// state Unity ["game.exe"] {}
+/// ```
+@representation(gcStruct, nullable)
+@valueUsage(localVariable)
+private struct UnityImageCursor {
+    /// First assembly slot in the current vector.
+    private begin: address,
+    /// Number of assembly slots; zero requests a fresh header.
+    private count: u64,
+    /// Next assembly slot.
+    private index: u64,
+    /// Matching image, or zero while pending.
+    private image: address,
+    /// Structural rejection that waits for a new attachment.
+    private error: String?,
 }
 
 /// A bounded IL2CPP class-table scan owned by one lookup.
@@ -9327,32 +9379,49 @@ private struct UnityModule {
         return process.readUtf8(self.readPointerMember(base, offset)?, 256)
     }
 
-    private fn imageNamed(name: String) -> async UnityImage {
+    private fn imageStep(name: String, cursor: UnityImageCursor) -> UnityImageCursor! {
         let memory = UnityClassNames { width: self.pointerSize as u64,
             name: 0, namespace: 0, declaring: None }
-        loop {
-            let begin = retry memory.pointer(self.assemblies, 0)
-            let end = retry memory.pointer(self.assemblies, self.pointerSize as u64)
+        let begin = cursor.begin
+        let count = cursor.count
+        let index = cursor.index
+        if count == 0 {
+            begin = memory.pointer(self.assemblies, 0)?
+            let end = memory.pointer(self.assemblies, self.pointerSize as u64)?
             if end < begin || ((end as u64) - (begin as u64)) % (self.pointerSize as u64) != 0 {
-                print("IL2CPP assembly vector is malformed")
-                await process.closed()
+                return UnityImageCursor { begin: 0, count: 0, index: 0, image: 0,
+                    error: Some("IL2CPP assembly vector is malformed") }
             }
-            let count = ((end as u64) - (begin as u64)) / (self.pointerSize as u64)
+            count = ((end as u64) - (begin as u64)) / (self.pointerSize as u64)
             if count > 65536 {
-                print("IL2CPP assembly vector exceeds the metadata work limit")
-                await process.closed()
+                return UnityImageCursor { begin: 0, count: 0, index: 0, image: 0,
+                    error: Some("IL2CPP assembly vector exceeds the metadata work limit") }
             }
-            let index: u64 = 0
-            while index < count {
-                let assembly = retry memory.pointer(begin, index * (self.pointerSize as u64))
-                if assembly != 0 {
-                    let image = retry memory.namedImage(assembly, self.profile.assemblyImage,
-                        self.profile.assemblyName, self.profile.imageAssemblyName, name)
-                    if image != 0 { return UnityImage { address: image, module: self } }
-                }
-                index += 1
-                if index % 64 == 0 { await nextTick() }
+        }
+        let work: u32 = 0
+        while index < count && work < 64 {
+            let assembly = memory.pointer(begin, index * (self.pointerSize as u64))?
+            if assembly != 0 {
+                let image = memory.namedImage(assembly, self.profile.assemblyImage,
+                    self.profile.assemblyName, self.profile.imageAssemblyName, name)?
+                if image != 0 { return UnityImageCursor { begin, count, index, image, error: None } }
             }
+            index += 1
+            work += 1
+        }
+        if index == count { count = 0; index = 0 }
+        return UnityImageCursor { begin, count, index, image: 0, error: None }
+    }
+
+    private fn imageNamed(name: String) -> async UnityImage {
+        let cursor = UnityImageCursor { begin: 0, count: 0, index: 0, image: 0, error: None }
+        loop {
+            cursor = retry self.imageStep(name, cursor)
+            match cursor.error {
+                Some(error) => { print(error); await process.closed() },
+                None => {},
+            }
+            if cursor.image != 0 { return UnityImage { address: cursor.image, module: self } }
             await nextTick()
         }
     }

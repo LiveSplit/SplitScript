@@ -150,7 +150,135 @@ pub(crate) fn augment_program_with_library_bodies(
     }
     let tokens =
         augmented_tokens(&combined, library_start, rendered).map_err(|error| vec![error])?;
-    parse_augmented_program(user_source, &combined, tokens, body_ranges)
+    let mut program = parse_augmented_program(user_source, &combined, tokens, body_ranges)?;
+    if let Some(program) = &mut program {
+        specialize_il2cpp_preparation(program, library);
+    }
+    Ok(program)
+}
+
+// Keep a known-width state provider from retaining the opposite discovery path.
+// This only selects an implementation; ordinary typing, constant-configuration
+// validation, and runtime profile/target validation still apply unchanged.
+fn specialize_il2cpp_preparation(program: &mut Program, library: &StandardLibrary) {
+    let body_name = |name: &str| match library.item_by_name_including_private(name)?.implementation
+    {
+        Implementation::LibraryBody { function_name, .. } => Some(function_name),
+        _ => None,
+    };
+    let Some(generic) = body_name("Unity.providerIl2cpp") else {
+        return;
+    };
+    let Some(index) = program
+        .functions
+        .iter()
+        .position(|f| f.name == PROVIDER_PREPARATION_FUNCTION)
+    else {
+        return;
+    };
+    let Some(crate::ast::Stmt::Variable(binding)) =
+        program.functions[index].body.statements.first()
+    else {
+        return;
+    };
+    let Some(Expr {
+        kind: ExprKind::Suspend { value, .. },
+        ..
+    }) = &binding.value
+    else {
+        return;
+    };
+    let ExprKind::Call {
+        callee,
+        receiver: None,
+        args,
+        ..
+    } = &value.kind
+    else {
+        return;
+    };
+    if callee.as_slice() != [generic] || args.len() != 1 {
+        return;
+    }
+    let Some(width) = literal_profile_width(&args[0], program, library, 0) else {
+        return;
+    };
+    let Some(specialized) = body_name(if width == 8 {
+        "Unity.providerIl2cpp64"
+    } else {
+        "Unity.providerIl2cpp32"
+    }) else {
+        return;
+    };
+    let crate::ast::Stmt::Variable(binding) = &mut program.functions[index].body.statements[0]
+    else {
+        unreachable!()
+    };
+    let ExprKind::Suspend { value, .. } = &mut binding.value.as_mut().unwrap().kind else {
+        unreachable!()
+    };
+    let ExprKind::Call { callee, .. } = &mut value.kind else {
+        unreachable!()
+    };
+    *callee = vec![specialized.into()];
+}
+
+// Literal profiles and zero-argument constructor aliases cover the built-in
+// catalog and ordinary custom descriptors. More complex constant expressions
+// conservatively keep the generic implementation rather than guessing a width.
+fn literal_profile_width(
+    expression: &Expr,
+    program: &Program,
+    library: &StandardLibrary,
+    depth: usize,
+) -> Option<u32> {
+    if depth >= 64 {
+        return None;
+    }
+    match &expression.kind {
+        ExprKind::Struct { name, fields, .. } if name == "Il2CppProfile" => {
+            let field = fields.iter().find(|field| field.name == "pointerSize")?;
+            match &field.value.kind {
+                ExprKind::Path(path) if path.as_slice() == ["PointerSize", "Bit64"] => Some(8),
+                ExprKind::Path(path) if path.as_slice() == ["PointerSize", "Bit32"] => Some(4),
+                _ => None,
+            }
+        }
+        ExprKind::Call {
+            callee,
+            receiver: None,
+            args,
+            ..
+        } if args.is_empty() => {
+            let qualified = callee.join(".");
+            let name = match library
+                .item_by_name(&qualified)
+                .map(|item| item.implementation)
+            {
+                Some(Implementation::LibraryBody { function_name, .. }) => function_name,
+                None if callee.len() == 1 => &qualified,
+                _ => return None,
+            };
+            let function = program
+                .functions
+                .iter()
+                .find(|function| function.name == name)?;
+            if !function.params.is_empty()
+                || function.return_is_async
+                || function.return_is_iterator
+            {
+                return None;
+            }
+            let [crate::ast::Stmt::Expression(body)] = function.body.statements.as_slice() else {
+                return None;
+            };
+            let ExprKind::Return(Some(value)) = &body.kind else {
+                return None;
+            };
+            literal_profile_width(value, program, library, depth + 1)
+        }
+        _ => None,
+    }
 }
 
 pub(super) fn render_library_bodies(library: &StandardLibrary) -> RenderedLibraryBodies {

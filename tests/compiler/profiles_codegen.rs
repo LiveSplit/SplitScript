@@ -23,6 +23,51 @@ fn explicit_il2cpp_profiles_omit_the_measured_catalog_and_version_lookup() {
     }
 }
 
+#[test]
+fn explicit_il2cpp_width_omits_opposite_discovery() {
+    for (width, constructor) in [
+        (64, "Il2CppProfile.unity2022_3_0f1X64()"),
+        (32, "Il2CppProfile.unity2022_3_0f1X86()"),
+    ] {
+        for alias in [false, true] {
+            let declaration = if alias {
+                format!("fn profile() -> Il2CppProfile {{ return {constructor} }}")
+            } else {
+                String::new()
+            };
+            let argument = if alias { "profile()" } else { constructor };
+            let source = format!(
+                "{declaration}\nimage \"Assembly-CSharp\" {{ class Probe {{ static i32 value; }} }}\n\
+                 state Unity.il2cpp({argument}) [\"game.exe\"] {{ value = Probe.value?; }}"
+            );
+            let (wasm, report) = release_emission(&source);
+            Validator::new_with_features(WasmFeatures::all())
+                .validate_all(&wasm)
+                .unwrap();
+            let retained =
+                |part: &str| report.functions.iter().any(|(_, name)| name.contains(part));
+            assert!(retained(&format!("DiscoverIl2Cpp{width}::poll")));
+            assert!(!retained(&format!(
+                "DiscoverIl2Cpp{}::poll",
+                if width == 64 { 32 } else { 64 }
+            )));
+            assert_eq!(retained("Il2CppTable32::poll"), width == 32);
+            assert_eq!(retained("Il2CppNameReference32::poll"), width == 32);
+            assert!(
+                retained("Il2CppProfileIsValid"),
+                "specialization must preserve validation"
+            );
+        }
+    }
+    let (_, report) = release_emission(include_str!("../il2cpp_profile_custom.split"));
+    assert!(
+        !report
+            .functions
+            .iter()
+            .any(|(_, name)| name.contains("Il2CppTable32::poll"))
+    );
+}
+
 fn release_emission(source: &str) -> (Vec<u8>, splitscript::compiler::CodegenReport) {
     let checked =
         splitscript::check(splitscript::lower(splitscript::parse(source).unwrap())).unwrap();

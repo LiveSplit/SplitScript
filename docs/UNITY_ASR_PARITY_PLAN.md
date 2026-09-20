@@ -12,7 +12,7 @@ Bring the improvements from ero-qt's ASR Unity series into SplitScript's schema-
 
 The explicit-profile Lunistice Release artifact must return **below 30,000 bytes**
 before this work is complete, aiming for its earlier 23–28 KB range. The current
-roughly 49 KB artifact is a temporary regression, not an accepted final budget.
+roughly 44 KB artifact is a temporary regression, not an accepted final budget.
 Focus the reduction on the Unity discovery code introduced by this migration:
 specialize known profile facts and avoid unnecessarily large generated async
 walks. Preserve the actual script, metadata correctness, and behavior checks;

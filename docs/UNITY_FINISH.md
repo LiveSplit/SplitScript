@@ -29,7 +29,8 @@ These are stored measurements, inspected without rebuilding:
 | `8590627` | 56,641 | Shared field traversal |
 | `8a759ae` | 60,345 | Latest committed implementation |
 | Before class-scan change | 57,399 | Pending discovery consolidation |
-| Current tested working tree | 49,437 | Bounded synchronous class scan |
+| `57ed738` | 49,437 | Bounded synchronous class scan |
+| Current tested working tree | 43,627 | Bounded image scan and fixed-width discovery |
 
 Historical evidence: `tests/baselines/unity.json` at each revision. Current
 evidence: `target/unity-baseline/report.json` (ephemeral build artifact).
@@ -120,3 +121,39 @@ pass under the resource guard.
 
 The next size work remains discovery/preparation and specialization of known
 profile facts. This change does not establish final parity or final size acceptance.
+
+## Image scanning and fixed profile widths
+
+IL2CPP image discovery now scans at most 64 assembly slots synchronously and
+keeps a small async continuation. A failed batch retries without losing earlier
+completed batches. The fixtures cover large vectors and repair in a later batch
+at both pointer widths, in addition to the existing initialization/error cases.
+
+Generated state preparation selects the matching discovery root when a literal
+profile or zero-argument constructor chain exposes its pointer width. Built-in
+profiles and ordinary custom descriptors use this path. More complex constant
+expressions conservatively retain generic discovery. Profile and target-width
+validation still run. Automatic selection and ordinary dynamic calls continue to
+support both architectures. This is a bounded specialization in existing Unity
+provider preparation, not a general compiler optimization pass.
+
+Explicit Lunistice shrinks **49,437 -> 43,627 bytes** (-5,810), with both editions
+passing. Its x86 discovery functions are absent. The x86 fixture likewise omits
+the x64 discovery routine and relative-target scan helper. Automatic Lunistice
+shrinks **171,009 -> 170,339 bytes** (-670). Automatic output retains separate
+architecture routines and their types; the image-scan savings exceed that cost.
+Every one of the 38 baseline sources is unchanged, no fixture grows, and no new
+runtime helper, scratch capacity, or initial memory page is retained.
+
+All 49 profile/code-generation tests pass, including built-in x86/x64 profiles,
+constructor aliases, custom descriptors, and opposite-architecture exclusion.
+All 33 metadata artifacts validate and all 38 runtime scenarios pass. The bounds
+fixture now has 102 cases per build profile with a maximum of 259 reads in one
+update, including the new image-batch retry cases.
+
+The 56 catalog/type-checking tests, Clippy with warnings denied, and documentation
+validation also pass under the resource guard.
+
+The explicit artifact remains 13,628 bytes above the largest size permitted by
+the completion requirement. The original parity audit and final size acceptance
+remain open; this checkpoint does not add another feature requirement.
