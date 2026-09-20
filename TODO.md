@@ -968,6 +968,43 @@ concepts rather than maintaining a parallel inventory.
   host/data design or cooperative alternative rather than returning a
   misleading nearby symbol. Canonical syntax remains unique; no compatibility
   aliases were added.
+
+## P1 — reduce generated Wasm size with Release-only compiler optimizations
+
+Schedule this as a separate compiler project after the current Unity goal is
+finished. It is not part of Unity parity or a prerequisite for fixing the size
+regressions introduced by that work. Optimize final Wasm byte size; leave
+execution-speed optimization to the WebAssembly engine. Keep Debug builds out
+of these passes so stepping and source correspondence remain straightforward.
+
+Implement in this order:
+
+1. [ ] Establish a representative Release size corpus, including small native
+   scripts, explicit-profile and automatic-profile Unity scripts, nested managed
+   collections, and async code. Record final module bytes and section sizes
+   under one fixed emission pipeline, with optimization enabled and disabled.
+   Review actual size changes for every pass rather than assuming an IR
+   simplification makes the executable smaller.
+2. [ ] Add constant folding and constant propagation over typed IR, followed by
+   unreachable-branch and unused-value elimination. Preserve integer widths,
+   overflow, floating-point behavior, traps, fallible results, evaluation order,
+   and observable effects. Reuse existing constant evaluation where its
+   semantics match runtime evaluation; never evaluate process reads or other
+   host effects at compile time.
+3. [ ] Add size-driven inlining, beginning with non-recursive functions that
+   have one reachable call site. Inline only when the estimated total module
+   cost falls, accounting for removal of the original function, call overhead,
+   locals, and any retained dependencies. Treat recursive calls and suspension
+   boundaries conservatively. Do not use hotness or runtime-speed heuristics.
+4. [ ] Recompute reachability after simplification and inlining so newly unused
+   functions, runtime helpers, imports, types, static data, and scratch regions
+   can disappear. Integrate this with existing demand-driven emission instead
+   of maintaining a second dependency model.
+5. [ ] Verify equivalent observable behavior with focused runtime tests and the
+   maintained corpus, confirm Debug emission is unaffected, and record measured
+   byte savings and compiler resource costs. Enable the proven passes only for
+   Release. Add further passes only when size measurements justify them.
+
 ## P1 — measure and improve interactive compiler queries
 
 - [x] Build one request-scoped completion context from the existing recovered
@@ -1660,8 +1697,11 @@ remaining work is product hardening and distribution.
    enumeration with their host-runtime contracts. Abe's Oddysee, Outer Wilds,
    Ato, Spider-Man, and the SEGA Master Splitter are the acceptance evidence;
    deterministic executable identity already exists through `Module.md5()`.
-2. Resume measured compiler/editor performance, release hardening, hosted IDE,
-   and debugging work after the correctness and product-design sequence above.
+2. After completing the current Unity goal, schedule the P1 Release-only Wasm
+   size project separately, following its measurement, constant-folding,
+   size-driven inlining, and reachability sequence. Resume measured
+   compiler/editor performance, release hardening, hosted IDE, and debugging
+   work after the correctness and product-design sequence above.
 3. Keep only the portions of shared readable-memory helpers that need a new
    host primitive, the PS2 low-memory domain, `unity.time`, Sega CD, SNES, and
    managed collections gated on tested ASR evidence. Keep writes/injection,
