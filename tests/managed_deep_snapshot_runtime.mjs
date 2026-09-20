@@ -105,7 +105,12 @@ for (const mono of [true, false]) for (const width of [32, 64]) {
             assert.match(result, /^right: managed snapshot/, label);
             assert(!reads.includes(otherLeaf + 0x10n), `${label}: incompatible child payload read`);
         }
-        assert(reads.length < 100, `${label}: unbounded traversal`);
+        // State construction and whileAttached each obtain one checked live root.
+        // Each new check reads one IL2CPP header or two Mono header words.
+        const liveRootReads = mono ? 4 : 2;
+        const rootHeaders = reads.filter(a => a === root || a === klass + 0x18000000n).length;
+        assert(rootHeaders <= (mono ? 12 : 6), `${label}: repeated root class validation`);
+        assert(reads.length - liveRootReads < 100, `${label}: unbounded traversal`);
         assert(reads.every(address => address === staticSlot || address >= root), `${label}: repeated metadata discovery`);
         cases++;
     }

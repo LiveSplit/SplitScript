@@ -249,7 +249,7 @@ fn managed_metadata_demand_ignores_dead_and_debug_reads() {
 }
 
 #[test]
-fn snapshot_class_verification_follows_reachable_snapshots() {
+fn class_verification_follows_reachable_snapshots_and_live_reads() {
     for selector in [
         "Unity.mono(MonoVersion.V2)",
         "Unity.il2cpp(Il2CppProfile.unity2022_3_0f1X64())",
@@ -257,7 +257,7 @@ fn snapshot_class_verification_follows_reachable_snapshots() {
     ] {
         for (expression, snapshot) in [
             ("Probe.value?", false),
-            ("Probe.instance?.value?", false),
+            ("Probe.instance?.value?", true),
             ("Probe.instance?.snapshot()?", true),
             ("Empty.instance?.snapshot()?", true),
         ] {

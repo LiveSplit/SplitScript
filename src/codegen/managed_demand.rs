@@ -95,7 +95,11 @@ pub(super) fn prune(
         fields.extend(&shape.evidence_fields);
     }
     let mut remove = HashSet::new();
-    if snapshots.is_empty() {
+    let reference_classes = reachable
+        .managed_references()
+        .filter_map(|ty| super::managed_references::class(ty, semantics))
+        .collect::<HashSet<_>>();
+    if snapshots.is_empty() && reference_classes.is_empty() {
         remove.insert(crate::stdlib::MANAGED_OBJECT_TYPE_FIELD.to_owned());
         remove.insert("__object_type_cache".to_owned());
     }
@@ -204,7 +208,8 @@ pub(super) fn prune(
     for class in &managed.classes {
         let next = images.len();
         let image = *images.entry(&class.image_name).or_insert(next);
-        let needed = snapshots.contains(&class.id)
+        let needed = reference_classes.contains(&class.id)
+            || snapshots.contains(&class.id)
             || headers.contains(&class.id)
             || class.all_fields().any(|f| fields.contains(&f.id));
         if needed {
@@ -212,7 +217,7 @@ pub(super) fn prune(
         } else {
             remove.insert(format!("__class_{}", class.id.index()));
         }
-        if !snapshots.contains(&class.id) {
+        if !snapshots.contains(&class.id) && !reference_classes.contains(&class.id) {
             remove.insert(crate::stdlib::managed_class_address_name(class.id.index()));
         }
         if !headers.contains(&class.id) {

@@ -60,6 +60,7 @@ pub(super) struct EmissionContext<'a> {
     pub managed_freezers: &'a HashMap<crate::types::TypeId, u32>,
     pub managed_contract_functions: &'a HashMap<crate::types::TypeId, u32>,
     pub managed_decoder_functions: &'a HashMap<crate::types::TypeId, u32>,
+    pub managed_reference_functions: &'a HashMap<crate::types::TypeId, u32>,
     pub managed_snapshot_functions: &'a HashMap<ManagedClassId, u32>,
     pub enums: &'a [EnumDecl],
     pub arrays: &'a [ResolvedArrayType],

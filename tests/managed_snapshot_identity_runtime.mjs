@@ -4,7 +4,8 @@ import {SplitScriptHost} from './support/splitscript_host.mjs';
 import {createMonoPeFixture} from './support/mono_pe_fixture.mjs';
 import {createIl2cppPeFixture} from './support/il2cpp_pe_fixture.mjs';
 import {writeManagedObjectHeader} from './support/managed_type_fixture.mjs';
-const [wasm]=process.argv.slice(2);
+const [wasm,modeFlag]=process.argv.slice(2);
+const live=modeFlag==='--live';
 const profiles=JSON.parse(await readFile(new URL('./fixtures/mono-pe-profiles.json',import.meta.url)));
 const layouts={
     V1:{32:[0x74,0x64,0x24],64:[0xa8,0x94,0x30]},
@@ -14,28 +15,31 @@ const layouts={
     il2cpp:{32:[0x40,0xac,0x2c],64:[0x80,0x124,0x58]},
 };
 const modes=['same','derived','deep derived','wrong class','null header','unreadable header','null vtable class','unreadable vtable class','unreadable parent','hierarchy cycle','hierarchy limit','torn class','cached ancestry','repair ancestry','reattach'];
+if(live)modes.push('null reference','unreadable slot');
 let cases=0;
 for(const family of Object.keys(layouts))for(const width of [32,64])for(const mode of modes){
     const mono=family!=='il2cpp',bytes=width/8;
-    if(!mono&&mode.includes('vtable'))continue;
+    if(!mono&&mode.includes('vtable')||live&&mode==='torn class')continue;
     const f=mono?createMonoPeFixture(profiles.builds.find(p=>p.width===width&&p.version===family)):createIl2cppPeFixture({width,version:[2022,3,0,37029]});
     const {memory}=f;
     const number=(at,size,value)=>{const data=new Uint8Array(size),v=new DataView(data.buffer);if(size===8)v.setBigUint64(0,BigInt(value),true);else if(size===4)v.setUint32(0,Number(value),true);else if(size===2)v.setUint16(0,Number(value),true);else v.setUint8(0,Number(value));data.forEach((b,i)=>memory.set(at+BigInt(i),b));};
     const ptr=(at,value)=>number(at,bytes,value);
     const name=(at,text)=>{const data=new Uint8Array(256);data.set(new TextEncoder().encode(text));data.forEach((b,i)=>memory.set(at+BigInt(i),b));};
     const [fields,count,parent]=layouts[family][width];
-    ptr(0x14000n+BigInt(fields),0x50000n);number(0x14000n+BigInt(count),mono?4:2,2);
-    ['instance','value'].forEach((text,i)=>{const at=0x50000n+BigInt(i*(width===64?32:mono?16:20));ptr(at+BigInt(mono?bytes:0),0x60000n+BigInt(i*256));name(0x60000n+BigInt(i*256),text);number(at+BigInt(width===64?0x18:0xc),4,0x10);});
+    ptr(0x14000n+BigInt(fields),0x50000n);number(0x14000n+BigInt(count),mono?4:2,live?3:2);
+    (live?['instance','value','child']:['instance','value']).forEach((text,i)=>{const at=0x50000n+BigInt(i*(width===64?32:mono?16:20));ptr(at+BigInt(mono?bytes:0),0x60000n+BigInt(i*256));name(0x60000n+BigInt(i*256),text);number(at+BigInt(width===64?0x18:0xc),4,i===2?0x20:0x10);});
     const object=0x70000n,derived=0x30000n,other=0x31000n;
     ptr((mono?0x18000n:0x16000n)+0x10n,object);
     const original=writeManagedObjectHeader(f,{mono,ptr},object);
-    number(object+0x10n,4,7);ptr(derived+BigInt(parent),0x14000n);ptr(other+BigInt(parent),0);
+    number(object+0x10n,4,7);if(live)ptr(object+0x20n,0);ptr(derived+BigInt(parent),0x14000n);ptr(other+BigInt(parent),0);
     let armed=false,torn=false;const reads=[],read=f.process.read;
     f.process.read=request=>{const at=BigInt.asUintN(64,request.address);reads.push(at);const result=read({...request,address:at});if(armed&&at===object+0x10n){torn=!torn;writeManagedObjectHeader(f,{mono,ptr},object,torn?derived:0x14000n);}return result;};
     const host=await SplitScriptHost.instantiate(wasm);host.addProcess('game.exe',f.process);host.start();
     const label=`${family}/${width}/${mode}`;
     host.updateUntil(()=>host.variables.get('value')==='7',label);host.update(2);reads.length=0;number(object+0x10n,4,9);
     if(['derived','cached ancestry','repair ancestry','reattach','unreadable parent','hierarchy cycle','hierarchy limit','deep derived'].includes(mode))writeManagedObjectHeader(f,{mono,ptr},object,derived);
+    if(mode==='null reference')ptr((mono?0x18000n:0x16000n)+0x10n,0);
+    if(mode==='unreadable slot')memory.delete((mono?0x18000n:0x16000n)+0x10n);
     if(mode==='wrong class')writeManagedObjectHeader(f,{mono,ptr},object,other);
     if(mode==='null header')ptr(object,0);
     if(mode==='unreadable header')memory.delete(object);
@@ -56,6 +60,7 @@ for(const family of Object.keys(layouts))for(const width of [32,64])for(const mo
     // Empty snapshots still validate identity, even without any field reads.
     if(mode!=='torn class')assert.equal(host.variables.get('empty')==='ok',success,`${label}: empty snapshot`);
     if(!success&&mode!=='torn class')assert(!reads.includes(object+0x10n),`${label}: invalid class read payload`);
+    if(live)assert.equal(host.variables.get('optional')==='ok',success||mode==='null reference',`${label}: nullable live reference`);
     if(mode==='cached ancestry'){
         memory.delete(derived+BigInt(parent));reads.length=0;host.update();assert.equal(host.variables.get('result'),'ok',label);assert(!reads.includes(derived+BigInt(parent)),`${label}: reread cached ancestry`);
     }
@@ -67,9 +72,18 @@ for(const family of Object.keys(layouts))for(const width of [32,64])for(const mo
         host.updateUntil(()=>host.variables.get('value')==='11',`${label}: repaired reattachment`);
     }
     if(!success){
-        armed=false;writeManagedObjectHeader(f,{mono,ptr},object,mode==='repair ancestry'?derived:0x14000n);ptr(derived+BigInt(parent),0x14000n);
+        armed=false;ptr((mono?0x18000n:0x16000n)+0x10n,object);writeManagedObjectHeader(f,{mono,ptr},object,mode==='repair ancestry'?derived:0x14000n);ptr(derived+BigInt(parent),0x14000n);
         host.updateUntil(()=>host.variables.get('result')==='ok'&&host.variables.get('value')==='9',`${label}: repair`);
     }
-    assert(reads.length<1200,`${label}: unbounded hierarchy traversal`);cases++;
+    if(live&&mode==='same'){
+        const child=0x90000n;ptr(object+0x20n,child);
+        writeManagedObjectHeader(f,{mono,ptr},child,other);host.update();
+        assert.notEqual(host.variables.get('child'),'ok',`${label}: incompatible instance reference`);
+        writeManagedObjectHeader(f,{mono,ptr},child,derived);host.update();
+        assert.equal(host.variables.get('child'),'ok',`${label}: repaired derived instance reference`);
+        ptr(object+0x20n,0);host.update();
+        assert.equal(host.variables.get('child'),'ok',`${label}: nullable instance reference`);
+    }
+    assert(reads.length<(live?1600:1200),`${label}: unbounded hierarchy traversal`);cases++;
 }
-console.log(JSON.stringify({managedSnapshotIdentityCases:cases}));
+console.log(JSON.stringify({[live?'managedLiveIdentityCases':'managedSnapshotIdentityCases']:cases}));

@@ -43,6 +43,7 @@ pub(super) struct FunctionPlan<'a> {
     pub managed_snapshots: HashMap<ManagedClassId, u32>,
     pub managed_freezers: HashMap<crate::types::TypeId, u32>,
     pub managed_decoders: HashMap<crate::types::TypeId, u32>,
+    pub managed_references: HashMap<crate::types::TypeId, u32>,
     pub managed_contracts: HashMap<crate::types::TypeId, u32>,
     pub reads: Vec<u32>,
     pub transforms: Vec<Option<u32>>,
@@ -581,6 +582,35 @@ pub(super) fn encode<'a>(
         );
     }
 
+    let mut managed_reference_functions = HashMap::new();
+    for value in reachability.managed_references() {
+        let result = semantics
+            .types()
+            .iter()
+            .find_map(|(_, kind)| match kind {
+                crate::types::TypeKind::Result {
+                    value: candidate,
+                    layout,
+                } if *candidate == value => Some(*layout),
+                _ => None,
+            })
+            .expect("live field reads have Result layouts");
+        managed_reference_functions.insert(
+            value,
+            declarations.declare(
+                || format!("__splitscript::managed::reference::{value:?}"),
+                vec![
+                    ValType::I64,
+                    ValType::I64,
+                    ValType::I32,
+                    gc.val_type(Type::Standard(
+                        crate::stdlib::StdlibTypeId::ManagedReadContext,
+                    )),
+                ],
+                vec![gc.val_type(Type::Result(result))],
+            ),
+        );
+    }
     let mut managed_decoder_functions = HashMap::new();
     for value in reachability.managed_decoders() {
         let output = capabilities.managed_decoder(value).unwrap().output;
@@ -972,6 +1002,7 @@ pub(super) fn encode<'a>(
         managed_state_reads: managed_state_read_functions,
         managed_snapshots: managed_snapshot_functions,
         managed_decoders: managed_decoder_functions,
+        managed_references: managed_reference_functions,
         managed_contracts,
         managed_freezers,
         reads,

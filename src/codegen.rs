@@ -49,6 +49,7 @@ mod imports;
 mod managed_decoders;
 mod managed_demand;
 mod managed_freezers;
+mod managed_references;
 mod managed_snapshots;
 mod managed_state_reads;
 mod memory_plan;
@@ -677,6 +678,7 @@ fn compile_internal(inputs: BackendProgram<'_>, report: Option<&mut CodegenRepor
         managed_state_reads: managed_state_read_functions,
         managed_snapshots: managed_snapshot_functions,
         managed_decoders: managed_decoder_functions,
+        managed_references: managed_reference_functions,
         managed_contracts: managed_contract_functions,
         managed_freezers,
         reads: read_functions,
@@ -750,6 +752,7 @@ fn compile_internal(inputs: BackendProgram<'_>, report: Option<&mut CodegenRepor
         managed_state_read_functions: &managed_state_read_functions,
         managed_snapshot_functions: &managed_snapshot_functions,
         managed_decoder_functions: &managed_decoder_functions,
+        managed_reference_functions: &managed_reference_functions,
         managed_contract_functions: &managed_contract_functions,
         managed_freezers: &managed_freezers,
         enums,
@@ -977,6 +980,9 @@ fn compile_internal(inputs: BackendProgram<'_>, report: Option<&mut CodegenRepor
     for class in reachability.managed_snapshots() {
         let body = managed_snapshots::compile(class, &lowering);
         codes.push(&body);
+    }
+    for value in reachability.managed_references() {
+        codes.push(&managed_references::compile(value, &lowering));
     }
     for value in reachability.managed_decoders() {
         codes.push(&managed_decoders::compile(value, capabilities, &lowering));

@@ -1,6 +1,6 @@
 # Unity support: ASR research and SplitScript implementation plan
 
-Status: core recursive managed values and snapshots, measured IL2CPP profiles, and Windows/Linux/macOS Mono automatic attachment are implemented. Explicit Windows/Linux/macOS Mono family selectors are also implemented. Nested materialization error paths and List/Map/Set element storage checks are implemented. Remaining work includes full runtime type/generic validation, shared metadata traversal, native platform validation, and final size acceptance. See [implementation progress](#implementation-progress).
+Status: core recursive managed values and snapshots, measured IL2CPP profiles, and Windows/Linux/macOS Mono automatic attachment are implemented. Explicit Windows/Linux/macOS Mono family selectors are also implemented. Nested materialization error paths, recursive collection contracts, and runtime class checks for snapshots and live references are implemented. Remaining work includes shared metadata traversal/scheduling, the final parity and coverage audit, native platform validation, and final size acceptance. See [implementation progress](#implementation-progress).
 
 ## Objective and baseline
 
@@ -2489,6 +2489,48 @@ remains 60,215 bytes and automatic selection 185,565 bytes.
 This completes the public nested collection metadata checks. Live-reference
 contracts, shared metadata traversal/scheduling, native platform validation, and
 the final sub-30,000-byte explicit Lunistice target remain open.
+
+## Runtime class checks for live references (2026-09-20)
+
+Reading a non-null static or instance class reference now validates the object's
+runtime class against the declared class, accepting subclasses through the same
+bounded ancestry reader used by snapshots. Nullable nulls remain successful None
+values; non-nullable nulls and unreadable slots fail. The pointer is saved before
+metadata reads reuse the ABI scratch space. Successful ancestry proofs are shared
+within the attachment, while each live read checks the current object header.
+Failures remain retryable, and reattachment discards cached proofs.
+
+Only actual live field operations demand the new readers and their target class
+bindings. Accessing a field of an already-owned snapshot adds no live reader.
+Deep snapshot children keep using their existing shared root checks. Observed
+errors from class validation propagate through the typed reference Result.
+
+The new public fixture passes 156 cases per build profile across all four Mono
+families and IL2CPP, at both widths. It covers static and instance references,
+nullable/non-nullable nulls, unreadable slots and headers, subclasses, unrelated
+classes, ancestry cycles and depth limits, successful repair, cache reuse, and
+reattachment. All 146 snapshot identity cases also pass per profile.
+
+All 67 selected artifacts validate and all 77 runtime scenarios pass. This
+includes Lunistice editions, Himno, inherited statics, recursive collections, and
+snapshot ownership/budgets. The general Map/Set fixtures now identify their real
+closed element classes instead of placeholder generic metadata; they pass 744
+and 664 cases respectively per profile. Deep snapshot fixtures retain their
+payload-read bound while accounting separately for the two new checked live
+root reads per update. All 683 compiler tests pass (80.3 MiB peak committed
+job memory), as do Clippy with warnings denied and the 561-page documentation
+check. The broad runtime run peaks at 595.6 MiB under the enforced 768 MiB cap.
+
+Thirty-five baseline fixtures preserve module/section sizes, function/type counts,
+normalized function-body sizes, helper sets, and memory accounting. Only the
+three fixtures reading live class references grow. Explicit Lunistice gains
+130 bytes to 60,345 and automatic selection 134 bytes to 185,699: each adds two
+typed reference wrappers and their signatures, reusing the existing class
+checker. The inherited-static fixture gains 1,860 bytes for its first runtime
+class/parent reader, work context, ancestry cache, and diagnostics. No scratch,
+read-capacity, or initial-memory-page growth occurs. Final size acceptance is
+still open; this is not a new accepted final size target. The reviewed strict
+baseline gate and both Lunistice edition scenarios pass.
 
 ## Source map for implementation
 

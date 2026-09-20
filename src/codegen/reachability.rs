@@ -36,6 +36,7 @@ pub(super) struct Reachability {
     gc_managed_classes: BTreeSet<ManagedClassId>,
     managed_snapshots: BTreeSet<ManagedClassId>,
     managed_decoders: BTreeSet<TypeId>,
+    managed_references: BTreeSet<TypeId>,
     managed_equality: BTreeSet<TypeId>,
     managed_instances: BTreeSet<ManagedClassId>,
     gc_enums: BTreeSet<EnumId>,
@@ -692,17 +693,35 @@ impl Reachability {
             type_roots.push(semantics.types().id_for_standard(StdlibTypeId::String));
         }
         let mut field_reads = BTreeSet::new();
+        let mut live_fields = BTreeSet::new();
         for (owner, id) in reachable.expression_instances() {
             let expression = wasm_ir.expression(id).unwrap();
+            let is_live = |ty: Option<TypeId>| {
+                ty.is_some_and(|ty| {
+                    let ty = owner
+                        .as_ref()
+                        .map_or(ty, |owner| semantics.specialize_type(owner, ty));
+                    matches!(semantics.types().kind(ty), TypeKind::ManagedReference(_))
+                })
+            };
+            let live_path = |root: crate::semantic::ResolvedValue| {
+                root.source_value().and_then(|id| semantics.value_type(id))
+            };
+            let mut live_member = false;
             let members = match &expression.kind {
                 wasm_ir::ExpressionKind::Path { root, members } => {
                     if let Some(crate::semantic::ResolvedValue::ManagedStatic { field, .. }) = root
                     {
                         field_reads.insert(*field);
+                        live_fields.insert(*field);
                     }
+                    live_member = root.is_some_and(|root| is_live(live_path(root)));
                     members.as_slice()
                 }
-                wasm_ir::ExpressionKind::Member { members, .. } => members.as_slice(),
+                wasm_ir::ExpressionKind::Member { receiver, members } => {
+                    live_member = is_live(Some(wasm_ir.expression(*receiver).unwrap().ty));
+                    members.as_slice()
+                }
                 wasm_ir::ExpressionKind::Call { target, .. } => {
                     let target = reachable.resolved_call_target(owner.as_ref(), id, target);
                     if let Some((receiver, _)) = target.receiver_with_type() {
@@ -712,7 +731,16 @@ impl Reachability {
                         )) = receiver.path()
                         {
                             field_reads.insert(field);
+                            live_fields.insert(field);
                         }
+                        live_member = match receiver {
+                            crate::semantic::ResolvedReceiver::Path { root, .. } => {
+                                is_live(live_path(*root))
+                            }
+                            crate::semantic::ResolvedReceiver::Expression {
+                                expression, ..
+                            } => is_live(Some(wasm_ir.expression(*expression).unwrap().ty)),
+                        };
                         receiver.members()
                     } else {
                         &[]
@@ -720,10 +748,19 @@ impl Reachability {
                 }
                 _ => &[],
             };
+            if live_member && let [crate::semantic::ResolvedMember::ManagedField(field)] = members {
+                live_fields.insert(*field);
+            }
             for member in members {
                 if let crate::semantic::ResolvedMember::ManagedField(field) = member {
                     field_reads.insert(*field);
                 }
+            }
+        }
+        for field in live_fields {
+            let value = semantics.managed_field_value_type(field).unwrap();
+            if super::managed_references::class(value, semantics).is_some() {
+                reachable.managed_references.insert(value);
             }
         }
         let mut pending_classes = reachable
@@ -962,6 +999,10 @@ impl Reachability {
 
     pub fn contains_managed_class_type(&self, class: ManagedClassId) -> bool {
         self.gc_managed_classes.contains(&class)
+    }
+
+    pub fn managed_references(&self) -> impl Iterator<Item = TypeId> + '_ {
+        self.managed_references.iter().copied()
     }
 
     pub fn managed_decoders(&self) -> impl Iterator<Item = TypeId> + '_ {

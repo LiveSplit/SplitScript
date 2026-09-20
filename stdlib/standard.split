@@ -56,8 +56,11 @@ stateProvider Native as process {}
 /// A declared class name such as `PlayerController` is an immutable local
 /// snapshot type. `PlayerController.Ref` is a live remote reference. Following
 /// a live static or instance field is fallible and rereads replaceable object
-/// pointers on every state poll. Calling `.snapshot()` recursively reads all active fields
-/// transactionally. Scalar live reads allocate no GC objects; snapshots,
+/// pointers on every state poll. Non-null class references validate the runtime
+/// class and accept subclasses; nullable nulls remain valid. Calling `.snapshot()`
+/// recursively reads all active fields transactionally. Class checks share bounded
+/// work and attachment-scoped ancestry caches. Direct scalar fields need no such
+/// class check; snapshots,
 /// strings, arrays, and instance-search results materialize owned values.
 /// Generated binders, readers, and runtime discovery are retained only when
 /// reachable from the script.

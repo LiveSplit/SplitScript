@@ -1026,6 +1026,20 @@ const RUNTIME_FIXTURES: &[RuntimeFixture] = &[
         extra_arguments: &[],
     },
     RuntimeFixture {
+        source: "tests/managed_live_identity.split",
+        output: "managed_live_identity.wasm",
+        profile: "release",
+        harness: "tests/managed_snapshot_identity_runtime.mjs",
+        extra_arguments: &["--live"],
+    },
+    RuntimeFixture {
+        source: "tests/managed_live_identity.split",
+        output: "managed_live_identity_debug.wasm",
+        profile: "debug",
+        harness: "tests/managed_snapshot_identity_runtime.mjs",
+        extra_arguments: &["--live"],
+    },
+    RuntimeFixture {
         source: "tests/managed_snapshot_identity.split",
         output: "managed_snapshot_identity.wasm",
         profile: "release",

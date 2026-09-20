@@ -134,6 +134,17 @@ impl FailurePayloadDemand {
                 results.entry(*value).or_default().insert(*layout);
             }
         }
+        for value in reachability.managed_references() {
+            let address = semantics
+                .types()
+                .id_for_core(crate::stdlib::CoreTypeId::Address);
+            for target in &results[&value] {
+                dependencies
+                    .entry(*target)
+                    .or_default()
+                    .extend(&results[&address]);
+            }
+        }
         for class in reachability.managed_snapshots() {
             let targets = &results[&semantics.types().id_for_managed_class(class)];
             for target in targets {

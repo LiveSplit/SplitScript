@@ -20,6 +20,7 @@ const runningStats = 0xb100n;
 const resetStats = 0xb200n;
 
 const writeStats = (address, district, inRun) => {
+    mono.writeObjectHeader(address);
     mono.writeI32(address + mono.fieldOffsets.get("currDistrict"), district);
     mono.writeBytes(address + mono.fieldOffsets.get("inRun"), [inRun ? 1 : 0]);
 };

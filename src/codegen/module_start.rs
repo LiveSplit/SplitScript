@@ -161,6 +161,7 @@ fn emit_runtime_global_initializers(
         managed_state_read_functions: lowering.managed_state_read_functions,
         managed_snapshot_functions: lowering.managed_snapshot_functions,
         managed_decoder_functions: lowering.managed_decoder_functions,
+        managed_reference_functions: lowering.managed_reference_functions,
         enums: lowering.enums,
         arrays: lowering.arrays,
         memory: lowering.memory,

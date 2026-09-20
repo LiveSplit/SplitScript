@@ -158,6 +158,7 @@ export function createMonoV2Fixture({ className, fields, parent }) {
     }
 
     return {
+        writeObjectHeader(object) { writeU64(object, vtables); writeU64(vtables, classAddress); },
         staticTable,
         fieldOffsets,
         parentStaticTable,

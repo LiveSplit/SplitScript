@@ -138,6 +138,7 @@ pub(super) struct ExprContext<'a> {
     pub managed_state_reads: &'a ManagedStateReadCache,
     pub managed_state_read_functions: &'a HashMap<crate::ast::ManagedFieldId, u32>,
     pub managed_decoder_functions: &'a HashMap<crate::types::TypeId, u32>,
+    pub managed_reference_functions: &'a HashMap<crate::types::TypeId, u32>,
     pub managed_snapshot_functions: &'a HashMap<crate::ast::ManagedClassId, u32>,
     pub enums: &'a [EnumDecl],
     pub arrays: &'a [ResolvedArrayType],
@@ -231,6 +232,7 @@ impl<'a> ExprContext<'a> {
             managed_state_read_functions: lowering.managed_state_read_functions,
             managed_snapshot_functions: lowering.managed_snapshot_functions,
             managed_decoder_functions: lowering.managed_decoder_functions,
+            managed_reference_functions: lowering.managed_reference_functions,
             enums: lowering.enums,
             arrays: lowering.arrays,
             memory: lowering.memory,
@@ -3074,6 +3076,16 @@ fn emit_managed_read_at_address(
         return Type::Result(result);
     }
 
+    // Deep snapshot readers validate child objects with the enclosing context.
+    // Standalone live field reads must establish the same class contract here.
+    if context.managed_read_context.is_none()
+        && let Some(reader) = context.managed_reference_functions.get(&field.value_type)
+    {
+        emit_managed_binding_field(function, MANAGED_POINTER_SIZE_FIELD, context);
+        emit_managed_read_context(function, context);
+        function.instruction(&Instruction::Call(*reader));
+        return Type::Result(result);
+    }
     let reference_option = match context.semantics.types().kind(field.value_type) {
         crate::types::TypeKind::Option { layout, value }
             if matches!(

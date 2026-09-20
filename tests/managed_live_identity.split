@@ -1,0 +1,16 @@
+image "Assembly-CSharp" {
+    class ProfileProbe { static ProfileProbe instance; i32 value; ProfileProbe? child; }
+    class Maybe from "ProfileProbe" { static Maybe? instance; }
+    class Empty from "ProfileProbe" { static Empty instance; }
+}
+state Unity ["game.exe"] { value = ProfileProbe.instance?.value?; }
+whileAttached {
+    setVariable("value", current.value)
+    setVariable("old", old.value)
+    let read: () -> i32! = () => ProfileProbe.instance?.value
+    setVariable("result", match read() { Ok(_) => "ok", Err(error) => error })
+    setVariable("empty", match Empty.instance { Ok(_) => "ok", Err(error) => error })
+    let child: () -> ProfileProbe.Ref?! = () => ProfileProbe.instance?.child
+    setVariable("child", match child() { Ok(_) => "ok", Err(error) => error })
+    setVariable("optional", match Maybe.instance { Ok(_) => "ok", Err(error) => error })
+}

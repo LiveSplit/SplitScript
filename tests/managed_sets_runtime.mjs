@@ -42,7 +42,7 @@ for (const parallel of [false, true]) for (const mode of modes) {
     const arrays = [0x80000n, 0x120000n, 0x180000n];
     const row = 0x220000n, tailRow = 0x221000n, text = 0x230000n, tail = 0x231000n;
     const vector = (at, values, capacity = values.length) => {
-        writeManagedArrayType(f, {mono,width,family,ptr,number}, at, at === 0x240000n ? {kind:0x15} : 0x0e);
+        writeManagedArrayType(f, {mono,width,family,ptr,number}, at, at === 0x240000n ? {kind:0x15,class:Number(f.root)} : 0x0e);
         if (arrays.includes(at)) writeKeyedBackingArray(f, at, arrays.indexOf(at));
         ptr(at + BigInt(2 * bytes), 0); ptr(at + BigInt(3 * bytes), capacity);
         values.forEach((item, i) => ptr(at + BigInt(4 * bytes + i * bytes), item));

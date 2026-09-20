@@ -16,12 +16,14 @@ const mono = createMonoV2Fixture({
     },
 });
 const instance = 0xc000n;
+mono.writeObjectHeader(instance);
 mono.writeU64(mono.parentStaticTable + mono.parentFieldOffsets.get("_instance"), instance);
 mono.writeI32(instance + mono.fieldOffsets.get("_state"), 42);
 
 // A value at the same offset in the derived class's distinct static table
 // catches implementations that discard the field's declaring class.
 mono.writeU64(mono.staticTable + mono.parentFieldOffsets.get("_instance"), 0xd000n);
+mono.writeObjectHeader(0xd000n);
 mono.writeI32(0xd000n + mono.fieldOffsets.get("_state"), 99);
 
 const host = await SplitScriptHost.instantiate(wasmPath);
