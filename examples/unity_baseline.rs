@@ -148,6 +148,14 @@ fn fixtures() -> BTreeMap<String, String> {
             schema("Unity.mono(MonoVersion.V2)", "static i32 value;"),
         ),
         (
+            "mono-linux-explicit".into(),
+            include_str!("../tests/mono_linux_V3.split").into(),
+        ),
+        (
+            "mono-mac-explicit".into(),
+            include_str!("../tests/mono_mac_V3.split").into(),
+        ),
+        (
             "mono-profiles-auto".into(),
             include_str!("../tests/mono_profiles.split").into(),
         ),

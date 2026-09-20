@@ -1,0 +1,5 @@
+image "Assembly-CSharp" {
+    class ProfileProbe { static i32 value; }
+}
+state Unity.monoMac(MonoVersion.V1) ["game.exe"] { value = ProfileProbe.value?; }
+whileAttached { print(current.value) }

@@ -1502,7 +1502,11 @@ The automatic [`Unity`] selector chooses a supported backend from the loaded
 modules. Select `Unity.mono(MonoVersion.V2)` or `Unity.il2cpp(Il2CppProfile.unity2021_3_11f1X64())` after the
 [`state`] keyword only when the target's exact metadata layout is known and
 automatic detection is inappropriate. [`MonoVersion.V3`] selects the Unity
-2021.2-and-newer PE64 Mono layout; `V2` selects the preceding modern layout.
+2021.2-and-newer Windows Mono family; `V2` selects the preceding modern family.
+For Linux x86-64 use `Unity.monoLinux(MonoVersion.V3)`, and for macOS Intel/ARM64
+use `Unity.monoMac(MonoVersion.V3)`, choosing the family verified for the game.
+These selectors use platform-specific offsets and need no UnityPlayer or binary
+identity lookup. They omit discovery code for the other platforms.
 
 A class-typed field is a live managed reference. Every poll rereads the current
 static singleton and each following object pointer, so replacing a managed

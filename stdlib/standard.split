@@ -137,13 +137,46 @@ stateProvider Unity as process {
     @managedBackend(il2cpp)
     selector il2cpp(profile: Il2CppProfile),
 
-    /// Selects a Mono metadata family for the runtime's pointer width.
+    /// Selects a Windows Mono metadata family for the runtime's pointer width.
     ///
-    /// This bypasses Unity-version detection while retaining cooperative Mono
-    /// module and metadata discovery.
+    /// This bypasses identity and Unity-version detection while retaining
+    /// cooperative PE32/PE64 module and metadata discovery.
     @prepare(UnityProviderMono)
     @managedBackend(mono)
     selector mono(version: MonoVersion),
+
+    /// Selects a Linux x86-64 Mono metadata family.
+    ///
+    /// Uses Linux layout facts and ELF symbols without build-ID, UnityPlayer,
+    /// or other-platform discovery. An unsupported target architecture is rejected.
+    ///
+    /// # Example
+    ///
+    /// Read a known Linux Mono family
+    ///
+    /// ```splitscript
+    /// state Unity.monoLinux(MonoVersion.V3) ["game.x86_64"] {}
+    /// ```
+    @prepare(UnityProviderMonoLinux)
+    @managedBackend(mono)
+    selector monoLinux(version: MonoVersion),
+
+    /// Selects a macOS Mono metadata family.
+    ///
+    /// Uses macOS layout facts and Mach-O symbols without UUID, UnityPlayer,
+    /// or other-platform discovery. The mapped runtime selects Intel or ARM64
+    /// assembly-list instructions; unsupported architectures are rejected.
+    ///
+    /// # Example
+    ///
+    /// Read a known macOS Mono family
+    ///
+    /// ```splitscript
+    /// state Unity.monoMac(MonoVersion.V3) ["game"] {}
+    /// ```
+    @prepare(UnityProviderMonoMac)
+    @managedBackend(mono)
+    selector monoMac(version: MonoVersion),
 }
 
 /// Attaches to a supported Game Boy Advance emulator.
@@ -1353,6 +1386,35 @@ namespace Unity {
     // Builds a Mono provider context with an explicitly selected layout.
     private fn providerMono(version: MonoVersion) -> async MonoModule {
         return await Unity.mono(version)
+    }
+
+    // Separate roots keep other platforms and identity catalogs unreachable.
+    private fn providerMonoLinux(version: MonoVersion) -> async MonoModule {
+        let runtime = retry {
+            process.loadedModule("libmono.so")
+                else process.loadedModule("libmonobdwgc-2.0.so")
+                else throw "Linux Mono runtime is not loaded yet"
+        }
+        let assemblies = await MonoModule.linuxAssemblies(runtime)
+        return MonoModule { assemblies, version, pointerSize: PointerSize.Bit64,
+            layout: MonoLayout.forLinuxVersion(version) }
+    }
+
+    private fn providerMonoMac(version: MonoVersion) -> async MonoModule {
+        let runtime = retry {
+            process.loadedModule("libmono.0.dylib")
+                else process.loadedModule("libmonobdwgc-2.0.dylib")
+                else throw "Mac Mono runtime is not loaded yet"
+        }
+        let header = retry process.read<[u32; 2]>(runtime.boundedAddress(0, 8)?)
+        if header[0] != 0xfeedfacf || (header[1] != 0x1000007 && header[1] != 0x100000c) {
+            print("Mac Mono requires an x86-64 or ARM64 Mach-O runtime")
+            await process.closed()
+        }
+        let cpu = header[1]
+        let assemblies = await MonoModule.macAssemblies(runtime, cpu)
+        return MonoModule { assemblies, version, pointerSize: PointerSize.Bit64,
+            layout: MonoLayout.forMacVersion(version) }
     }
 
     // Constructs the public attachment-scoped Unity facilities. This is
@@ -12616,12 +12678,7 @@ private struct MonoModule {
     // Linux discovery is a separate root so explicit Windows profiles do not
     // retain ELF identity readers or the Linux measured catalog.
     private static fn discoverLinux(runtime: Module) -> async MonoModule {
-        let header = retry process.read<[u32; 5]>(runtime.boundedAddress(0, 20)?)
-        if header[0] != 0x464c457f || (header[1] & 0xffffff) != 0x010102
-            || (header[4] >> 16) != 62 {
-            print("Linux Mono requires a little-endian x86-64 ELF runtime")
-            await process.closed()
-        }
+        let assemblies = await MonoModule.linuxAssemblies(runtime)
         let identity = runtime.elfBuildId() else None
         if identity == None {
             match process.loadedModule("UnityPlayer.so") {
@@ -12640,14 +12697,6 @@ private struct MonoModule {
             },
             None => print("Unity Mono: no readable ELF build ID; using family fallback"),
         }
-        let assemblyForeach: address = 0
-        loop {
-            match await runtime.elfExport("mono_assembly_foreach") {
-                Ok(value) => { assemblyForeach = value; break },
-                Err(_) => await nextTick(),
-            }
-        }
-        let assemblies = await MonoModule.scanUnixX64Assemblies(runtime, assemblyForeach)
         match layout {
             Some(measured) => {
                 print("Unity Mono: exact ELF build profile")
@@ -12666,6 +12715,23 @@ private struct MonoModule {
             },
         }
         return MonoModule { assemblies, version, pointerSize: PointerSize.Bit64, layout: MonoLayout.forLinuxVersion(version) }
+    }
+
+    private static fn linuxAssemblies(runtime: Module) -> async address {
+        let header = retry process.read<[u32; 5]>(runtime.boundedAddress(0, 20)?)
+        if header[0] != 0x464c457f || (header[1] & 0xffffff) != 0x010102
+            || (header[4] >> 16) != 62 {
+            print("Linux Mono requires a little-endian x86-64 ELF runtime")
+            await process.closed()
+        }
+        let assemblyForeach: address = 0
+        loop {
+            match await runtime.elfExport("mono_assembly_foreach") {
+                Ok(value) => { assemblyForeach = value; break },
+                Err(_) => await nextTick(),
+            }
+        }
+        return await MonoModule.scanUnixX64Assemblies(runtime, assemblyForeach)
     }
 
     // Kept separate from PE discovery so unused Linux support adds no frames
@@ -12737,20 +12803,12 @@ private struct MonoModule {
             print("Mac Mono requires an x86-64 or ARM64 Mach-O runtime")
             await process.closed()
         }
-        let layout = MonoModule.macLayout(runtime, header[1]) else {
+        let cpu = header[1]
+        let layout = MonoModule.macLayout(runtime, cpu) else {
             print("Mono UUID has the wrong CPU architecture")
             await process.closed()
         }
-        let assemblyForeach: address = 0
-        loop {
-            match await runtime.machExport("_mono_assembly_foreach") {
-                Ok(value) => { assemblyForeach = value; break },
-                Err(_) => await nextTick(),
-            }
-        }
-        let assemblies = if header[1] == 0x100000c {
-            await MonoModule.scanMacArmAssemblies(runtime, assemblyForeach)
-        } else { await MonoModule.scanUnixX64Assemblies(runtime, assemblyForeach) }
+        let assemblies = await MonoModule.macAssemblies(runtime, cpu)
         match layout {
             Some(measured) => {
                 print("Unity Mono: exact Mach-O UUID profile")
@@ -12769,6 +12827,19 @@ private struct MonoModule {
             },
         }
         return MonoModule { assemblies, version, pointerSize: PointerSize.Bit64, layout: MonoLayout.forMacVersion(version) }
+    }
+
+    private static fn macAssemblies(runtime: Module, cpu: u32) -> async address {
+        let assemblyForeach: address = 0
+        loop {
+            match await runtime.machExport("_mono_assembly_foreach") {
+                Ok(value) => { assemblyForeach = value; break },
+                Err(_) => await nextTick(),
+            }
+        }
+        return if cpu == 0x100000c {
+            await MonoModule.scanMacArmAssemblies(runtime, assemblyForeach)
+        } else { await MonoModule.scanUnixX64Assemblies(runtime, assemblyForeach) }
     }
 
     private static fn scanMacArmAssemblies(runtime: Module, assemblyForeach: address) -> async address {

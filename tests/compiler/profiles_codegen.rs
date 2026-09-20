@@ -86,22 +86,67 @@ fn flat_schema_names_omit_nested_matching_and_unused_nested_declarations() {
 
 #[test]
 fn explicit_mono_families_exclude_build_identity_discovery() {
-    for family in ["V1", "V1Cattrs", "V2", "V3"] {
-        let source = include_str!("../mono_profiles.split").replace(
-            "state Unity",
-            &format!("state Unity.mono(MonoVersion.{family})"),
-        );
-        let (wasm, report) = release_emission(&source);
-        Validator::new_with_features(WasmFeatures::all())
-            .validate_all(&wasm)
-            .unwrap();
-        for (_, name) in &report.functions {
-            assert!(
-                !name.contains("MonoLayoutForBuild")
-                    && !name.contains("MonoLayoutBuild")
-                    && !name.contains("ModulePeDebugId"),
-                "explicit {family} retained {name}"
+    for selector in ["mono", "monoLinux", "monoMac"] {
+        for family in ["V1", "V1Cattrs", "V2", "V3"] {
+            let source = include_str!("../mono_profiles.split").replace(
+                "state Unity",
+                &format!("state Unity.{selector}(MonoVersion.{family})"),
             );
+            let (wasm, report) = release_emission(&source);
+            Validator::new_with_features(WasmFeatures::all())
+                .validate_all(&wasm)
+                .unwrap();
+            for (_, name) in &report.functions {
+                for excluded in [
+                    "MonoLayoutForBuild",
+                    "MonoLayoutBuild",
+                    "MonoLayoutForLinuxBuild",
+                    "MonoLayoutLinuxBuild",
+                    "MonoLayoutForMacBuild",
+                    "MonoLayoutMacBuild",
+                    "ModulePeDebugId",
+                    "ModuleElfBuildId",
+                    "ModuleMachUuid",
+                    "DetectUnixVersion",
+                    "DetectMonoVersion",
+                    "DetectOldLayout",
+                    "Il2Cpp",
+                ] {
+                    assert!(
+                        !name.contains(excluded),
+                        "explicit {selector}/{family} retained {name}"
+                    );
+                }
+            }
+            for (platform, export, layouts) in [
+                ("mono", "ModulePeExport", "MonoLayoutForVersion"),
+                ("monoLinux", "ModuleElfExport", "MonoLayoutForLinuxVersion"),
+                ("monoMac", "ModuleMachExport", "MonoLayoutForMacVersion"),
+            ] {
+                for name in [export, layouts] {
+                    assert_eq!(
+                        report
+                            .functions
+                            .iter()
+                            .any(|(_, function)| function.contains(name)),
+                        selector == platform,
+                        "wrong platform dependency {name} for {selector}/{family}"
+                    );
+                }
+            }
+            for player in [
+                "UnityPlayer.dll",
+                "UnityPlayer.so",
+                "UnityPlayer.dylib",
+                "GameAssembly.dll",
+            ] {
+                assert!(
+                    !wasm
+                        .windows(player.len())
+                        .any(|bytes| bytes == player.as_bytes()),
+                    "explicit {selector}/{family} retained {player}"
+                );
+            }
         }
     }
     let (_, report) = release_emission(include_str!("../mono_profiles.split"));

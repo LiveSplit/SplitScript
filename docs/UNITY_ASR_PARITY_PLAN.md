@@ -1,6 +1,6 @@
 # Unity support: ASR research and SplitScript implementation plan
 
-Status: core recursive managed values and snapshots, measured IL2CPP profiles, and Windows/Linux/macOS Mono automatic attachment are implemented. Remaining work includes runtime type/generic validation, shared metadata/error handling, explicit platform selection, native platform validation, and final size acceptance. See [implementation progress](#implementation-progress).
+Status: core recursive managed values and snapshots, measured IL2CPP profiles, and Windows/Linux/macOS Mono automatic attachment are implemented. Explicit Windows/Linux/macOS Mono family selectors are also implemented. Remaining work includes runtime type/generic validation, shared metadata/error handling, native platform validation, and final size acceptance. See [implementation progress](#implementation-progress).
 
 ## Objective and baseline
 
@@ -1743,6 +1743,45 @@ to code for parallel layout discovery and element validation; data, types, scrat
 and memory pages do not grow. The checked-in baseline refresh also accounts for
 renumbered generated expression names. The final sub-30,000-byte Lunistice target
 and the remaining metadata requirements are still unfinished.
+
+## Explicit Mono platform selection (2026-09-20)
+
+`Unity.monoLinux(MonoVersion.V1/V1Cattrs/V2/V3)` now selects Linux x86-64 layout
+facts directly, and `Unity.monoMac(...)` selects macOS Intel/ARM64 layout facts.
+The existing `Unity.mono(...)` selector remains Windows PE32/PE64. All three
+return the concrete Mono backend to generated schema binding. They skip binary
+identity catalogs and UnityPlayer/version probing. macOS inspects the mapped
+CPU type to select its assembly-list scanner; unsupported formats/architectures
+wait for process closure rather than using another platform's offsets.
+
+Automatic and explicit Unix discovery now share bounded symbol lookup and
+assembly-list scanning. Automatic Linux identity selection runs after assembly
+slot discovery; its runtime/player identity precedence and family fallback are
+unchanged. Explicit selection does not consult even a contradictory known
+identity or player version. Delayed module/header reads and missing exports stay
+cooperative, and attachment closure cancels them before a new process binds.
+
+The runtime catalog includes all four families on both platforms in Debug and
+Release. Its 200 new cases cover no-player attachment, ignored identities,
+delayed modules/headers, signed instructions, unsupported targets, missing
+instructions/exports, cancellation and reattachment, including both Mac CPUs.
+Read/query instrumentation verifies that explicit selection never requests
+identity payloads or other-platform/player modules. Existing Windows (62),
+Linux (31 per build profile), macOS (46 per build profile), and explicit Windows
+family (eight) cases still pass. These remain synthetic target-memory tests;
+native Linux/macOS validation is still outstanding.
+
+Compiler tests verify typed provider selection and retained-function isolation
+for all twelve platform/family combinations. The importer reproduces all pinned
+Mono tables, documentation validation passes all 560 generated pages, and
+formatting/diff checks pass. The two new Release size fixtures are 44,156 bytes
+for explicit Linux and 45,233 bytes for explicit macOS. All 32 existing
+non-automatic fixtures keep module/section sizes, function/type counts and
+function-body size multisets unchanged; explicit Lunistice remains 58,178 bytes.
+Sharing the Unix assembly-discovery continuations reduces the four automatic
+fixtures by 19,149–19,246 bytes. Automatic Lunistice is now 182,416 bytes, with
+both edition scenarios passing. The final explicit Lunistice size requirement
+and remaining metadata/error requirements remain open.
 
 ## Source map for implementation
 

@@ -1288,7 +1288,7 @@ fn unity_provider_preparation_is_selected_typed_and_lowered_before_attachment() 
         unity.contexts[0].preparation,
         StdlibItemId::UnityProviderContext
     );
-    assert_eq!(unity.selectors.len(), 2);
+    assert_eq!(unity.selectors.len(), 4);
     assert_eq!(
         unity.selectors[0].preparation,
         StdlibItemId::UnityProviderIl2Cpp
@@ -1307,6 +1307,14 @@ fn unity_provider_preparation_is_selected_typed_and_lowered_before_attachment() 
         (
             r#"state Unity.mono(MonoVersion.V3) ["game.exe"] {}"#,
             Some(1),
+        ),
+        (
+            r#"state Unity.monoLinux(MonoVersion.V3) ["game.exe"] {}"#,
+            Some(2),
+        ),
+        (
+            r#"state Unity.monoMac(MonoVersion.V3) ["game.exe"] {}"#,
+            Some(3),
         ),
     ] {
         let checked = splitscript::check(splitscript::parse(source).unwrap())

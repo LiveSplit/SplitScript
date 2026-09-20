@@ -344,6 +344,14 @@ detection is inappropriate. Such a target may select
 such as `Unity.il2cpp(Il2CppProfile.unity2021_3_11f1X64())` in the state header. These selectors configure the
 provider; they are not callable discovery functions.
 
+For Mono, `Unity.mono(...)` selects Windows PE32/PE64 layouts.
+`Unity.monoLinux(MonoVersion.V3)` selects Linux x86-64, and
+`Unity.monoMac(MonoVersion.V3)` selects macOS x86-64/ARM64. Each accepts the four
+Mono families and uses that platform's layout facts. Explicit family selection
+omits binary identity catalogs, UnityPlayer version detection, and discovery for
+other platforms. macOS still selects its instruction scanner from the mapped
+runtime's CPU type. Use automatic selection when the family is unknown.
+
 IL2CPP profiles contain complete measured layouts, with x86 and x64 factories
 for 11 Unity releases. Automatic selection reads all four numeric file-version
 components from `UnityPlayer.dll`, prefers an exact match at the target width,
