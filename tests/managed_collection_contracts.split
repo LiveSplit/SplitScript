@@ -1,0 +1,26 @@
+image "Assembly-CSharp" {
+    class ProfileProbe {
+        static [List<String>] lists;
+        static [List<ProfileProbe>] classes;
+        static [Map<String, String>] maps;
+        static [Set<String>] sets;
+        static [[List<String>]] vectors;
+        static [[Map<String, List<String>>]] nested;
+    }
+}
+state Unity ["game.exe"] {}
+whileAttached {
+    let shape = process.read<u8>(0x60008) else 0
+    let read: () -> u32! = () => match shape {
+        0 => ProfileProbe.lists?.length(),
+        1 => ProfileProbe.maps?.length(),
+        2 => ProfileProbe.sets?.length(),
+        3 => ProfileProbe.vectors?.length(),
+        4 => ProfileProbe.nested?.length(),
+        _ => ProfileProbe.classes?.length(),
+    }
+    match read() {
+        Ok(length) => { setVariable("length", length); setVariable("result", "ok") },
+        Err(error) => setVariable("result", error),
+    }
+}

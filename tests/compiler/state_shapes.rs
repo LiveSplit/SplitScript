@@ -2028,3 +2028,67 @@ fn collection_storage_resolvers_follow_the_selected_backend() {
         }
     }
 }
+
+#[test]
+fn recursive_collection_contracts_retain_only_reachable_metadata_adapters() {
+    for (selector, mono) in [
+        ("Unity.mono(MonoVersion.V2)", true),
+        ("Unity.il2cpp(Il2CppProfile.unity2022_3_0f1X64())", false),
+    ] {
+        for (source_type, list, map, set, array) in [
+            ("i32", false, false, false, false),
+            ("[List<String>]", true, false, false, false),
+            ("[Map<String, String>]", false, true, false, false),
+            ("[Set<String>]", false, false, true, false),
+            ("[List<[String]>]", true, false, false, true),
+            ("[List<Map<String, [Probe?]>>]", true, true, false, true),
+        ] {
+            let source = format!(
+                r#"
+                image "Assembly-CSharp" {{ class Probe {{
+                    static {source_type} values;
+                    static [Map<String, Set<List<String>>>] unused;
+                }} }}
+                state {selector} ["game.exe"] {{ values = Probe.values?; }}
+            "#
+            );
+            let checked = splitscript::check(splitscript::parse(&source).unwrap()).unwrap();
+            let (wasm, report) = splitscript::compiler::codegen_with_report(
+                &checked,
+                splitscript::CompilerOptions {
+                    profile: splitscript::BuildProfile::Release,
+                    ..Default::default()
+                },
+            );
+            Validator::new_with_features(WasmFeatures::all())
+                .validate_all(&wasm)
+                .unwrap();
+            for (name, required) in [
+                ("ListTypeLayout", list),
+                ("DictionaryTypeLayout", map),
+                ("SetTypeLayout", set),
+                ("VectorElementType", array),
+            ] {
+                assert_eq!(
+                    report
+                        .functions
+                        .iter()
+                        .any(|(_, function)| function.contains(name)),
+                    required,
+                    "{selector}/{source_type}/{name}"
+                );
+            }
+            assert!(
+                !report
+                    .functions
+                    .iter()
+                    .any(|(_, function)| function.contains(if mono {
+                        "Il2CppGenericSize"
+                    } else {
+                        "MonoGenericSize"
+                    })),
+                "{selector}/{source_type}: wrong backend retained"
+            );
+        }
+    }
+}

@@ -2423,6 +2423,73 @@ and cache only successful recursive proofs per attachment. This must retain only
 the metadata adapters needed by each reachable schema. The unfinished work listed
 in the previous section remains open.
 
+## Compiler resource failure during recursive-proof integration (2026-09-20)
+
+Adding the recursive metadata callbacks exposed exponential copying in the
+compiler's hidden effect analysis: each closure copied every symbolic value in
+scope, including unrelated earlier closures. The compiler exhausted memory;
+unbounded concurrent investigation runs caused the user's PC to require a
+restart. This is an implementation failure, not a Unity memory-reading limit.
+
+Effect models now retain only referenced lexical values, including references
+inside nested closures and assignment/call targets. A regression with 48
+independent sibling closures verifies that the compiler can analyze and emit the
+program while preserving a transitive nested capture. All 682 compiler tests pass
+serially, including the 15 closure tests, at 80.1 MiB peak committed job memory.
+The effect-analysis fix and resource guard are committed as `0ab984a`.
+The previously failing nested-collection program compiles at 61 MiB of peak
+committed memory; its initial Release runtime checks pass 576 Mono and 192
+IL2CPP empty-root/repair cases. The subsequent validation of the recursive integration is recorded below;
+these results do not complete the goal.
+
+`scripts/run_limited.py` is the Windows build/test launcher for this work. It
+creates a suspended child, installs and verifies hard per-process and whole-job
+commit limits, assigns the child to the job, and only then resumes it. It fails
+closed if setup fails, serializes guarded runs with a named mutex, kills the
+process tree on timeout or launcher exit, and sets Cargo/test parallelism to one.
+Allocation refusal was verified for both a child and a grandchild under a
+64 MiB job. The wall timeout and refusal of concurrent guarded launches were
+verified independently. Script compiles and
+runtime tests use a 768 MiB cap; serial native Cargo builds use 1536 MiB.
+
+## Public recursive collection contracts (2026-09-20)
+
+Reachable collection decoders now generate recursive metadata checks for nested
+List, Map, and Set schemas, including vectors and nullable/class leaves. These
+checks run before accepting a discovered layout and on layout cache hits, so an
+empty outer collection still validates its declared nested types without reading
+child objects. Successful proofs are keyed by both runtime type and source
+schema, charged to the root's shared work budget, and discarded on reattachment.
+Failures are not cached and can be retried after metadata repair.
+
+The compiler emits only the proof functions and backend adapters required by the
+reachable schema. Ordinary scalar/string collection readers retain their existing
+callbacks. A new retention test checks six schemas on each explicit backend,
+including unused nested declarations, nested vectors, and nominal class leaves.
+The existing 682 compiler tests and this additional test pass under the resource
+guard.
+
+All 14 focused artifacts validate; all 16 runtime scenarios pass in Debug and
+Release. Public empty-root contracts pass 654 Mono and 218 IL2CPP cases per
+profile, including nested class identity, wrong collection types, unreadable
+metadata, successful repair, schema-separated caches, and reattachment. Populated
+Map/Set-of-List fixtures pass 128 cases each, nested Map/Set fixtures 144 each,
+and Lists 570 per profile. The 24 shared-budget cases pass with at most 16,329
+field reads. Fixtures now model actual closed generic class identities instead
+of placeholder reference types. The complete focused run peaks at 538.9 MiB of
+committed job memory. Clippy with warnings denied and the 561-page documentation
+check pass.
+
+All 38 existing baseline artifacts preserve module/section sizes, function/type
+counts, normalized function-body sizes, helper sets, and memory accounting. The
+reviewed baseline changes generated expression/type identities and timing only;
+the strict gate and both Lunistice edition scenarios pass. Explicit Lunistice
+remains 60,215 bytes and automatic selection 185,565 bytes.
+
+This completes the public nested collection metadata checks. Live-reference
+contracts, shared metadata traversal/scheduling, native platform validation, and
+the final sub-30,000-byte explicit Lunistice target remain open.
+
 ## Source map for implementation
 
 Upstream links below are pinned to the reviewed tip; the PR table provides the historical changes.

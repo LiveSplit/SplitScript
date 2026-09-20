@@ -59,6 +59,7 @@ for (const backend of [...Object.keys(monoLayouts), 'il2cpp']) for (const width 
                 number(type + BigInt(bytes + 2), 1, text === '_items' ? 0x1d : 0x08);
                 if (text === '_items') {
                     const elementType = writeVectorElementType({mono, width, family: backend, ptr, number, fixture, referenceClass:0x14000}, type, typeBase + 0x1000n, elementKind);
+                    if (elementKind === 0x15) writeGenericType({mono,width,ptr,number,cachedClass:0xa00000n}, elementType);
                     if (elementKind === 0x11 && mode.startsWith('generic ')) writeGenericType({mono, width, ptr, number, cachedClass: typeBase + 0x1000n}, elementType, true, 8);
                 }
             }
@@ -84,7 +85,7 @@ for (const backend of [...Object.keys(monoLayouts), 'il2cpp']) for (const width 
     const nestedArray = 0x84000n, childrenArray = 0x85000n, string = 0x90000n, tail = 0x92000n;
     const vector = (at, values, capacity = values.length, stride = bytes) => {
         const element = at === rowsArray || at === 0x8a000n ? [0x0e]
-            : at === vectors || at === nestedArray ? {kind:0x15}
+            : at === vectors || at === nestedArray ? {kind:0x15,class:Number(listLayouts.get(0x0e).klass)}
             : at === childrenArray || mode.startsWith('depth') && at >= 0x100000n ? {kind:0x12,class:0x14000}
             : at === 0x86000n ? 0x08 : at === 0x87000n ? 0x19
             : at === 0x88000n ? {kind:mode.startsWith('generic ') ? 0x15 : 0x11,value:true,bytes:8} : 0x0e;

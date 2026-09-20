@@ -38,8 +38,6 @@ for (const parallel of [false, true]) for (const mode of ['seed', 'mutate', 'dup
     };
     fields(0x14000n, 0x58000n, [['rows', 0x10]]);
     ptr((mono ? 0x18000n : 0x16000n) + 0x10n, object);
-    writeGenericType({mono, width, ptr, number, cachedClass: dictionary ? f.keyClass : f.valueClass}, dictionary ? f.keyType : f.valueType);
-    if (dictionary) writeGenericType({mono, width, ptr, number, cachedClass: f.valueClass}, f.valueType);
     // Separate closed runtime classes for List<String?> and List<List<String?>>.
     for (let i = 0; i < 2; i++) {
         const shift = BigInt(i * 0x1000), klass = 0x310000n + shift, definition = 0x320000n + shift;
@@ -54,8 +52,12 @@ for (const parallel of [false, true]) for (const mode of ['seed', 'mutate', 'dup
         }
         ptr(0x390000n + shift, klass);
     }
+    writeGenericType({mono, width, ptr, number, cachedClass: 0x311000n}, dictionary ? f.keyType : f.valueType);
+    if (dictionary) writeGenericType({mono, width, ptr, number, cachedClass: 0x310000n}, f.valueType);
+    const childType = writeVectorElementType({mono,width,family,ptr,number}, 0x541000n, 0x551000n, 0x15);
+    writeGenericType({mono,width,ptr,number,cachedClass:0x310000n}, childType);
     const vector = (at, values, capacity = values.length) => {
-        writeManagedArrayType(f, {mono,width,family,ptr,number}, at, at === 0x800000n || at === 0x801000n ? {kind:0x15} : 0x0e);
+        writeManagedArrayType(f, {mono,width,family,ptr,number}, at, at === 0x800000n || at === 0x801000n ? {kind:0x15,class:0x310000} : 0x0e);
         ptr(at + BigInt(2 * bytes), 0); ptr(at + BigInt(3 * bytes), capacity);
         values.forEach((item, i) => ptr(at + BigInt((4 + i) * bytes), item));
     };

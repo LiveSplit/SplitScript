@@ -99,37 +99,39 @@ pub(super) fn prune(
         remove.insert(crate::stdlib::MANAGED_OBJECT_TYPE_FIELD.to_owned());
         remove.insert("__object_type_cache".to_owned());
     }
-    use crate::managed_read::{ManagedDecoderKind as D, collection_binding, nominal_class};
+    use crate::managed_read::{ManagedDecoderKind as D, typed_collection_binding};
     let mut collection_bindings = HashSet::new();
     for ty in reachable.managed_decoders() {
         match capabilities.managed_decoder(ty).unwrap().kind {
             D::Array { element } | D::List { element } => {
-                let nominal = nominal_class(element, capabilities).is_some();
-                collection_bindings.insert(collection_binding(
+                collection_bindings.insert(typed_collection_binding(
                     crate::stdlib::MANAGED_ARRAY_TYPE_FIELD,
-                    nominal,
+                    &[element],
+                    capabilities,
                 ));
                 if matches!(
                     capabilities.managed_decoder(ty).unwrap().kind,
                     D::List { .. }
                 ) {
-                    collection_bindings.insert(collection_binding(
+                    collection_bindings.insert(typed_collection_binding(
                         crate::stdlib::MANAGED_LIST_LAYOUT_FIELD,
-                        nominal,
+                        &[element],
+                        capabilities,
                     ));
                 }
             }
             D::Map { key, value } => {
-                collection_bindings.insert(collection_binding(
+                collection_bindings.insert(typed_collection_binding(
                     crate::stdlib::MANAGED_MAP_READ_FIELD,
-                    nominal_class(key, capabilities).is_some()
-                        || nominal_class(value, capabilities).is_some(),
+                    &[key, value],
+                    capabilities,
                 ));
             }
             D::Set { element } => {
-                collection_bindings.insert(collection_binding(
+                collection_bindings.insert(typed_collection_binding(
                     crate::stdlib::MANAGED_SET_READ_FIELD,
-                    nominal_class(element, capabilities).is_some(),
+                    &[element],
+                    capabilities,
                 ));
             }
             _ => {}
@@ -147,22 +149,47 @@ pub(super) fn prune(
         (crate::stdlib::MANAGED_MAP_READ_FIELD, "__map_layout_cache"),
         (crate::stdlib::MANAGED_SET_READ_FIELD, "__set_layout_cache"),
     ] {
-        for nominal in [false, true] {
-            let binding = collection_binding(base, nominal);
-            if !collection_bindings.contains(&binding) {
+        let mut needed = false;
+        for suffix in ["", "_class", "_schema"] {
+            let binding = format!("{base}{suffix}");
+            if collection_bindings.contains(&binding) {
+                needed = true
+            } else {
                 remove.insert(binding);
             }
         }
-        if [false, true]
-            .iter()
-            .all(|nominal| !collection_bindings.contains(&collection_binding(base, *nominal)))
-        {
+        if !needed {
             remove.insert(cache.to_owned());
         }
+    }
+    let contracts =
+        crate::managed_read::schema_contracts(reachable.managed_decoders(), capabilities);
+    let schema_bindings = contracts
+        .iter()
+        .map(|ty| {
+            crate::managed_read::schema_binding(capabilities.managed_decoder(*ty).unwrap().kind)
+        })
+        .collect::<HashSet<_>>();
+    for name in [
+        "__schema_storage",
+        "__schema_class",
+        "__schema_array",
+        "__schema_list",
+        "__schema_map",
+        "__schema_set",
+    ] {
+        if !schema_bindings.contains(name) {
+            remove.insert(name.to_owned());
+        }
+    }
+    if contracts.is_empty() {
+        remove.insert("__schema_proof".to_owned());
+        remove.insert("__schema_proof_cache".to_owned());
     }
     if !collection_bindings
         .iter()
         .any(|binding| binding.ends_with("_class"))
+        && !schema_bindings.contains("__schema_class")
     {
         remove.insert("__class_contract".to_owned());
         remove.insert("__class_contract_cache".to_owned());

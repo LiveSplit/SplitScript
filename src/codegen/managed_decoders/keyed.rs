@@ -29,7 +29,10 @@ pub(super) fn compile(
     };
     let nominal = crate::managed_read::nominal_class(key, capabilities).is_some()
         || crate::managed_read::nominal_class(value, capabilities).is_some();
-    let read_binding = crate::managed_read::collection_binding(base_binding, nominal);
+    let schema = crate::managed_read::needs_schema(key, capabilities)
+        || crate::managed_read::needs_schema(value, capabilities);
+    let read_binding =
+        crate::managed_read::typed_collection_binding(base_binding, &[key, value], capabilities);
     let noun = if dictionary { "dictionary" } else { "set" };
     let output = capabilities.managed_decoder(source).unwrap().output;
     let r = Reader {
@@ -154,7 +157,10 @@ pub(super) fn compile(
         .instruction(&I::I32Const(storage_kinds(&r, value_leaf) as i32))
         .instruction(&I::I32Const(if dictionary { key_depth as i32 } else { 0 }))
         .instruction(&I::I32Const(value_depth as i32));
-    if nominal {
+    if schema {
+        super::contracts::emit_checker(&mut f, key_leaf, l);
+        super::contracts::emit_checker(&mut f, value_leaf, l);
+    } else if nominal {
         if dictionary {
             r.expected_class(&mut f, key);
         } else {
@@ -530,7 +536,7 @@ fn binding(
     };
     (structure.id, index as u32, *layout)
 }
-fn callback_start(f: &mut Function, l: &EmissionContext<'_>, name: &str, local: u32) {
+pub(super) fn callback_start(f: &mut Function, l: &EmissionContext<'_>, name: &str, local: u32) {
     let (structure, field, callable) = binding(l, name);
     f.instruction(&I::GlobalGet(
         l.runtime_globals.provider_preparation_value.unwrap(),
@@ -546,7 +552,7 @@ fn callback_start(f: &mut Function, l: &EmissionContext<'_>, name: &str, local: 
         field_index: 1,
     });
 }
-fn callback_end(
+pub(super) fn callback_end(
     f: &mut Function,
     l: &EmissionContext<'_>,
     callable: crate::ast::CallableTypeId,

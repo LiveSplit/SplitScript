@@ -313,6 +313,18 @@ fn managed_preparation_source(
                  {MANAGED_SET_READ_FIELD}_class: (address, u32, u32, u32, u32, u32, u32, address, address, u32, u32, u64, ManagedReadContext) -> UnityKeyedRead!,\n"
         ));
     }
+    if !classes.is_empty() {
+        let checker = "(address, u32, ManagedReadContext) -> bool!";
+        for (name, signature) in schema_binding_signatures() {
+            source.push_str(&format!("    {name}: {signature},\n"));
+        }
+        source.push_str(&format!(
+            "    {MANAGED_ARRAY_TYPE_FIELD}_schema: (address, u32, u32, u32, {checker}, ManagedReadContext) -> address!,\n\
+                 {MANAGED_LIST_LAYOUT_FIELD}_schema: (address, u32, u32, u32, address, {checker}, ManagedReadContext) -> UnityListLayout!,\n\
+                 {MANAGED_MAP_READ_FIELD}_schema: (address, u32, u32, u32, u32, u32, u32, {checker}, {checker}, u32, u32, u64, ManagedReadContext) -> UnityKeyedRead!,\n\
+                 {MANAGED_SET_READ_FIELD}_schema: (address, u32, u32, u32, u32, u32, u32, {checker}, {checker}, u32, u32, u64, ManagedReadContext) -> UnityKeyedRead!,\n"
+        ));
+    }
     for context in contexts {
         source.push_str(&format!(
             "    {}: {},\n",
@@ -479,17 +491,36 @@ fn managed_backend_binding_source(
                          return true\n\
                      }}\n"
     ));
+    source.push_str(&schema_binding_bodies(module));
     source.push_str("            let __array_layout_cache: [UnityArrayLayout] = []\n");
-    for nominal in [false, true] {
-        let binding = crate::managed_read::collection_binding(MANAGED_ARRAY_TYPE_FIELD, nominal);
-        let class_parameter = if nominal { "address, " } else { "" };
-        let class_argument = if nominal { "elementClass, " } else { "" };
-        let cached_check = if nominal {
+    for mode in ["", "_class", "_schema"] {
+        let nominal = mode == "_class";
+        let schema = mode == "_schema";
+        let binding = format!("{MANAGED_ARRAY_TYPE_FIELD}{mode}");
+        let class_parameter = if schema {
+            "(address, u32, ManagedReadContext) -> bool!, "
+        } else if nominal {
+            "address, "
+        } else {
+            ""
+        };
+        let class_argument = if schema {
+            "verify, "
+        } else if nominal {
+            "elementClass, "
+        } else {
+            ""
+        };
+        let cached_check = if schema {
+            "cached.validate(depth, elementBytes, elementKinds)?; verify(cached.elementType(depth)?, __pointer_size, context)?; return class"
+        } else if nominal {
             "cached.validate(depth, elementBytes, elementKinds)?; __class_contract(cached.elementType(depth)?, elementClass, context)?; return class"
         } else {
             "return cached.validate(depth, elementBytes, elementKinds)"
         };
-        let layout_check = if nominal {
+        let layout_check = if schema {
+            "verify(layout.elementType(depth)?, __pointer_size, context)?;"
+        } else if nominal {
             "__class_contract(layout.elementType(depth)?, elementClass, context)?;"
         } else {
             ""
@@ -510,16 +541,34 @@ fn managed_backend_binding_source(
     ));
     }
     source.push_str("            let __list_layout_cache: [UnityListLayout] = []\n");
-    for nominal in [false, true] {
-        let binding = crate::managed_read::collection_binding(MANAGED_LIST_LAYOUT_FIELD, nominal);
-        let class_parameter = if nominal { "address, " } else { "" };
-        let class_argument = if nominal { "elementClass, " } else { "" };
-        let cached_check = if nominal {
+    for mode in ["", "_class", "_schema"] {
+        let nominal = mode == "_class";
+        let schema = mode == "_schema";
+        let binding = format!("{MANAGED_LIST_LAYOUT_FIELD}{mode}");
+        let class_parameter = if schema {
+            "(address, u32, ManagedReadContext) -> bool!, "
+        } else if nominal {
+            "address, "
+        } else {
+            ""
+        };
+        let class_argument = if schema {
+            "verify, "
+        } else if nominal {
+            "elementClass, "
+        } else {
+            ""
+        };
+        let cached_check = if schema {
+            "verify(cached.elements.elementType(depth)?, __pointer_size, context)?;"
+        } else if nominal {
             "__class_contract(cached.elements.elementType(depth)?, elementClass, context)?;"
         } else {
             ""
         };
-        let layout_check = if nominal {
+        let layout_check = if schema {
+            "verify(layout.elements.elementType(depth)?, __pointer_size, context)?;"
+        } else if nominal {
             "__class_contract(layout.elements.elementType(depth)?, elementClass, context)?;"
         } else {
             ""
@@ -570,20 +619,34 @@ fn managed_backend_binding_source(
         source.push_str(&format!(
             "            let {cache}: [UnityKeyedLayout] = []\n"
         ));
-        for nominal in [false, true] {
-            let binding = crate::managed_read::collection_binding(base, nominal);
-            let class_parameter = if nominal { "address, address, " } else { "" };
-            let class_argument = if nominal {
+        for mode in ["", "_class", "_schema"] {
+            let nominal = mode == "_class";
+            let schema = mode == "_schema";
+            let binding = format!("{base}{mode}");
+            let class_parameter = if schema {
+                "(address, u32, ManagedReadContext) -> bool!, (address, u32, ManagedReadContext) -> bool!, "
+            } else if nominal {
+                "address, address, "
+            } else {
+                ""
+            };
+            let class_argument = if schema {
+                "verifyKey, verifyValue, "
+            } else if nominal {
                 "keyClass, valueClass, "
             } else {
                 ""
             };
-            let cached_check = if nominal {
+            let cached_check = if schema {
+                "if cached.members.length() == 4 { verifyKey(cached.members[2].nestedType(keyDepth, cached.keyElements)?, __pointer_size, context)? } verifyValue(cached.members[cached.members.length() - 1].nestedType(valueDepth, cached.valueElements)?, __pointer_size, context)?;"
+            } else if nominal {
                 "cached.validateClasses(keyDepth, valueDepth, keyClass, valueClass, (type, expected) => __class_contract(type, expected, context))?;"
             } else {
                 ""
             };
-            let layout_check = if nominal {
+            let layout_check = if schema {
+                "if layout.members.length() == 4 { verifyKey(layout.members[2].nestedType(keyDepth, layout.keyElements)?, __pointer_size, context)? } verifyValue(layout.members[layout.members.length() - 1].nestedType(valueDepth, layout.valueElements)?, __pointer_size, context)?;"
+            } else if nominal {
                 "layout.validateClasses(keyDepth, valueDepth, keyClass, valueClass, (type, expected) => __class_contract(type, expected, context))?;"
             } else {
                 ""
@@ -690,7 +753,10 @@ fn managed_backend_binding_source(
         MANAGED_MAP_READ_FIELD,
         MANAGED_SET_READ_FIELD,
     ] {
-        source.push_str(&format!("                {base}_class,\n"));
+        source.push_str(&format!("                {base}_class, {base}_schema,\n"));
+    }
+    for (name, _) in schema_binding_signatures() {
+        source.push_str(&format!("                {name},\n"));
     }
     for class in classes {
         source.push_str(&format!(
@@ -1020,6 +1086,83 @@ fn provider_contexts_used(
     };
     collector.visit_program(program);
     collector.found
+}
+
+fn schema_binding_signatures() -> Vec<(&'static str, String)> {
+    let checker = "(address, u32, ManagedReadContext) -> bool!";
+    vec![
+        (
+            "__schema_storage",
+            "(address, u32, u32, ManagedReadContext) -> bool!".into(),
+        ),
+        (
+            "__schema_class",
+            "(address, address, ManagedReadContext) -> bool!".into(),
+        ),
+        (
+            "__schema_proof",
+            "(address, u32, bool, ManagedReadContext) -> bool!".into(),
+        ),
+        (
+            "__schema_array",
+            format!("(address, u32, ManagedReadContext, {checker}) -> bool!"),
+        ),
+        (
+            "__schema_list",
+            format!("(address, u32, ManagedReadContext, {checker}) -> bool!"),
+        ),
+        (
+            "__schema_set",
+            format!("(address, u32, ManagedReadContext, {checker}) -> bool!"),
+        ),
+        (
+            "__schema_map",
+            format!("(address, u32, ManagedReadContext, {checker}, {checker}) -> bool!"),
+        ),
+    ]
+}
+
+fn schema_binding_bodies(module: &str) -> String {
+    let checker = "(address, u32, ManagedReadContext) -> bool!";
+    format!(
+        r#"
+            let __schema_proof_cache: [[address; 2]] = []
+            let __schema_proof: (address, u32, bool, ManagedReadContext) -> bool! = (type, schema, remember, context) => {{
+                if !Unity.chargeManagedWork(context) {{ throw "managed read work limit exceeded" }}
+                if remember {{
+                    if __schema_proof_cache.length() >= 1024 {{ __schema_proof_cache.clear() }}
+                    __schema_proof_cache.push([type, schema as address])
+                    return true
+                }}
+                for cached in __schema_proof_cache {{
+                    if !Unity.chargeManagedWork(context) {{ throw "managed read work limit exceeded" }}
+                    if cached[0] == type && cached[1] == (schema as address) {{ return true }}
+                }}
+                return false
+            }}
+            let __schema_storage: (address, u32, u32, ManagedReadContext) -> bool! = (type, bytes, kinds, context) =>
+                {module}.typeStorage(type, bytes, kinds, () => Unity.chargeManagedWork(context))
+            let __schema_class: (address, address, ManagedReadContext) -> bool! = (type, expected, context) => {{
+                {module}.typeStorage(type, __pointer_size, 1 << 0x12, () => Unity.chargeManagedWork(context))?
+                __class_contract(type, expected, context)
+            }}
+            let __schema_array: (address, u32, ManagedReadContext, {checker}) -> bool! = (type, width, context, verify) =>
+                verify({module}.vectorElementType(type, () => Unity.chargeManagedWork(context))?, width, context)
+            let __schema_list: (address, u32, ManagedReadContext, {checker}) -> bool! = (type, width, context, verify) => {{
+                let layout = {module}.listTypeLayout(type, () => Unity.chargeManagedWork(context))?
+                verify(layout.elements.elementType(0)?, width, context)
+            }}
+            let __schema_set: (address, u32, ManagedReadContext, {checker}) -> bool! = (type, width, context, verify) => {{
+                let layout = {module}.setTypeLayout(type, () => Unity.chargeManagedWork(context))?
+                verify(layout.members[layout.members.length() - 1].typeAddress, width, context)
+            }}
+            let __schema_map: (address, u32, ManagedReadContext, {checker}, {checker}) -> bool! = (type, width, context, verifyKey, verifyValue) => {{
+                let layout = {module}.dictionaryTypeLayout(type, () => Unity.chargeManagedWork(context))?
+                verifyKey(layout.members[2].typeAddress, width, context)?
+                verifyValue(layout.members[layout.members.length() - 1].typeAddress, width, context)
+            }}
+"#
+    )
 }
 
 #[cfg(test)]

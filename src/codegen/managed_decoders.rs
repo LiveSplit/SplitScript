@@ -22,6 +22,7 @@ use super::{
 // context, and whether the address has already been dereferenced.
 const CONTEXT: u32 = 3;
 
+pub(super) mod contracts;
 mod keyed;
 
 pub(super) fn compile(
@@ -440,7 +441,9 @@ impl Reader<'_, '_> {
         } else {
             f.instruction(&I::I64Const(0));
         }
-        if crate::managed_read::nominal_class(element, self.capabilities).is_some() {
+        if crate::managed_read::needs_schema(element, self.capabilities) {
+            contracts::emit_checker(f, element, l);
+        } else if crate::managed_read::nominal_class(element, self.capabilities).is_some() {
             self.expected_class(f, element);
         }
         f.instruction(&I::LocalGet(CONTEXT))
@@ -579,7 +582,9 @@ impl Reader<'_, '_> {
         .instruction(&I::I32Const(depth as i32));
         storage_width(f, self, element);
         f.instruction(&I::I32Const(storage_kinds(self, element) as i32));
-        if crate::managed_read::nominal_class(element, self.capabilities).is_some() {
+        if crate::managed_read::needs_schema(element, self.capabilities) {
+            contracts::emit_checker(f, element, l);
+        } else if crate::managed_read::nominal_class(element, self.capabilities).is_some() {
             self.expected_class(f, element);
         }
         f.instruction(&I::LocalGet(CONTEXT))
@@ -603,10 +608,7 @@ impl Reader<'_, '_> {
     }
 
     fn collection_binding(&self, base: &str, element: TypeId) -> String {
-        crate::managed_read::collection_binding(
-            base,
-            crate::managed_read::nominal_class(element, self.capabilities).is_some(),
-        )
+        crate::managed_read::typed_collection_binding(base, &[element], self.capabilities)
     }
 
     fn expected_class(&self, f: &mut Function, element: TypeId) {

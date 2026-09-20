@@ -43,6 +43,7 @@ pub(super) struct FunctionPlan<'a> {
     pub managed_snapshots: HashMap<ManagedClassId, u32>,
     pub managed_freezers: HashMap<crate::types::TypeId, u32>,
     pub managed_decoders: HashMap<crate::types::TypeId, u32>,
+    pub managed_contracts: HashMap<crate::types::TypeId, u32>,
     pub reads: Vec<u32>,
     pub transforms: Vec<Option<u32>>,
     pub actions: HashMap<ActionKind, u32>,
@@ -612,6 +613,21 @@ pub(super) fn encode<'a>(
         );
     }
 
+    let mut managed_contracts = HashMap::new();
+    for source in
+        crate::managed_read::schema_contracts(reachability.managed_decoders(), capabilities)
+    {
+        managed_contracts.insert(
+            source,
+            declarations.declare_type(
+                || format!("__splitscript::managed::contract::{source:?}"),
+                gc.callable_function_index(super::managed_decoders::contracts::checker_layout(
+                    semantics,
+                )),
+            ),
+        );
+    }
+
     let mut managed_freezers = HashMap::new();
     for value in super::managed_freezers::required(reachability, capabilities, semantics) {
         managed_freezers.insert(
@@ -956,6 +972,7 @@ pub(super) fn encode<'a>(
         managed_state_reads: managed_state_read_functions,
         managed_snapshots: managed_snapshot_functions,
         managed_decoders: managed_decoder_functions,
+        managed_contracts,
         managed_freezers,
         reads,
         transforms,

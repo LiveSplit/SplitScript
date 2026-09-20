@@ -25,7 +25,7 @@ for (const parallel of [false, true]) for (const mode of ['seed', 'reorder', 'mu
     name.forEach((byte, i) => memory.set(0x59000n + BigInt(i), byte));
     number(0x58000n + BigInt(wide ? 0x18 : 0xc), 4, 0x10);
     ptr((mono ? 0x18000n : 0x16000n) + 0x10n, f.object);
-    writeGenericType({mono, width, ptr, number, cachedClass: dictionary ? f.keyClass : f.valueClass}, dictionary ? f.keyType : f.valueType);
+    writeGenericType({mono, width, ptr, number, cachedClass: inner.root}, dictionary ? f.keyType : f.valueType);
     if (dictionary) writeVectorElementType({mono,width,family,ptr,number}, f.valueType, 0x3d000n, 0x0e);
     writeVectorElementType({mono,width,family,ptr,number}, inner.valueType, 0x43d000n, 0x0e);
     const vector = (at, values) => {

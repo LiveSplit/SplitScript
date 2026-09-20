@@ -101,6 +101,95 @@ pub(crate) fn collection_binding(base: &str, nominal: bool) -> String {
     }
 }
 
+/// Vectors already prove their depth and storage leaf in one layout lookup.
+/// A collection at that leaf needs a recursive metadata proof as well.
+pub(crate) fn collection_leaf(
+    mut source: TypeId,
+    capabilities: &crate::capabilities::CapabilityAnalysis,
+) -> TypeId {
+    loop {
+        match capabilities.managed_decoder(source).unwrap().kind {
+            ManagedDecoderKind::Optional { value }
+            | ManagedDecoderKind::Array { element: value } => source = value,
+            _ => return source,
+        }
+    }
+}
+
+pub(crate) fn needs_schema(
+    source: TypeId,
+    capabilities: &crate::capabilities::CapabilityAnalysis,
+) -> bool {
+    matches!(
+        capabilities
+            .managed_decoder(collection_leaf(source, capabilities))
+            .unwrap()
+            .kind,
+        ManagedDecoderKind::List { .. }
+            | ManagedDecoderKind::Map { .. }
+            | ManagedDecoderKind::Set { .. }
+    )
+}
+
+pub(crate) fn typed_collection_binding(
+    base: &str,
+    children: &[TypeId],
+    capabilities: &crate::capabilities::CapabilityAnalysis,
+) -> String {
+    if children.iter().any(|ty| needs_schema(*ty, capabilities)) {
+        format!("{base}_schema")
+    } else {
+        collection_binding(
+            base,
+            children
+                .iter()
+                .any(|ty| nominal_class(*ty, capabilities).is_some()),
+        )
+    }
+}
+
+/// Only proofs reachable through a nested collection require generated code.
+/// Class projection is a leaf here; its fields belong to snapshot validation.
+pub(crate) fn schema_contracts(
+    decoders: impl Iterator<Item = TypeId>,
+    capabilities: &crate::capabilities::CapabilityAnalysis,
+) -> std::collections::BTreeSet<TypeId> {
+    let mut required = std::collections::BTreeSet::new();
+    let mut pending = Vec::new();
+    for ty in decoders {
+        let children = capabilities
+            .managed_decoder(ty)
+            .unwrap()
+            .kind
+            .children()
+            .collect::<Vec<_>>();
+        if matches!(
+            capabilities.managed_decoder(ty).unwrap().kind,
+            ManagedDecoderKind::Optional { .. }
+        ) {
+            continue;
+        }
+        if children.iter().any(|ty| needs_schema(*ty, capabilities)) {
+            pending.extend(
+                children
+                    .into_iter()
+                    .map(|ty| collection_leaf(ty, capabilities)),
+            );
+        }
+    }
+    while let Some(mut ty) = pending.pop() {
+        while let ManagedDecoderKind::Optional { value } =
+            capabilities.managed_decoder(ty).unwrap().kind
+        {
+            ty = value
+        }
+        if required.insert(ty) {
+            pending.extend(capabilities.managed_decoder(ty).unwrap().kind.children())
+        }
+    }
+    required
+}
+
 #[derive(Debug, Clone)]
 pub(crate) struct ManagedReadTypes {
     nodes: HashMap<TypeId, ManagedDecoder>,
@@ -261,4 +350,16 @@ pub(crate) fn inline_materialization_cost(
         bytes.min(MAX_MANAGED_READ_BYTES + 1),
         elements.min(MAX_MANAGED_ELEMENTS + 1),
     )
+}
+
+pub(crate) fn schema_binding(kind: ManagedDecoderKind) -> &'static str {
+    match kind {
+        ManagedDecoderKind::Memory | ManagedDecoderKind::String => "__schema_storage",
+        ManagedDecoderKind::Class { .. } => "__schema_class",
+        ManagedDecoderKind::Array { .. } => "__schema_array",
+        ManagedDecoderKind::List { .. } => "__schema_list",
+        ManagedDecoderKind::Map { .. } => "__schema_map",
+        ManagedDecoderKind::Set { .. } => "__schema_set",
+        ManagedDecoderKind::Optional { .. } => unreachable!("nullable schema nodes are normalized"),
+    }
 }

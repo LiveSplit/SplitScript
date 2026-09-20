@@ -677,6 +677,7 @@ fn compile_internal(inputs: BackendProgram<'_>, report: Option<&mut CodegenRepor
         managed_state_reads: managed_state_read_functions,
         managed_snapshots: managed_snapshot_functions,
         managed_decoders: managed_decoder_functions,
+        managed_contracts: managed_contract_functions,
         managed_freezers,
         reads: read_functions,
         transforms: transform_functions,
@@ -749,6 +750,7 @@ fn compile_internal(inputs: BackendProgram<'_>, report: Option<&mut CodegenRepor
         managed_state_read_functions: &managed_state_read_functions,
         managed_snapshot_functions: &managed_snapshot_functions,
         managed_decoder_functions: &managed_decoder_functions,
+        managed_contract_functions: &managed_contract_functions,
         managed_freezers: &managed_freezers,
         enums,
         arrays: array_types,
@@ -979,6 +981,11 @@ fn compile_internal(inputs: BackendProgram<'_>, report: Option<&mut CodegenRepor
     for value in reachability.managed_decoders() {
         codes.push(&managed_decoders::compile(value, capabilities, &lowering));
     }
+    for source in
+        crate::managed_read::schema_contracts(reachability.managed_decoders(), capabilities)
+    {
+        codes.push(&managed_decoders::contracts::compile(source, &lowering));
+    }
     for value in managed_freezers::required(&reachability, capabilities, semantics) {
         codes.push(&managed_freezers::compile(value, &lowering));
     }
@@ -1160,6 +1167,7 @@ fn compile_internal(inputs: BackendProgram<'_>, report: Option<&mut CodegenRepor
                 let mut functions = closure_functions
                     .values()
                     .chain(function_value_functions.values())
+                    .chain(managed_contract_functions.values())
                     .copied()
                     .collect::<Vec<_>>();
                 functions.sort_unstable();
