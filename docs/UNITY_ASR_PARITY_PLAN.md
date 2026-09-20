@@ -2260,6 +2260,44 @@ Backing-array agreement does not prove the full recursive source-schema identity
 of class and generic leaves. That validation, shared metadata traversal and
 scheduling, native platform validation, and final size acceptance remain open.
 
+## Recursive Map/Set array contracts (2026-09-20)
+
+Map keys/values and Set elements now validate the complete declared vector
+nesting and leaf storage contract before slot scanning. The compiler passes the
+requested vector depth, leaf kind, and leaf width, including through nullable
+schema layers. Layout discovery retains the corresponding nested contracts from
+entry fields or parallel array element types. Empty collections and null-backed
+empty entry layouts therefore cannot hide a wrong scalar kind or nesting depth.
+The same checks run when a runtime class already has a cached layout.
+
+Layout insertion now follows schema validation, including entry stride and
+member-overlap checks. Previously a rejected schema could still cache its
+metadata before the read failed. Failed nested discovery or schema checks now
+remain retryable on the same runtime class after metadata repair. Vector cycles
+and depth/work limits reuse the shared array metadata reader.
+
+Public Maps pass 744 cases per artifact and Sets pass 664 in Debug and Release.
+New cases cover empty nested array keys and values, wrong leaf kinds and depths,
+null backing, metadata cycles, incompatible cached schemas, and same-class
+repair. Rejected empty schemas never read entry payloads. All 34 public
+array/collection artifacts validate and pass their runtime scenarios; the six
+private layout tests, compiler retention checks, and 561-page documentation
+validation also pass.
+
+Thirty-four of 38 size fixtures retain module/section sizes, function/type counts,
+and body-size multisets. IL2CPP Map/Set grow by 1,237/1,235 bytes and Mono Map/Set
+by 1,237/1,230 bytes for the stored contracts, two validators, and call arguments.
+Scratch, read capacity, and minimum memory pages remain unchanged. Explicit
+Lunistice stays at 58,187 bytes; automatic selection stays at 182,552 bytes.
+The strict size gate and Lunistice base/DLC behavior scenarios pass.
+The array contract machinery is currently shared by flat and nested Map/Set
+schemas. Eliminating unneeded branches and contract storage for known schemas
+remains part of final size work; this is not final zero-unused-feature acceptance.
+
+Nominal class and complete generic argument validation, shared metadata
+traversal/scheduling, native platform validation, and final size acceptance remain
+unfinished.
+
 ## Source map for implementation
 
 Upstream links below are pinned to the reviewed tip; the PR table provides the historical changes.

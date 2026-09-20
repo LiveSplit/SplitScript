@@ -1991,7 +1991,7 @@ fn collection_storage_resolvers_follow_the_selected_backend() {
                     .functions
                     .iter()
                     .any(|(_, name)| name.contains("ArrayLayout")),
-                has_array || collection.starts_with("List<"),
+                has_collection,
                 "{selector}: {collection}"
             );
             assert_eq!(

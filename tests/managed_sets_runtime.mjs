@@ -4,7 +4,7 @@ import { SplitScriptHost } from './support/splitscript_host.mjs';
 import { createKeyedCollectionFixture, writeKeyedBackingArray } from './support/keyed_collection_fixture.mjs';
 
 const [wasm] = process.argv.slice(2);
-const modes = ['backing nested kind', 'backing empty nested kind', 'backing wrong kind', 'backing empty wrong kind', 'backing null class', 'backing unreadable class', 'backing metadata repair', 'compatible backing class', 'torn backing class', 'wrong value schema', 'seed', 'mutate', 'empty', 'shared empty backing', 'all deleted', 'large capacity', 'duplicate values',
+const modes = ['declared nested kind', 'declared nested null', 'declared nested depth', 'declared nested cycle', 'wrong nested schema', 'wrong depth schema', 'backing nested kind', 'backing empty nested kind', 'backing wrong kind', 'backing empty wrong kind', 'backing null class', 'backing unreadable class', 'backing metadata repair', 'compatible backing class', 'torn backing class', 'wrong value schema', 'seed', 'mutate', 'empty', 'shared empty backing', 'all deleted', 'large capacity', 'duplicate values',
     'unreadable value', 'unreadable string', 'null set', 'scan budget', 'shared scan budget',
     'shared element budget', 'comparison budget', 'byte budget', 'backing cycle', 'torn count', 'torn backing', 'cached layout',
     'retry', 'freeze clear', 'freeze insert', 'freeze remove', 'freeze absent', 'freeze child',
@@ -18,13 +18,14 @@ const fieldLayouts = {
 let cases = 0;
 for (const family of Object.keys(fieldLayouts)) for (const width of [32, 64])
 for (const parallel of [false, true]) for (const mode of modes) {
+    if (parallel && mode === 'declared nested null') continue;
     if (!parallel && ['backing nested kind', 'backing empty nested kind'].includes(mode)) continue;
     const f = createKeyedCollectionFixture({family, width, parallel, dictionary: false});
     const {memory, number, ptr, object, bytes, outer, stride, hash, next, value} = f;
     const mono = family !== 'il2cpp', wide = width === 64;
     const [fieldsOffset, countOffset] = fieldLayouts[family][width];
     ptr(0x14000n + BigInt(fieldsOffset), 0x58000n);
-    const fields = [['rows', 0x10], ['sets', 0x18], ['instance', 0x20], ['values', 0x10], ['score', 0x18], ['wrongValues', 0x28]];
+    const fields = [['rows', 0x10], ['sets', 0x18], ['instance', 0x20], ['values', 0x10], ['score', 0x18], ['wrongValues', 0x28], ['wrongNested', 0x10], ['wrongDepth', 0x10]];
     number(0x14000n + BigInt(countOffset), mono ? 4 : 2, fields.length);
     fields.forEach(([name, offset], i) => {
         const field = 0x58000n + BigInt(i * (wide ? 32 : mono ? 16 : 20));
@@ -105,6 +106,16 @@ for (const parallel of [false, true]) for (const mode of modes) {
     assert(before.tree.includes(before.rows), `${label}: snapshot set`);
     reads.length = 0;
     let success = ['seed', 'mutate', 'empty', 'shared empty backing', 'all deleted', 'large capacity', 'cached layout', 'local mutable', 'compatible backing class'].includes(mode);
+    if (mode.startsWith('declared nested')) {
+        counts(0, 0);
+        for (let i = 0n; i < 0x200n; i++) memory.set(0x3f000n + i, memory.get(f.root + i) ?? 0);
+        ptr(mono ? f.vtable : object, 0x3f000n);
+        if (mode === 'declared nested depth') writeVectorElementType({mono,width,family,ptr,number}, f.valueType, 0x3d000n, 0x1d);
+        else if (mode === 'declared nested cycle') ptr(f.valueType, mono ? f.valueClass : f.valueType);
+        else writeVectorElementType({mono,width,family,ptr,number}, f.valueType, 0x3d000n, 0x08);
+        if (mode === 'declared nested null') backing.forEach(field => ptr(field, 0));
+    }
+    if (mode === 'wrong nested schema' || mode === 'wrong depth schema') counts(0, 0);
     if (mode === 'backing wrong kind' || mode === 'backing empty wrong kind' || mode === 'backing metadata repair') {
         if (mode === 'backing empty wrong kind') counts(0, 0);
         repairType = writeManagedArrayType(f, {mono,width,family,ptr,number}, arrays[0], 0x08).type;
@@ -156,20 +167,27 @@ for (const parallel of [false, true]) for (const mode of modes) {
         number(0x6f000n, 4, ['freeze clear', 'freeze insert', 'freeze remove', 'freeze absent', 'freeze child', 'freeze snapshot'].indexOf(mode) + 1);
         assert.throws(() => host.update(), WebAssembly.RuntimeError, label); cases++; continue;
     }
-    if (mode.startsWith('wrong ')) { number(0x6f000n, 4, mode === 'wrong value schema' ? 8 : 9); success = true; }
+    if (mode.startsWith('wrong ')) { number(0x6f000n, 4, mode === 'wrong nested schema' ? 10 : mode === 'wrong depth schema' ? 11 : mode === 'wrong value schema' ? 8 : 9); success = true; }
     host.update();
-    if (mode.startsWith('wrong ')) assert.match(host.variables.get('wrong'), /member type is incompatible with its schema/, label);
+    if (mode.startsWith('wrong ')) assert.match(host.variables.get('wrong'), /incompatible/, label);
     assert.equal(normalize(host.variables.get('old')), before.rows, `${label}: immutable old snapshot`);
     for (const field of ['rows', 'sets', 'tree']) {
         let expected = before[field];
         if (mode === 'mutate') expected = expected.replaceAll('seed', 'new');
-        if (['empty', 'shared empty backing', 'all deleted'].includes(mode) && success) expected = expected.replaceAll(before.rows, 'Set{}');
+        if (['empty', 'shared empty backing', 'all deleted', 'wrong nested schema', 'wrong depth schema'].includes(mode) && success) expected = expected.replaceAll(before.rows, 'Set{}');
         assert.equal(normalize(host.variables.get(field)), expected, `${label}: ${field}`);
     }
     assert.equal(host.variables.get('result') === 'ok', success, `${label}: ${host.variables.get('result')}`);
     if (mode === 'unreadable value') assert.match(host.variables.get('result'), /^set element\[0\]: \[0\]: /, label);
     if (mode === 'unreadable string') assert.match(host.variables.get('result'), /^set element\[0\]: \[0\]: managed string/, label);
     if (mode === 'local mutable') assert.equal(host.variables.get('local'), '1', label);
+    if (mode.startsWith('declared nested') || mode === 'wrong nested schema' || mode === 'wrong depth schema') {
+        assert(!reads.includes(arrays[0] + BigInt(4 * bytes + hash)), `${label}: invalid nested schema read entry payload`);
+    }
+    if (mode.startsWith('declared nested')) {
+        writeVectorElementType({mono,width,family,ptr,number}, f.valueType, 0x3d000n, 0x0e);
+        host.updateUntil(() => host.variables.get('result') === 'ok', `${label}: repaired declared type on the same class`);
+    }
     if (mode.startsWith('backing ') && mode !== 'backing cycle' || mode === 'torn backing class') {
         if (mode.endsWith('kind') || mode === 'backing metadata repair') {
             assert.match(host.variables.get('result'), /backing array element type differs/, label);

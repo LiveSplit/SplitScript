@@ -2,6 +2,10 @@ image "Assembly-CSharp" {
     class ProfileProbe {
         static Map<String, [String?]> rows;
         static [Map<String, [String?]>?] maps;
+        static Map<String, [i32]> wrongNested;
+        static Map<String, [[String]]> wrongDepth;
+        static Map<[[String?]?], String> arrayKeys;
+        static Map<[[i32]?], String> wrongArrayKeys;
         static ProfileProbe instance;
         static Map<[String], [String?]> wrongKeys;
         static Map<String, String> wrongValues;
@@ -29,6 +33,14 @@ whileAttached {
     }
     if mutation == 9 {
         setVariable("wrong", match ProfileProbe.wrongKeys { Ok(_) => "ok", Err(error) => error })
+    }
+    if mutation == 10 { setVariable("wrong", match ProfileProbe.wrongNested { Ok(_) => "ok", Err(error) => error }) }
+    if mutation == 11 { setVariable("wrong", match ProfileProbe.wrongDepth { Ok(_) => "ok", Err(error) => error }) }
+    if mutation == 12 || mutation == 13 {
+        setVariable("arrayKeys", match ProfileProbe.arrayKeys { Ok(_) => "ok", Err(error) => error })
+    }
+    if mutation == 13 {
+        setVariable("wrongArrayKeys", match ProfileProbe.wrongArrayKeys { Ok(_) => "ok", Err(error) => error })
     }
     if mutation == 1 { current.rows.clear() }
     if mutation == 2 { current.rows.insert("seed", []) }

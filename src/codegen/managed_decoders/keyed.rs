@@ -139,14 +139,18 @@ pub(super) fn compile(
     );
     callback_start(&mut f, l, read_binding, 5);
     f.instruction(&I::LocalGet(1));
+    let (key_leaf, key_depth) = r.array_leaf(key);
+    let (value_leaf, value_depth) = r.array_leaf(value);
     if dictionary {
-        width(&mut f, &r, key);
+        width(&mut f, &r, key_leaf);
     } else {
         f.instruction(&I::I32Const(0));
     }
-    width(&mut f, &r, value);
-    f.instruction(&I::I32Const(storage_kinds(&r, key) as i32))
-        .instruction(&I::I32Const(storage_kinds(&r, value) as i32));
+    width(&mut f, &r, value_leaf);
+    f.instruction(&I::I32Const(storage_kinds(&r, key_leaf) as i32))
+        .instruction(&I::I32Const(storage_kinds(&r, value_leaf) as i32))
+        .instruction(&I::I32Const(if dictionary { key_depth as i32 } else { 0 }))
+        .instruction(&I::I32Const(value_depth as i32));
     remaining(
         &mut f,
         l,

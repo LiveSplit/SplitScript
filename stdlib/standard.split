@@ -2196,7 +2196,13 @@ private struct UnityFields {
             throw "Unity collection hash and next fields must be integers"
         }
         self.validateMembers(inner, stride as u64)?
-        return UnityKeyedLayout { runtimeClass: class, declaringClass: owner,
+        let keyElements = if inner.length() == 4 && inner[2].kind == 0x1d {
+            Some(types.arrayLayout(class, inner[2].typeAddress, self.fields)?)
+        } else { None }
+        let valueElements = if inner[inner.length() - 1].kind == 0x1d {
+            Some(types.arrayLayout(class, inner[inner.length() - 1].typeAddress, self.fields)?)
+        } else { None }
+        return UnityKeyedLayout { runtimeClass: class, declaringClass: owner, keyElements, valueElements,
             parallel: false, fields: outer, stride, members: inner, width: self.names.width, mono: types.mono }
     }
 
@@ -2229,7 +2235,13 @@ private struct UnityFields {
             inner.push(types.storageMember(element, 0)?)
             index += 1
         }
-        return UnityKeyedLayout { runtimeClass: class, declaringClass: owner,
+        let keyElements = if inner.length() == 4 && inner[2].kind == 0x1d {
+            Some(types.arrayLayout(class, inner[2].typeAddress, self.fields)?)
+        } else { None }
+        let valueElements = if inner[inner.length() - 1].kind == 0x1d {
+            Some(types.arrayLayout(class, inner[inner.length() - 1].typeAddress, self.fields)?)
+        } else { None }
+        return UnityKeyedLayout { runtimeClass: class, declaringClass: owner, keyElements, valueElements,
             parallel: true, fields: outer, stride, members: inner, width: self.names.width, mono: types.mono }
     }
 
@@ -15560,6 +15572,14 @@ private struct UnityCollectionMember {
     /// Whether metadata proves an exact width rather than a lower bound.
     private exactWidth: bool,
 
+    private fn validateNested(depth: u32, bytes: u32, kinds: u32, width: u32, elements: UnityArrayLayout?) -> bool! {
+        if depth == 0 { return self.validateStorage(bytes, kinds) }
+        self.validateStorage(width, 1 << 0x1d)?
+        let arrays = elements else throw "Unity collection element nesting is incompatible with its schema"
+        arrays.validate(depth - 1, bytes, kinds)?
+        return true
+    }
+
     // Check the child storage plan against each width proven during discovery.
     private fn validateStorage(bytes: u32, kinds: u32) -> bool! {
         if self.kind >= 32 || (kinds & (1 << (self.kind as u32))) == 0 {
@@ -15598,6 +15618,10 @@ private struct UnityKeyedLayout {
     /// Entry members, or Link members followed by proven parallel payload types.
     /// Parallel payload offsets are zero within their separate backing arrays.
     private members: [UnityCollectionMember],
+    /// Nested vector contracts for a dictionary's declared key type.
+    private keyElements: UnityArrayLayout?,
+    /// Nested vector contracts for the declared value or set element type.
+    private valueElements: UnityArrayLayout?,
     /// Target pointer width for the attachment that discovered this layout.
     private width: u64,
     /// Whether object headers lead through a Mono vtable.
@@ -15689,6 +15713,19 @@ private struct UnityKeyedLayout {
                 }
             }
         }
+        return true
+    }
+
+    private fn validateTypes(keyDepth: u32, keyBytes: u32, keyKinds: u32,
+        valueDepth: u32, valueBytes: u32, valueKinds: u32) -> bool! {
+        if self.dictionary() {
+            self.members[2].validateNested(keyDepth, keyBytes, keyKinds, self.width as u32, self.keyElements)?
+        }
+        self.members[self.members.length() - 1].validateNested(valueDepth, valueBytes, valueKinds, self.width as u32, self.valueElements)?
+        self.validateElementSizes(if keyDepth == 0 { keyBytes } else { self.width as u32 },
+            if valueDepth == 0 { valueBytes } else { self.width as u32 },
+            if keyDepth == 0 { keyKinds } else { 1 << 0x1d },
+            if valueDepth == 0 { valueKinds } else { 1 << 0x1d })?
         return true
     }
 

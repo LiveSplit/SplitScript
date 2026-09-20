@@ -297,7 +297,7 @@ fn managed_preparation_source(
     }
     if !classes.is_empty() {
         source.push_str(&format!(
-            "    {MANAGED_MAP_READ_FIELD}: (address, u32, u32, u32, u32, u32, u32, u64, ManagedReadContext) -> UnityKeyedRead!,\n    {MANAGED_SET_READ_FIELD}: (address, u32, u32, u32, u32, u32, u32, u64, ManagedReadContext) -> UnityKeyedRead!,\n"
+            "    {MANAGED_MAP_READ_FIELD}: (address, u32, u32, u32, u32, u32, u32, u32, u32, u64, ManagedReadContext) -> UnityKeyedRead!,\n    {MANAGED_SET_READ_FIELD}: (address, u32, u32, u32, u32, u32, u32, u32, u32, u64, ManagedReadContext) -> UnityKeyedRead!,\n"
         ));
         source.push_str(&format!(
             "    {MANAGED_KEYED_VERIFY_FIELD}: (UnityKeyedRead) -> bool!,\n"
@@ -463,12 +463,17 @@ fn managed_backend_binding_source(
     ));
     source.push_str(&format!(
         "            let __map_layout_cache: [UnityKeyedLayout] = []\n\
-                     let {MANAGED_MAP_READ_FIELD}: (address, u32, u32, u32, u32, u32, u32, u64, ManagedReadContext) -> UnityKeyedRead! = (object, keyBytes, valueBytes, keyKinds, valueKinds, scanBudget, elementBudget, byteBudget, context) => {{\n\
+                     let {MANAGED_MAP_READ_FIELD}: (address, u32, u32, u32, u32, u32, u32, u32, u32, u64, ManagedReadContext) -> UnityKeyedRead! = (object, keyLeafBytes, valueLeafBytes, keyLeafKinds, valueLeafKinds, keyDepth, valueDepth, scanBudget, elementBudget, byteBudget, context) => {{\n\
                          if !Unity.chargeManagedWork(context) {{ throw \"managed read work limit exceeded\" }}\n\
                          let class = {module}.collectionClass(object)?\n\
-                         for cached in __map_layout_cache {{ if !Unity.chargeManagedWork(context) {{ throw \"managed read work limit exceeded\" }} if cached.runtimeClass == class {{ return cached.readSlots(object, keyBytes, valueBytes, keyKinds, valueKinds, scanBudget, elementBudget, byteBudget, (array, declared) => __keyed_array(array, declared, context)) }} }}\n\
+                         let keyBytes = if keyDepth == 0 {{ keyLeafBytes }} else {{ {MANAGED_POINTER_SIZE_FIELD} }}\n\
+                         let valueBytes = if valueDepth == 0 {{ valueLeafBytes }} else {{ {MANAGED_POINTER_SIZE_FIELD} }}\n\
+                         let keyKinds = if keyDepth == 0 {{ keyLeafKinds }} else {{ 1 << 0x1d }}\n\
+                         let valueKinds = if valueDepth == 0 {{ valueLeafKinds }} else {{ 1 << 0x1d }}\n\
+                         for cached in __map_layout_cache {{ if !Unity.chargeManagedWork(context) {{ throw \"managed read work limit exceeded\" }} if cached.runtimeClass == class {{ cached.validateTypes(keyDepth, keyLeafBytes, keyLeafKinds, valueDepth, valueLeafBytes, valueLeafKinds)?; return cached.readSlots(object, keyBytes, valueBytes, keyKinds, valueKinds, scanBudget, elementBudget, byteBudget, (array, declared) => __keyed_array(array, declared, context)) }} }}\n\
                          let layout = {module}.dictionaryLayout(object, () => Unity.chargeManagedWork(context))?\n\
                          if layout.runtimeClass != class {{ throw \"managed dictionary class changed during discovery\" }}\n\
+                         layout.validateTypes(keyDepth, keyLeafBytes, keyLeafKinds, valueDepth, valueLeafBytes, valueLeafKinds)?\n\
                          if __map_layout_cache.length() >= 1024 {{ __map_layout_cache.clear() }}\n\
                          __map_layout_cache.push(layout)\n\
                          return layout.readSlots(object, keyBytes, valueBytes, keyKinds, valueKinds, scanBudget, elementBudget, byteBudget, (array, declared) => __keyed_array(array, declared, context))\n\
@@ -477,12 +482,17 @@ fn managed_backend_binding_source(
     ));
     source.push_str(&format!(
         "            let __set_layout_cache: [UnityKeyedLayout] = []\n\
-                     let {MANAGED_SET_READ_FIELD}: (address, u32, u32, u32, u32, u32, u32, u64, ManagedReadContext) -> UnityKeyedRead! = (object, keyBytes, valueBytes, keyKinds, valueKinds, scanBudget, elementBudget, byteBudget, context) => {{\n\
+                     let {MANAGED_SET_READ_FIELD}: (address, u32, u32, u32, u32, u32, u32, u32, u32, u64, ManagedReadContext) -> UnityKeyedRead! = (object, keyLeafBytes, valueLeafBytes, keyLeafKinds, valueLeafKinds, keyDepth, valueDepth, scanBudget, elementBudget, byteBudget, context) => {{\n\
                          if !Unity.chargeManagedWork(context) {{ throw \"managed read work limit exceeded\" }}\n\
                          let class = {module}.collectionClass(object)?\n\
-                         for cached in __set_layout_cache {{ if !Unity.chargeManagedWork(context) {{ throw \"managed read work limit exceeded\" }} if cached.runtimeClass == class {{ return cached.readSlots(object, keyBytes, valueBytes, keyKinds, valueKinds, scanBudget, elementBudget, byteBudget, (array, declared) => __keyed_array(array, declared, context)) }} }}\n\
+                         let keyBytes = if keyDepth == 0 {{ keyLeafBytes }} else {{ {MANAGED_POINTER_SIZE_FIELD} }}\n\
+                         let valueBytes = if valueDepth == 0 {{ valueLeafBytes }} else {{ {MANAGED_POINTER_SIZE_FIELD} }}\n\
+                         let keyKinds = if keyDepth == 0 {{ keyLeafKinds }} else {{ 1 << 0x1d }}\n\
+                         let valueKinds = if valueDepth == 0 {{ valueLeafKinds }} else {{ 1 << 0x1d }}\n\
+                         for cached in __set_layout_cache {{ if !Unity.chargeManagedWork(context) {{ throw \"managed read work limit exceeded\" }} if cached.runtimeClass == class {{ cached.validateTypes(keyDepth, keyLeafBytes, keyLeafKinds, valueDepth, valueLeafBytes, valueLeafKinds)?; return cached.readSlots(object, keyBytes, valueBytes, keyKinds, valueKinds, scanBudget, elementBudget, byteBudget, (array, declared) => __keyed_array(array, declared, context)) }} }}\n\
                          let layout = {module}.setLayout(object, () => Unity.chargeManagedWork(context))?\n\
                          if layout.runtimeClass != class {{ throw \"managed set class changed during discovery\" }}\n\
+                         layout.validateTypes(keyDepth, keyLeafBytes, keyLeafKinds, valueDepth, valueLeafBytes, valueLeafKinds)?\n\
                          if __set_layout_cache.length() >= 1024 {{ __set_layout_cache.clear() }}\n\
                          __set_layout_cache.push(layout)\n\
                          return layout.readSlots(object, keyBytes, valueBytes, keyKinds, valueKinds, scanBudget, elementBudget, byteBudget, (array, declared) => __keyed_array(array, declared, context))\n\

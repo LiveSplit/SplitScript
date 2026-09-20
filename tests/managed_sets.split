@@ -2,6 +2,8 @@ image "Assembly-CSharp" {
     class ProfileProbe {
         static Set<[String?]> rows;
         static [Set<[String?]>?] sets;
+        static Set<[i32]> wrongNested;
+        static Set<[[String]]> wrongDepth;
         static ProfileProbe instance;
         static Set<String> wrongValues;
         Set<[String?]> values;
@@ -23,6 +25,8 @@ whileAttached {
     if mutation == 8 {
         setVariable("wrong", match ProfileProbe.wrongValues { Ok(_) => "ok", Err(error) => error })
     }
+    if mutation == 10 { setVariable("wrong", match ProfileProbe.wrongNested { Ok(_) => "ok", Err(error) => error }) }
+    if mutation == 11 { setVariable("wrong", match ProfileProbe.wrongDepth { Ok(_) => "ok", Err(error) => error }) }
     if mutation == 1 { current.rows.clear() }
     if mutation == 2 { current.rows.insert([]) }
     if mutation == 3 { current.rows.remove([]) }
