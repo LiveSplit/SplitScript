@@ -1,3 +1,4 @@
+import {writeManagedObjectHeader} from './support/managed_type_fixture.mjs';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { SplitScriptHost } from './support/splitscript_host.mjs';
@@ -39,7 +40,7 @@ for (const mono of [true, false]) for (const width of [32, 64]) for (const mode 
         ptr(field + BigInt(mono ? bytes : 0), nameAddress); name(nameAddress, text);
         write(field + BigInt(wide ? 0x18 : 0xc), 4, [0x10, 0x20, 0x10, 0x20, 0x30][i]);
     });
-    const object = (at, value) => {
+    const object = (at, value) => { writeManagedObjectHeader(fixture,{mono,ptr},at);
         write(at + 0x10n, 8, value); ptr(at + 0x20n, 0); ptr(at + 0x30n, string);
     };
     const statics = at => { ptr(at + 0x10n, root); write(at + 0x20n, 8, 55); };

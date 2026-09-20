@@ -970,6 +970,20 @@ const RUNTIME_FIXTURES: &[RuntimeFixture] = &[
         extra_arguments: &[],
     },
     RuntimeFixture {
+        source: "tests/managed_snapshot_identity.split",
+        output: "managed_snapshot_identity.wasm",
+        profile: "release",
+        harness: "tests/managed_snapshot_identity_runtime.mjs",
+        extra_arguments: &[],
+    },
+    RuntimeFixture {
+        source: "tests/managed_snapshot_identity.split",
+        output: "managed_snapshot_identity_debug.wasm",
+        profile: "debug",
+        harness: "tests/managed_snapshot_identity_runtime.mjs",
+        extra_arguments: &[],
+    },
+    RuntimeFixture {
         source: "tests/managed_deep_snapshot.split",
         output: "managed_deep_snapshot.wasm",
         profile: "release",

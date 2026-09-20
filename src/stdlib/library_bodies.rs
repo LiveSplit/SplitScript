@@ -23,6 +23,7 @@ pub(crate) const PROVIDER_PREPARATION_FUNCTION: &str =
 pub(crate) const PROVIDER_BINDINGS_TYPE: &str = "__splitscript_stdlib_provider_bindings";
 pub(crate) const MANAGED_POINTER_SIZE_FIELD: &str = "__pointer_size";
 pub(crate) const MANAGED_LIST_LAYOUT_FIELD: &str = "__list_layout";
+pub(crate) const MANAGED_OBJECT_TYPE_FIELD: &str = "__object_type";
 pub(crate) const MANAGED_ARRAY_TYPE_FIELD: &str = "__array_type";
 pub(crate) const MANAGED_MAP_READ_FIELD: &str = "__map_read";
 pub(crate) const MANAGED_SET_READ_FIELD: &str = "__set_read";
@@ -288,6 +289,7 @@ fn managed_preparation_source(
     let mut source = format!("struct {PROVIDER_BINDINGS_TYPE} {{\n");
     if !classes.is_empty() {
         source.push_str(&format!("    {MANAGED_POINTER_SIZE_FIELD}: u32,\n"));
+        source.push_str(&format!("    {MANAGED_OBJECT_TYPE_FIELD}: (address, address, address, ManagedReadContext) -> address!,\n"));
         source.push_str(&format!(
             "    {MANAGED_LIST_LAYOUT_FIELD}: (address, u32, u32, u32, address, ManagedReadContext) -> UnityListLayout!,\n"
         ));
@@ -311,6 +313,10 @@ fn managed_preparation_source(
         ));
     }
     for class in &classes {
+        source.push_str(&format!(
+            "    {}: address,\n",
+            managed_class_address_name(class.class.id.index())
+        ));
         if instance_classes.contains(&class.class.id) {
             source.push_str(&format!(
                 "    {}: address,\n",
@@ -373,6 +379,7 @@ fn managed_preparation_source(
                 "__module",
                 "__module.pointerSize",
                 false,
+                ".address",
                 contexts,
             ));
             source.push_str("    }\n");
@@ -386,6 +393,7 @@ fn managed_preparation_source(
                 "__module",
                 "match __module.pointerSize { PointerSize.Bit32 => 4, PointerSize.Bit64 => 8 }",
                 true,
+                ".address",
                 contexts,
             ));
             source.push_str("    }\n");
@@ -398,6 +406,7 @@ fn managed_preparation_source(
                 "__runtime",
                 "__runtime.pointerBytes()",
                 true,
+                ".classAddress()",
                 contexts,
             ));
             source.push_str("    }\n");
@@ -413,6 +422,7 @@ fn managed_backend_binding_source(
     module: &str,
     pointer_size: &str,
     instance_header_is_async: bool,
+    class_address: &str,
     contexts: &[SelectedProviderContext],
 ) -> String {
     let mut source = String::new();
@@ -420,13 +430,36 @@ fn managed_backend_binding_source(
         "            let {MANAGED_POINTER_SIZE_FIELD}: u32 = {pointer_size}\n"
     ));
     source.push_str(&format!(
+        "            let __object_type_cache: [[address; 2]] = []\n\
+                     let {MANAGED_OBJECT_TYPE_FIELD}: (address, address, address, ManagedReadContext) -> address! = (object, expected, original, context) => {{\n\
+                         let charge = () => Unity.chargeManagedWork(context)\n\
+                         let class = {module}.objectClass(object, charge)?\n\
+                         if original != 0 {{ if class != original {{ throw \"managed snapshot runtime class changed during the read\" }} return class }}\n\
+                         if expected == 0 {{ throw \"managed snapshot declared class is unavailable\" }}\n\
+                         if class == expected {{ return class }}\n\
+                         for cached in __object_type_cache {{ if !charge() {{ throw \"managed read work limit exceeded\" }} if cached[0] == class && cached[1] == expected {{ return class }} }}\n\
+                         let current = class\n\
+                         let depth: u32 = 0\n\
+                         while current != expected {{\n\
+                             if current == 0 {{ throw \"managed snapshot object is incompatible with its declared class\" }}\n\
+                             if depth >= 128 {{ throw \"managed snapshot class hierarchy is cyclic or exceeds the depth limit\" }}\n\
+                             current = {module}.parentClass(current, charge)?\n\
+                             depth += 1\n\
+                         }}\n\
+                         if {module}.objectClass(object, charge)? != class {{ throw \"managed snapshot runtime class changed during discovery\" }}\n\
+                         if __object_type_cache.length() >= 1024 {{ __object_type_cache.clear() }}\n\
+                         __object_type_cache.push([class, expected])\n\
+                         return class\n\
+                     }}\n"
+    ));
+    source.push_str(&format!(
         "            let __array_layout_cache: [UnityArrayLayout] = []\n\
                      let {MANAGED_ARRAY_TYPE_FIELD}: (address, u32, u32, u32, ManagedReadContext) -> address! = (object, depth, elementBytes, elementKinds, context) => {{\n\
                          let charge = () => Unity.chargeManagedWork(context)\n\
-                         let class = {module}.arrayClass(object, charge)?\n\
+                         let class = {module}.objectClass(object, charge)?\n\
                          for cached in __array_layout_cache {{ if !charge() {{ throw \"managed read work limit exceeded\" }} if cached.runtimeClass == class {{ return cached.validate(depth, elementBytes, elementKinds) }} }}\n\
                          let layout = {module}.arrayLayout(class, charge)?\n\
-                         if {module}.arrayClass(object, charge)? != class {{ throw \"managed array class changed during discovery\" }}\n\
+                         if {module}.objectClass(object, charge)? != class {{ throw \"managed array class changed during discovery\" }}\n\
                          layout.validate(depth, elementBytes, elementKinds)?\n\
                          if __array_layout_cache.length() >= 1024 {{ __array_layout_cache.clear() }}\n\
                          __array_layout_cache.push(layout)\n\
@@ -452,10 +485,10 @@ fn managed_backend_binding_source(
         "            let __keyed_array_cache: [[address; 2]] = []\n\
                      let __keyed_array: (address, address, ManagedReadContext) -> address! = (object, declared, context) => {{\n\
                          let charge = () => Unity.chargeManagedWork(context)\n\
-                         let class = {module}.arrayClass(object, charge)?\n\
+                         let class = {module}.objectClass(object, charge)?\n\
                          for cached in __keyed_array_cache {{ if !charge() {{ throw \"managed read work limit exceeded\" }} if cached[0] == class && cached[1] == declared {{ return class }} }}\n\
                          {module}.verifyArrayType(class, declared, charge)?\n\
-                         if {module}.arrayClass(object, charge)? != class {{ throw \"Unity backing array class changed during discovery\" }}\n\
+                         if {module}.objectClass(object, charge)? != class {{ throw \"Unity backing array class changed during discovery\" }}\n\
                          if __keyed_array_cache.length() >= 1024 {{ __keyed_array_cache.clear() }}\n\
                          __keyed_array_cache.push([class, declared])\n\
                          return class\n\
@@ -540,6 +573,10 @@ fn managed_backend_binding_source(
         source.push_str(&format!(
             "            let {class_local} = await __image_{image_index}.{class_lookup}([{candidates}])\n"
         ));
+        source.push_str(&format!(
+            "            let {} = {class_local}{class_address}\n",
+            managed_class_address_name(class.class.id.index())
+        ));
         if instance_classes.contains(&class.class.id) {
             let await_prefix = if instance_header_is_async {
                 "await "
@@ -565,10 +602,15 @@ fn managed_backend_binding_source(
     source.push_str(&format!("                {MANAGED_POINTER_SIZE_FIELD},\n"));
     source.push_str(&format!("                {MANAGED_LIST_LAYOUT_FIELD},\n"));
     source.push_str(&format!("                {MANAGED_ARRAY_TYPE_FIELD},\n"));
+    source.push_str(&format!("                {MANAGED_OBJECT_TYPE_FIELD},\n"));
     source.push_str(&format!(
         "                {MANAGED_MAP_READ_FIELD}, {MANAGED_SET_READ_FIELD}, {MANAGED_KEYED_VERIFY_FIELD},\n"
     ));
     for class in classes {
+        source.push_str(&format!(
+            "                {},\n",
+            managed_class_address_name(class.class.id.index())
+        ));
         if instance_classes.contains(&class.class.id) {
             let name = managed_instance_header_name(class.class.id.index());
             source.push_str(&format!("                {name},\n"));
@@ -713,6 +755,10 @@ pub(crate) fn managed_field_presence_name(field: usize) -> String {
 
 pub(crate) fn managed_static_field_address_name(field: usize) -> String {
     format!("__field_{field}_static_address")
+}
+
+pub(crate) fn managed_class_address_name(class: usize) -> String {
+    format!("__class_{class}_address")
 }
 
 pub(crate) fn managed_instance_header_name(class: usize) -> String {

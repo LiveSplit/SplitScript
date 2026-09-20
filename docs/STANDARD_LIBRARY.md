@@ -458,6 +458,12 @@ the live parent and `Child` on its snapshot; `Child?` similarly becomes
 memory still fails. Explicit `Child.Ref` fields cannot be materialized in an
 owned snapshot.
 
+Every snapshot, including an empty class, checks that the object's runtime class
+is the declared class or a subclass before reading fields. It checks that class
+again after the fields, so a changed object header fails the read. Successful
+ancestry proofs are cached for the attachment; failed proofs remain retryable.
+These checks share the root's work budget. They do not make remote reads atomic.
+
 If any nested field fails, the whole operation returns an error and no partial
 snapshot escapes. Previous snapshots keep their values when remote objects
 change or a later read fails. Recursive schemas are allowed, but an object

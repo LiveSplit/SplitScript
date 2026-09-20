@@ -89,13 +89,52 @@ pub(super) fn compile(
             live_locals.insert(field.id, (local, child_local));
         }
     }
+    let (_, _, class_callable) =
+        super::managed_decoders::binding(lowering, crate::stdlib::MANAGED_OBJECT_TYPE_FIELD);
+    let class_result = result_for(
+        lowering
+            .semantics
+            .types()
+            .id_for_core(crate::stdlib::CoreTypeId::Address),
+        lowering,
+    );
+    let class_callback_local = locals.len() as u32 + parameter_count;
+    let nullable = |mut ty: ValType| {
+        if let ValType::Ref(reference) = &mut ty {
+            reference.nullable = true;
+        }
+        ty
+    };
+    locals.push((
+        1,
+        nullable(lowering.gc.val_type(Type::Callable(class_callable))),
+    ));
+    let class_result_local = locals.len() as u32 + parameter_count;
+    locals.push((
+        1,
+        nullable(lowering.gc.val_type(Type::Result(class_result))),
+    ));
+    let actual_class_local = locals.len() as u32 + parameter_count;
+    locals.push((1, ValType::I64));
+    let class_context_local = if enter.is_some() {
+        1
+    } else {
+        let local = locals.len() as u32 + parameter_count;
+        locals.push((
+            1,
+            nullable(lowering.gc.val_type(Type::Standard(
+                crate::stdlib::StdlibTypeId::ManagedReadContext,
+            ))),
+        ));
+        local
+    };
     let mut function = Function::new(locals);
     let error_local = fields.len() as u32 + parameter_count;
     let values = HashMap::new();
     let temporaries = HashMap::new();
     let matches = MatchLayout::default();
     let mut context = ExprContext::compiler_generated(lowering, &values, &temporaries, &matches);
-    context.managed_read_context = enter.map(|_| 1);
+    context.managed_read_context = Some(class_context_local);
 
     if let Some(enter) = enter {
         function
@@ -121,6 +160,29 @@ pub(super) fn compile(
     // local. The outer Result error is then constructed once instead of
     // duplicating that relatively large sequence for every class field.
     function.instruction(&Instruction::Block(BlockType::Empty));
+    if enter.is_none() {
+        function
+            .instruction(&Instruction::I32Const(
+                crate::managed_read::SNAPSHOT_CONTEXT_SLOTS as i32,
+            ))
+            .instruction(&Instruction::ArrayNewDefault(
+                lowering
+                    .gc
+                    .standard_index(crate::stdlib::StdlibTypeId::ManagedReadContext),
+            ))
+            .instruction(&Instruction::LocalSet(class_context_local));
+    }
+    emit_class_check(
+        &mut function,
+        class,
+        lowering,
+        class_callback_local,
+        class_result_local,
+        actual_class_local,
+        class_context_local,
+        error_local,
+        true,
+    );
     for (index, field) in fields.iter().enumerate() {
         let field_result = result_for(field.snapshot_type, lowering);
         let field_type = super::semantic_type(field.snapshot_type, lowering.semantics);
@@ -200,6 +262,17 @@ pub(super) fn compile(
             .instruction(&Instruction::End);
     }
 
+    emit_class_check(
+        &mut function,
+        class,
+        lowering,
+        class_callback_local,
+        class_result_local,
+        actual_class_local,
+        class_context_local,
+        error_local,
+        false,
+    );
     if enter.is_some() {
         leave_object(&mut function, lowering.gc);
     }
@@ -239,6 +312,96 @@ pub(super) fn compile(
     function
 }
 
+#[allow(clippy::too_many_arguments)]
+fn emit_class_check(
+    f: &mut Function,
+    class: ManagedClassId,
+    l: &super::context::EmissionContext<'_>,
+    callback_local: u32,
+    result_local: u32,
+    actual_local: u32,
+    context_local: u32,
+    error_local: u32,
+    remember: bool,
+) {
+    use Instruction as I;
+    let (structure, field, callable) =
+        super::managed_decoders::binding(l, crate::stdlib::MANAGED_OBJECT_TYPE_FIELD);
+    let callable_type = l.gc.index(Type::Callable(callable));
+    let result = result_for(
+        l.semantics
+            .types()
+            .id_for_core(crate::stdlib::CoreTypeId::Address),
+        l,
+    );
+    let class_field_name = crate::stdlib::managed_class_address_name(class.index());
+    let class_field = l
+        .structs
+        .iter()
+        .find(|s| s.id == structure)
+        .unwrap()
+        .fields
+        .iter()
+        .position(|f| f.name == class_field_name)
+        .unwrap() as u32;
+    f.instruction(&I::GlobalGet(
+        l.runtime_globals.provider_preparation_value.unwrap(),
+    ))
+    .instruction(&I::RefAsNonNull)
+    .instruction(&I::StructGet {
+        struct_type_index: l.gc.index(Type::Struct(structure)),
+        field_index: field,
+    })
+    .instruction(&I::LocalTee(callback_local))
+    .instruction(&I::StructGet {
+        struct_type_index: callable_type,
+        field_index: 1,
+    })
+    .instruction(&I::LocalGet(0))
+    .instruction(&I::GlobalGet(
+        l.runtime_globals.provider_preparation_value.unwrap(),
+    ))
+    .instruction(&I::RefAsNonNull)
+    .instruction(&I::StructGet {
+        struct_type_index: l.gc.index(Type::Struct(structure)),
+        field_index: class_field,
+    });
+    if remember {
+        f.instruction(&I::I64Const(0));
+    } else {
+        f.instruction(&I::LocalGet(actual_local));
+    }
+    f.instruction(&I::LocalGet(context_local))
+        .instruction(&I::RefAsNonNull)
+        .instruction(&I::LocalGet(callback_local))
+        .instruction(&I::StructGet {
+            struct_type_index: callable_type,
+            field_index: 0,
+        })
+        .instruction(&I::CallRef(l.gc.callable_function_index(callable)))
+        .instruction(&I::LocalTee(result_local))
+        .instruction(&I::RefAsNonNull);
+    emit_typed_struct_get(f, l.gc.index(Type::Result(result)), 1, Type::I32);
+    f.instruction(&I::If(BlockType::Empty))
+        .instruction(&I::LocalGet(result_local))
+        .instruction(&I::RefAsNonNull);
+    emit_typed_struct_get(
+        f,
+        l.gc.index(Type::Result(result)),
+        2,
+        Type::Standard(crate::stdlib::StdlibTypeId::String),
+    );
+    f.instruction(&I::LocalSet(error_local))
+        .instruction(&I::Br(1))
+        .instruction(&I::End);
+    if remember {
+        f.instruction(&I::LocalGet(result_local))
+            .instruction(&I::RefAsNonNull);
+        emit_typed_struct_get(f, l.gc.index(Type::Result(result)), 0, Type::Address);
+        f.instruction(&I::LocalSet(actual_local));
+    }
+}
+
 fn emit_field_read(
     function: &mut Function,
     field: &crate::managed::ManagedFieldBinding,
@@ -252,7 +415,9 @@ fn emit_field_read(
         .optional_function(crate::intrinsic_registry::RuntimeHelperId::ChargeManagedWork);
     if let Some(charge) = charge {
         function
-            .instruction(&Instruction::LocalGet(1))
+            .instruction(&Instruction::LocalGet(
+                context.managed_read_context.expect("snapshot context"),
+            ))
             .instruction(&Instruction::Call(charge))
             .instruction(&Instruction::If(BlockType::Result(
                 context.gc.val_type(Type::Result(result)),
@@ -337,7 +502,9 @@ fn emit_field_read(
                 });
         }
         function
-            .instruction(&Instruction::LocalGet(1))
+            .instruction(&Instruction::LocalGet(
+                context.managed_read_context.expect("snapshot context"),
+            ))
             .instruction(&Instruction::Call(
                 context.managed_snapshot_functions[child],
             ));

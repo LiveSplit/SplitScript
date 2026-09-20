@@ -1,3 +1,4 @@
+import {writeManagedObjectHeader} from './support/managed_type_fixture.mjs';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { SplitScriptHost } from './support/splitscript_host.mjs';
@@ -8,7 +9,7 @@ const [wasm, optionalLeft] = process.argv.slice(2);
 const profiles = JSON.parse(await readFile(new URL('./fixtures/mono-pe-profiles.json', import.meta.url)));
 let cases = 0;
 for (const mono of [true, false]) for (const width of [32, 64]) {
-    for (const mode of ['shared', 'mutate', 'replace', 'null child', 'unreadable child', 'unreadable string', 'cycle', 'failed sibling', 'shared byte budget']) {
+    for (const mode of ['shared', 'mutate', 'replace', 'null child', 'unreadable child', 'unreadable string', 'cycle', 'failed sibling', 'shared byte budget', 'wrong child class', 'wrong sibling class', 'torn child class']) {
         const wide = width === 64, bytes = width / 8;
         const fixture = mono ? createMonoPeFixture(profiles.builds.find(p => p.width === width && p.version === 'V2'))
             : createIl2cppPeFixture({width, version:[2022, 3, 0, 37029]});
@@ -48,6 +49,8 @@ for (const mono of [true, false]) for (const width of [32, 64]) {
         fields(leafClass, 0x51000n, [['text', 0x10]]);
         const staticSlot = (mono ? 0x18000n : 0x16000n) + 0x10n;
         const root = 0x70000n, leaf = 0x71000n, otherLeaf = 0x72000n, string = 0x80000n, otherString = 0x82000n;
+        writeManagedObjectHeader(fixture,{mono,ptr},root,klass);
+        for (const at of [leaf,otherLeaf]) writeManagedObjectHeader(fixture,{mono,ptr},at,leafClass);
         ptr(staticSlot, root); ptr(root + 0x10n, leaf); ptr(root + 0x18n, leaf);
         ptr(leaf + 0x10n, string); ptr(otherLeaf + 0x10n, otherString);
         const text = (at, value) => {
@@ -55,8 +58,18 @@ for (const mono of [true, false]) for (const width of [32, 64]) {
             for (let i = 0; i < value.length; i++) number(at + BigInt(bytes * 2 + 4 + i * 2), 2, value.charCodeAt(i));
         };
         text(string, 'seed'); text(otherString, 'two');
+        const unrelatedClass = 0xa0000n;
+        ptr(unrelatedClass + BigInt(mono ? (wide ? 0x30 : 0x20) : (wide ? 0x58 : 0x2c)), 0);
+        let tearChild = false;
         const reads = [], read = fixture.process.read;
-        fixture.process.read = request => { reads.push(request.address); return read(request); };
+        fixture.process.read = request => {
+            reads.push(request.address);
+            const result = read(request);
+            if (tearChild && request.address === string + BigInt(bytes * 2 + 4)) {
+                writeManagedObjectHeader(fixture, {mono, ptr}, leaf, unrelatedClass);
+            }
+            return result;
+        };
         const host = await SplitScriptHost.instantiate(wasm);
         host.addProcess('game.exe', fixture.process); host.start();
         host.updateUntil(() => host.variables.get('left') === 'seed', `${mono}/${width}: seed`);
@@ -70,6 +83,12 @@ for (const mono of [true, false]) for (const width of [32, 64]) {
         if (mode === 'cycle') ptr(root + 0x10n, root);
         if (mode === 'shared byte budget') text(string, 'A'.repeat(65537));
         if (mode === 'failed sibling') { text(string, 'new'); memory.delete(root + 0x18n); }
+        if (mode === 'wrong child class') writeManagedObjectHeader(fixture, {mono, ptr}, leaf, unrelatedClass);
+        if (mode === 'wrong sibling class') {
+            text(string, 'new'); ptr(root + 0x18n, otherLeaf);
+            writeManagedObjectHeader(fixture, {mono, ptr}, otherLeaf, unrelatedClass);
+        }
+        if (mode === 'torn child class') tearChild = true;
         host.update();
         const label = `${mono ? 'mono' : 'il2cpp'}/${width}/${mode}`;
         assert.equal(host.variables.get('left'), left, label);
@@ -81,6 +100,11 @@ for (const mono of [true, false]) for (const width of [32, 64]) {
         if (mode === 'unreadable string') assert.match(result, /^left: text: managed string/, label);
         if (mode === 'cycle') assert.match(result, /cycle/, label);
         if (mode === 'shared byte budget') assert.match(result, /budget/, label);
+        if (mode.includes('child class')) assert.match(result, /^left: managed snapshot/, label);
+        if (mode === 'wrong sibling class') {
+            assert.match(result, /^right: managed snapshot/, label);
+            assert(!reads.includes(otherLeaf + 0x10n), `${label}: incompatible child payload read`);
+        }
         assert(reads.length < 100, `${label}: unbounded traversal`);
         assert(reads.every(address => address === staticSlot || address >= root), `${label}: repeated metadata discovery`);
         cases++;

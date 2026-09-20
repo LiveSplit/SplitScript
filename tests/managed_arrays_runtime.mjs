@@ -1,3 +1,4 @@
+import {writeManagedObjectHeader} from './support/managed_type_fixture.mjs';
 import {writeManagedArrayType} from './support/managed_type_fixture.mjs';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
@@ -49,6 +50,7 @@ for (const mono of [true, false]) for (const width of [32, 64]) {
         fields(leafClass, 0x51000n, [['text', 0x10]]);
         const statics = mono ? 0x18000n : 0x16000n;
         const root = 0x70000n, leaf = 0x71000n;
+        writeManagedObjectHeader(fixture,{mono,ptr},root,klass); writeManagedObjectHeader(fixture,{mono,ptr},leaf,leafClass);
         const strings = 0x80000n, nested = 0x82000n, inner = 0x84000n, empty = 0x86000n;
         const leaves = 0x88000n, numbers = 0x8a000n, pointers = 0x8c000n, pairs = 0x8e000n;
         const string = 0x90000n, tail = 0x92000n;

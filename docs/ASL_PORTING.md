@@ -1517,6 +1517,9 @@ remote reference. Each live hop returns [`T!`]. Postfix [`?`] propagates a
 failure into the surrounding state field, function, or [`retry`] boundary.
 `reference.snapshot()` recursively copies all active fields before constructing
 `T`, so a failed nested member never publishes a partially populated object.
+Each snapshot first verifies that the object belongs to the declared class or a
+subclass, including for empty classes, and rejects a changed class header after
+reading its fields. Nested snapshots use the same checks and shared work budget.
 A child declared `Child` becomes an owned `Child` inside the snapshot; the same
 field on a live parent yields `Child.Ref`. Nullable children preserve [`None`].
 Remote changes do not mutate an existing snapshot. Recursive class schemas are

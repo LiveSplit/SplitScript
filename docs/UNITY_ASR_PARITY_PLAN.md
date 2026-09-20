@@ -2298,6 +2298,51 @@ Nominal class and complete generic argument validation, shared metadata
 traversal/scheduling, native platform validation, and final size acceptance remain
 unfinished.
 
+## Snapshot runtime class identity (2026-09-20)
+
+Snapshot readers now validate the actual object class against the source-declared
+class before reading any fields, accepting subclasses through a bounded parent
+walk. This applies to empty snapshots and every recursively materialized child.
+After reading fields, each reader verifies that the object class is unchanged.
+Mono resolves the object header through its vtable; IL2CPP reads the class pointer
+directly. Invalid headers, unrelated classes, unreadable ancestry, and hierarchy
+cycles/depth overflow fail the root without changing previous snapshots.
+
+Successful ancestry proofs are cached by actual and expected class for one
+attachment, with current-root work charged for header reads, cache searches,
+and parent walks. Failed proofs are not cached, and reattachment discards the
+cache. Flat snapshots now allocate a work context for these checks without
+retaining recursive object-walk helpers. Class-address bindings and the ancestry
+callback/cache are pruned when their snapshots are unreachable; empty snapshots
+retain their required class lookup even without instance fields.
+
+The new runtime fixture passes 146 cases in each build profile across all four
+Mono fallback families and IL2CPP, at both pointer widths. It covers derived and
+empty snapshots, 128/129-level ancestry, invalid/torn headers, cycles, cache reuse,
+same-class metadata repair, and reattachment. Nested snapshot fixtures pass 48
+cases per artifact, including incompatible children and siblings and class changes
+during a child read. All 52 selected array/collection/snapshot artifacts validate
+and pass in Debug and Release. All 681 compiler tests, six private layout tests,
+and 561-page documentation validation pass. Existing synthetic objects now carry
+explicit class headers; traversal tests bound the new header reads separately
+while preserving their previous payload-read bounds.
+
+Twenty-six of 38 baseline fixtures retain sizes, section sizes, function/type
+counts, and function-body-size multisets. Ten collection fixtures shrink by
+11–64 bytes from generalized object-header error strings, without changing their
+code sizes. Explicit Lunistice grows by 2,028 bytes to 60,215 and automatic
+selection by 3,013 bytes to 185,565 for the class callbacks, ancestry cache,
+per-class bindings, and errors. Runtime-helper sets, scratch reservations, read
+capacity, and initial memory pages are unchanged. Both Lunistice edition
+scenarios and the reviewed strict baseline gate pass. These remain intermediate
+sizes; the explicit sub-30,000-byte requirement is unfinished.
+
+This verifies materialized snapshot objects, not the complete declared nominal
+and generic contracts of empty containers or live-reference field reads. Those
+contracts, shared metadata traversal/scheduling, native platform validation, and
+final size acceptance remain open. Header checks do not provide an atomic memory
+snapshot.
+
 ## Source map for implementation
 
 Upstream links below are pinned to the reviewed tip; the PR table provides the historical changes.

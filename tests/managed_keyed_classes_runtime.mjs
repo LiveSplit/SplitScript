@@ -1,3 +1,4 @@
+import {writeManagedObjectHeader} from './support/managed_type_fixture.mjs';
 import {writeManagedArrayType} from './support/managed_type_fixture.mjs';
 import assert from 'node:assert/strict';
 import { SplitScriptHost } from './support/splitscript_host.mjs';
@@ -47,7 +48,7 @@ for (const parallel of [false, true]) for (const active of [false, true]) for (c
         number(at + BigInt(2 * bytes), 4, text.length);
         for (let i = 0; i < text.length; i++) number(at + BigInt(2 * bytes + 4 + i * 2), 2, text.charCodeAt(i));
     };
-    const node = (at, label, children) => { ptr(at + 0x10n, label); ptr(at + 0x18n, children); if (active) ptr(at + 0x20n, at + 0x800n); };
+    const node = (at, label, children) => { writeManagedObjectHeader(f,{mono,ptr},at); ptr(at + 0x10n, label); ptr(at + 0x18n, children); if (active) ptr(at + 0x20n, at + 0x800n); };
     for (let i = 0; i < 2; i++) {
         const at = arrays[0] + BigInt(4 * bytes + i * stride);
         number(at + BigInt(hash), 4, parallel ? 0x80000001 : 1); number(at + BigInt(next), 4, -1);

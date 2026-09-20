@@ -1080,14 +1080,15 @@ fn managed_array_budgets_follow_reachable_child_decoders() {
             "EnterManagedObject",
             "ChargeManagedBytes",
             "ChargeManagedElements",
+            "ChargeManagedWork",
         ] {
             assert!(report.runtime_helpers.iter().any(|name| name == helper));
         }
         assert_eq!(
             report
-                .runtime_helpers
+                .functions
                 .iter()
-                .any(|name| name == "ChargeManagedWork"),
+                .any(|(_, name)| name.contains("ParentClass")),
             class_fields
         );
     }

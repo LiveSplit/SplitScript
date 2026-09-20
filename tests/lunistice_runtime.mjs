@@ -175,6 +175,7 @@ pointer(0x6220, 0xa100);
 const gameManager = 0x9000;
 const timer = 0x9100;
 const sceneObject = 0xc000;
+pointer(gameManager, 0x3000); pointer(timer, 0x3800);
 const sceneName = "Shrine01";
 view.setUint32(sceneObject + 0x10, sceneName.length, true);
 for (let index = 0; index < sceneName.length; index += 1) {

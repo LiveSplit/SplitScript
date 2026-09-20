@@ -1,3 +1,4 @@
+import {writeManagedObjectHeader} from './support/managed_type_fixture.mjs';
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { SplitScriptHost } from "./support/splitscript_host.mjs";
@@ -29,6 +30,7 @@ for (const backend of ["mono", "il2cpp"]) for (const width of [32, 64]) for (con
         data.forEach((byte, i) => memory.set(at + BigInt(i), byte));
     };
     const klass = 0x14000n, fields = 0x50000n, object = 0x70000n, string = 0x80000n;
+    writeManagedObjectHeader(fixture,{mono,ptr},object);
     const statics = mono ? 0x18000n : 0x16000n;
     ptr(klass + BigInt(mono ? (wide ? 0x98 : 0x60) : (wide ? 0x80 : 0x40)), fields);
     write(klass + BigInt(mono ? (wide ? 0x100 : 0xa4) : (wide ? 0x124 : 0xac)), mono ? 4 : 2, 4);

@@ -249,6 +249,63 @@ fn managed_metadata_demand_ignores_dead_and_debug_reads() {
 }
 
 #[test]
+fn snapshot_class_verification_follows_reachable_snapshots() {
+    for selector in [
+        "Unity.mono(MonoVersion.V2)",
+        "Unity.il2cpp(Il2CppProfile.unity2022_3_0f1X64())",
+        "Unity",
+    ] {
+        for (expression, snapshot) in [
+            ("Probe.value?", false),
+            ("Probe.instance?.value?", false),
+            ("Probe.instance?.snapshot()?", true),
+            ("Empty.instance?.snapshot()?", true),
+        ] {
+            let source = format!(
+                r#"
+                image "Assembly-CSharp" {{
+                    class Probe {{ static Probe instance; i32 value; }}
+                    class Empty {{ static Empty instance; }}
+                    class UnusedSnapshot {{ static UnusedSnapshot instance; }}
+                }}
+                fn unused() -> UnusedSnapshot! {{ return UnusedSnapshot.instance?.snapshot() }}
+                state {selector} ["game.exe"] {{ value = {expression}; }}
+                "#
+            );
+            // The scalar-only case uses a static field instead of a live object.
+            let source = if expression == "Probe.value?" {
+                source.replace("i32 value;", "static i32 value;")
+            } else {
+                source
+            };
+            let (wasm, report) = release_emission(&source);
+            Validator::new_with_features(WasmFeatures::all())
+                .validate_all(&wasm)
+                .unwrap();
+            assert_eq!(
+                report
+                    .functions
+                    .iter()
+                    .any(|(_, name)| name.contains("ParentClass")),
+                snapshot,
+                "{selector}: {expression}"
+            );
+            assert!(
+                !wasm
+                    .windows(b"UnusedSnapshot".len())
+                    .any(|s| s == b"UnusedSnapshot")
+            );
+            assert_eq!(
+                wasm.windows(b"managed snapshot object is incompatible".len())
+                    .any(|s| s == b"managed snapshot object is incompatible"),
+                snapshot,
+                "{selector}: {expression}"
+            );
+        }
+    }
+}
+
+#[test]
 fn managed_snapshot_demand_keeps_unprojected_instance_fields() {
     let source = r#"
         image "Assembly-CSharp" {
@@ -957,7 +1014,7 @@ fn managed_snapshots_reject_explicit_live_references_inside_the_owned_value() {
 }
 
 #[test]
-fn unused_nested_managed_classes_do_not_retain_a_read_context() {
+fn unused_nested_managed_classes_do_not_retain_object_walk_helpers() {
     let source = r#"
         image "Assembly-CSharp" {
             class Flat { static Flat instance; i32 value; }
@@ -984,9 +1041,14 @@ fn unused_nested_managed_classes_do_not_retain_a_read_context() {
     assert!(
         names
             .iter()
-            .all(|(_, name)| !name.contains("EnterManagedObject")
-                && !name.contains("ChargeManagedWork")),
+            .all(|(_, name)| !name.contains("EnterManagedObject")),
         "{names:#?}"
+    );
+    // Even a flat snapshot charges work while validating its runtime class.
+    assert!(
+        names
+            .iter()
+            .any(|(_, name)| name.contains("ChargeManagedWork"))
     );
 }
 

@@ -1,3 +1,4 @@
+import {writeManagedObjectHeader} from './support/managed_type_fixture.mjs';
 import {writeVectorElementType, writeGenericType, writeManagedArrayType} from './support/managed_type_fixture.mjs';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
@@ -110,7 +111,7 @@ for (const backend of [...Object.keys(monoLayouts), 'il2cpp']) for (const width 
         number(at + BigInt(2 * bytes), 4, value.length);
         for (let i = 0; i < value.length; i++) number(at + BigInt(2 * bytes + 4 + i * 2), 2, value.charCodeAt(i));
     };
-    const node = (at, kids, value) => {
+    const node = (at, kids, value) => { writeManagedObjectHeader(fixture,{mono,ptr},at);
         ptr(at + 0x10n, kids); ptr(at + 0x18n, innerList); number(at + 0x20n, 4, value);
     };
     const statics = mono ? 0x18000n : 0x16000n;

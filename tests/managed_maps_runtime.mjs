@@ -1,3 +1,4 @@
+import {writeManagedObjectHeader} from './support/managed_type_fixture.mjs';
 import {writeManagedArrayType, writeVectorElementType} from './support/managed_type_fixture.mjs';
 import assert from 'node:assert/strict';
 import { SplitScriptHost } from './support/splitscript_host.mjs';
@@ -92,7 +93,7 @@ for (const parallel of [false, true]) for (const mode of modes) {
     string(text, 'seed'); string(tail, 'tail'); vector(row, [text, 0n, tail]); vector(tailRow, []);
     const statics = mono ? 0x18000n : 0x16000n;
     ptr(statics + 0x10n, object); ptr(statics + 0x18n, 0x240000n); ptr(statics + 0x20n, 0x250000n);
-    vector(0x240000n, [object, 0n]); ptr(0x250010n, object); number(0x250018n, 4, 42);
+    vector(0x240000n, [object, 0n]); writeManagedObjectHeader(f,{mono,ptr},0x250000n); ptr(0x250010n, object); number(0x250018n, 4, 42);
     number(0x6f000n, 4, 0);
     const limit = (1n << BigInt(width)) - 1n;
     const reads = [], originalRead = f.process.read;

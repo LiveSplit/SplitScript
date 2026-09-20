@@ -1,3 +1,4 @@
+import {writeManagedObjectHeader} from './support/managed_type_fixture.mjs';
 import {writeManagedArrayType} from './support/managed_type_fixture.mjs';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
@@ -45,7 +46,7 @@ for (const mono of [true, false]) for (const width of [32, 64]) {
             ptr(at + BigInt(2 * bytes), 0); ptr(at + BigInt(3 * bytes), values.length);
             values.forEach((value, index) => ptr(at + BigInt((4 + index) * bytes), value));
         };
-        const node = (at, array, value) => { ptr(at + 0x10n, array); number(at + 0x18n, 4, value); };
+        const node = (at, array, value) => { writeManagedObjectHeader(fixture,{mono,ptr},at); ptr(at + 0x10n, array); number(at + 0x18n, 4, value); };
         ptr((mono ? 0x18000n : 0x16000n) + 0x10n, root);
         node(root, rootArray, 1); node(child, childArray, 2);
         vector(rootArray, [child, 0n, child]); vector(childArray, []);

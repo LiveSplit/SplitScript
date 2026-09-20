@@ -138,6 +138,13 @@ impl FailurePayloadDemand {
             let targets = &results[&semantics.types().id_for_managed_class(class)];
             for target in targets {
                 dependencies.entry(*target).or_default().extend(targets);
+                let address = semantics
+                    .types()
+                    .id_for_core(crate::stdlib::CoreTypeId::Address);
+                dependencies
+                    .entry(*target)
+                    .or_default()
+                    .extend(&results[&address]);
             }
             let binding = managed
                 .classes

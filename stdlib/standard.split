@@ -1753,15 +1753,28 @@ private struct UnityRuntime {
         }
     }
 
-    private fn arrayClass(object: address, charge: () -> bool) -> address! {
+    private fn parentClass(class: address, charge: () -> bool) -> address! {
         return match self.backend {
             UnityRuntimeBackend.Il2cpp => {
                 let runtime = self.il2cpp else return Err("missing IL2CPP runtime")
-                runtime.arrayClass(object, charge)
+                runtime.parentClass(class, charge)
             },
             UnityRuntimeBackend.Mono => {
                 let runtime = self.mono else return Err("missing Mono runtime")
-                runtime.arrayClass(object, charge)
+                runtime.parentClass(class, charge)
+            },
+        }
+    }
+
+    private fn objectClass(object: address, charge: () -> bool) -> address! {
+        return match self.backend {
+            UnityRuntimeBackend.Il2cpp => {
+                let runtime = self.il2cpp else return Err("missing IL2CPP runtime")
+                runtime.objectClass(object, charge)
+            },
+            UnityRuntimeBackend.Mono => {
+                let runtime = self.mono else return Err("missing Mono runtime")
+                runtime.objectClass(object, charge)
             },
         }
     }
@@ -2526,6 +2539,13 @@ private struct UnityMetadataClass {
                 let class = self.mono else await process.closed()
                 await class.staticTable()
             },
+        }
+    }
+
+    private fn classAddress() -> address {
+        return match self.backend {
+            UnityRuntimeBackend.Il2cpp => { let class = self.il2cpp else return 0; class.address },
+            UnityRuntimeBackend.Mono => { let class = self.mono else return 0; class.address },
         }
     }
 
@@ -8972,13 +8992,19 @@ private struct UnityModule {
         return self.keyedLayout(object, charge, (fields, class, types, count) => fields.setLayout(class, types, count))
     }
 
-    private fn arrayClass(object: address, charge: () -> bool) -> address! {
+    private fn parentClass(class: address, charge: () -> bool) -> address! {
+        if !(charge)() { throw "managed read work limit exceeded" }
+        let names = UnityClassNames { width: self.pointerSize as u64, name: 0, namespace: 0, declaring: None }
+        return names.pointer(class, self.profile.classParent)
+    }
+
+    private fn objectClass(object: address, charge: () -> bool) -> address! {
         let names = UnityClassNames { width: self.pointerSize as u64,
             name: self.profile.className, namespace: self.profile.classNamespace, declaring: None }
-        if object == 0 { throw "Unity array object is null" }
+        if object == 0 { throw "Unity object is null" }
         if !(charge)() { throw "managed read work limit exceeded" }
         let header = names.pointer(object, 0)?
-        if header == 0 { throw "Unity array object header is null" }
+        if header == 0 { throw "Unity object header is null" }
         return header
     }
 
@@ -13234,16 +13260,22 @@ private struct MonoModule {
         return self.keyedLayout(object, charge, (fields, class, types, count) => fields.setLayout(class, types, count))
     }
 
-    private fn arrayClass(object: address, charge: () -> bool) -> address! {
+    private fn parentClass(class: address, charge: () -> bool) -> address! {
+        if !(charge)() { throw "managed read work limit exceeded" }
+        let names = UnityClassNames { width: self.pointerBytes(), name: 0, namespace: 0, declaring: None }
+        return names.pointer(class, self.layout.classParent)
+    }
+
+    private fn objectClass(object: address, charge: () -> bool) -> address! {
         let names = UnityClassNames { width: self.pointerBytes(),
             name: self.layout.className, namespace: self.layout.classNamespace, declaring: None }
-        if object == 0 { throw "Unity array object is null" }
+        if object == 0 { throw "Unity object is null" }
         if !(charge)() { throw "managed read work limit exceeded" }
         let header = names.pointer(object, 0)?
-        if header == 0 { throw "Unity array object header is null" }
+        if header == 0 { throw "Unity object header is null" }
         if !(charge)() { throw "managed read work limit exceeded" }
         let class = names.pointer(header, 0)?
-        if class == 0 { throw "Unity array class is null" }
+        if class == 0 { throw "Unity object class is null" }
         return class
     }
 

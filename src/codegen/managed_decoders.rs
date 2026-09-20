@@ -846,7 +846,7 @@ fn array_type_result(l: &EmissionContext<'_>) -> ResultTypeId {
     result_for(l.semantics.types().id_for_core(CoreTypeId::Address), l)
 }
 
-fn binding(
+pub(super) fn binding(
     l: &EmissionContext<'_>,
     name: &str,
 ) -> (crate::ast::StructId, u32, crate::ast::CallableTypeId) {

@@ -95,3 +95,12 @@ export function writeGenericType({mono, width, ptr, number, cachedClass}, typeAd
     number(size, 4, 2 * bytes + valueBytes);
     return {klass, descriptor, flags, size, cached};
 }
+
+// Explicit object headers for schema snapshots; the Mono vtable is independent
+// of the class's metadata storage and of array type fixtures.
+export function writeManagedObjectHeader(fixture, {mono, ptr}, object, klass = 0x14000n) {
+    const vtable = klass + 0x18000000n;
+    if (mono) ptr(vtable, klass);
+    ptr(object, mono ? vtable : klass);
+    return {klass, vtable, header: mono ? vtable : klass};
+}

@@ -1,3 +1,4 @@
+import {writeManagedObjectHeader} from './support/managed_type_fixture.mjs';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { SplitScriptHost } from './support/splitscript_host.mjs';
@@ -42,22 +43,30 @@ for (const mono of [true, false]) for (const width of [32, 64]) {
             number(field + BigInt(wide ? 0x18 : 0xc), 4, i < 4 ? [0x10, 0x10, 0x18, 0x20][i] : 0x30 + 4 * (i - 4));
         });
         ptr(staticSlot, root);
+        const headerSlots = new Set();
         const chain = (depth, shared) => {
             for (let i = 0; i < depth; i++) {
                 const object = root + BigInt(i * 256), next = i + 1 < depth ? object + 256n : 0n;
+                const header = writeManagedObjectHeader(fixture,{mono,ptr},object);
+                headerSlots.add(object);
+                if (mono) headerSlots.add(header.vtable);
                 ptr(object + 0x10n, next); ptr(object + 0x18n, shared ? next : 0n); ptr(object + 0x20n, string);
                 if (workBudget) for (let j = 0; j < 14; j++) number(object + 0x30n + BigInt(4 * j), 4, j);
             }
         };
         chain(1, false);
         number(string + BigInt(2 * bytes), 4, 1); number(string + BigInt(2 * bytes + 4), 2, 120);
-        let reads = 0;
+        let reads = 0, headerReads = 0;
         const read = fixture.process.read;
-        fixture.process.read = request => { reads++; return read(request); };
+        fixture.process.read = request => {
+            reads++;
+            if (headerSlots.has(request.address)) headerReads++;
+            return read(request);
+        };
         const host = await SplitScriptHost.instantiate(wasm);
         host.addProcess('game.exe', fixture.process); host.start();
         host.updateUntil(() => host.variables.get('count') === '1', `${mono}/${width}: seed`);
-        host.update(2); reads = 0;
+        host.update(2); reads = headerReads = 0;
         let count = 1, failed = false;
         if (mode === 'chain') { chain(3, false); count = 3; }
         if (mode === 'depth boundary') { chain(64, false); count = 64; }
@@ -85,7 +94,10 @@ for (const mono of [true, false]) for (const width of [32, 64]) {
             assert(result.startsWith('left_context_'), `${label}: source alias missing`);
         }
         if (mode === 'work overflow') assert.match(host.variables.get('result'), /work limit/, label);
-        assert(reads < (workBudget ? 40000 : 11000), `${label}: unbounded object traversal`);
+        // One state root and one explicit root, each bounded to 1,024 objects,
+        // check the header before and after reading fields. Mono adds a vtable read.
+        assert(headerReads <= 2 * 1024 * 2 * (mono ? 2 : 1), `${label}: unbounded header checks`);
+        assert(reads - headerReads < (workBudget ? 40000 : 11000), `${label}: unbounded object traversal`);
         cases++;
     }
 }
