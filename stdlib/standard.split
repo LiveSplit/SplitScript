@@ -1753,6 +1753,71 @@ private struct UnityRuntime {
         }
     }
 
+    private fn vectorElementType(type: address, charge: () -> bool) -> address! {
+        return match self.backend {
+            UnityRuntimeBackend.Il2cpp => {
+                let runtime = self.il2cpp else return Err("missing IL2CPP runtime")
+                runtime.vectorElementType(type, charge)
+            },
+            UnityRuntimeBackend.Mono => {
+                let runtime = self.mono else return Err("missing Mono runtime")
+                runtime.vectorElementType(type, charge)
+            },
+        }
+    }
+
+    private fn listTypeLayout(type: address, charge: () -> bool) -> UnityListLayout! {
+        return match self.backend {
+            UnityRuntimeBackend.Il2cpp => {
+                let runtime = self.il2cpp else return Err("missing IL2CPP runtime")
+                runtime.listTypeLayout(type, charge)
+            },
+            UnityRuntimeBackend.Mono => {
+                let runtime = self.mono else return Err("missing Mono runtime")
+                runtime.listTypeLayout(type, charge)
+            },
+        }
+    }
+
+    private fn dictionaryTypeLayout(type: address, charge: () -> bool) -> UnityKeyedLayout! {
+        return match self.backend {
+            UnityRuntimeBackend.Il2cpp => {
+                let runtime = self.il2cpp else return Err("missing IL2CPP runtime")
+                runtime.dictionaryTypeLayout(type, charge)
+            },
+            UnityRuntimeBackend.Mono => {
+                let runtime = self.mono else return Err("missing Mono runtime")
+                runtime.dictionaryTypeLayout(type, charge)
+            },
+        }
+    }
+
+    private fn setTypeLayout(type: address, charge: () -> bool) -> UnityKeyedLayout! {
+        return match self.backend {
+            UnityRuntimeBackend.Il2cpp => {
+                let runtime = self.il2cpp else return Err("missing IL2CPP runtime")
+                runtime.setTypeLayout(type, charge)
+            },
+            UnityRuntimeBackend.Mono => {
+                let runtime = self.mono else return Err("missing Mono runtime")
+                runtime.setTypeLayout(type, charge)
+            },
+        }
+    }
+
+    private fn typeStorage(type: address, bytes: u32, kinds: u32, charge: () -> bool) -> bool! {
+        return match self.backend {
+            UnityRuntimeBackend.Il2cpp => {
+                let runtime = self.il2cpp else return Err("missing IL2CPP runtime")
+                runtime.typeStorage(type, bytes, kinds, charge)
+            },
+            UnityRuntimeBackend.Mono => {
+                let runtime = self.mono else return Err("missing Mono runtime")
+                runtime.typeStorage(type, bytes, kinds, charge)
+            },
+        }
+    }
+
     private fn typeClass(class: address, charge: () -> bool) -> address! {
         return match self.backend {
             UnityRuntimeBackend.Il2cpp => {
@@ -8980,6 +9045,31 @@ private struct UnityModule {
         return class
     }
 
+    private fn keyedTypeLayout(type: address, charge: () -> bool, resolve: (UnityFields, address, UnityCollectionTypes, (address) -> i32!) -> UnityKeyedLayout!) -> UnityKeyedLayout! {
+        let names = UnityClassNames { width: self.pointerSize as u64,
+            name: self.profile.className, namespace: self.profile.classNamespace, declaring: None }
+        let fields = UnityFields { names, parent: self.profile.classParent,
+            fields: self.profile.classFields, fieldName: self.profile.fieldName,
+            fieldValue: self.profile.fieldValue, stride: self.profile.fieldStride }
+        let types = UnityCollectionTypes { names, charge, mono: false,
+            plainClass: (type, data) => self.collectionTypeClass(type, data, charge),
+            genericSize: (type, data, size) => names.il2cppGenericSize(type, data, size, self.profile.genericCachedClass, self.profile.classValueTypeBit, charge),
+            data: self.profile.typeData, kindOffset: self.profile.typeKind,
+            cached: self.profile.genericCachedClass,
+            instanceSize: self.profile.classInstanceSize, fieldType: self.profile.fieldType }
+        types.storageMember(type, 0)?.validateStorage(names.width as u32, 1 << 0x12)?
+        let class = types.classFromType(type)?
+        return (resolve)(fields, class, types, current => self.fieldCount(current, names))
+    }
+
+    private fn dictionaryTypeLayout(type: address, charge: () -> bool) -> UnityKeyedLayout! {
+        return self.keyedTypeLayout(type, charge, (fields, class, types, count) => fields.dictionaryLayout(class, types, count))
+    }
+
+    private fn setTypeLayout(type: address, charge: () -> bool) -> UnityKeyedLayout! {
+        return self.keyedTypeLayout(type, charge, (fields, class, types, count) => fields.setLayout(class, types, count))
+    }
+
     private fn keyedLayout(object: address, charge: () -> bool, resolve: (UnityFields, address, UnityCollectionTypes, (address) -> i32!) -> UnityKeyedLayout!) -> UnityKeyedLayout! {
         let names = UnityClassNames { width: self.pointerSize as u64,
             name: self.profile.className, namespace: self.profile.classNamespace, declaring: None }
@@ -9021,6 +9111,28 @@ private struct UnityModule {
         return header
     }
 
+    private fn typeStorage(type: address, bytes: u32, kinds: u32, charge: () -> bool) -> bool! {
+        let names = UnityClassNames { width: self.pointerSize as u64,
+            name: self.profile.className, namespace: self.profile.classNamespace, declaring: None }
+        let types = UnityCollectionTypes { names, charge, mono: false,
+            plainClass: (type, data) => self.collectionTypeClass(type, data, charge),
+            genericSize: (type, data, size) => names.il2cppGenericSize(type, data, size, self.profile.genericCachedClass, self.profile.classValueTypeBit, charge),
+            kindOffset: self.profile.typeKind, fieldType: self.profile.fieldType,
+            data: self.profile.typeData, cached: self.profile.genericCachedClass, instanceSize: self.profile.classInstanceSize }
+        return types.storageMember(type, 0)?.validateStorage(bytes, kinds)
+    }
+
+    private fn vectorElementType(type: address, charge: () -> bool) -> address! {
+        let names = UnityClassNames { width: self.pointerSize as u64,
+            name: self.profile.className, namespace: self.profile.classNamespace, declaring: None }
+        let types = UnityCollectionTypes { names, charge, mono: false,
+            plainClass: (type, data) => self.collectionTypeClass(type, data, charge),
+            genericSize: (type, data, size) => names.il2cppGenericSize(type, data, size, self.profile.genericCachedClass, self.profile.classValueTypeBit, charge),
+            kindOffset: self.profile.typeKind, fieldType: self.profile.fieldType,
+            data: self.profile.typeData, cached: self.profile.genericCachedClass, instanceSize: self.profile.classInstanceSize }
+        return types.arrayElementType(type, self.profile.classFields)
+    }
+
     private fn typeClass(type: address, charge: () -> bool) -> address! {
         let names = UnityClassNames { width: self.pointerSize as u64,
             name: self.profile.className, namespace: self.profile.classNamespace, declaring: None }
@@ -9056,6 +9168,22 @@ private struct UnityModule {
         let namespace = names.member(class, self.profile.classNamespace, names.width)?
         let byval = names.member(namespace, names.width, 2 * names.width)?
         return types.sameArrayType(byval, declared, self.profile.classFields)
+    }
+
+    private fn listTypeLayout(type: address, charge: () -> bool) -> UnityListLayout! {
+        let names = UnityClassNames { width: self.pointerSize as u64,
+            name: self.profile.className, namespace: self.profile.classNamespace, declaring: None }
+        let fields = UnityFields { names, parent: self.profile.classParent,
+            fields: self.profile.classFields, fieldName: self.profile.fieldName,
+            fieldValue: self.profile.fieldValue, stride: self.profile.fieldStride }
+        let types = UnityCollectionTypes { names, charge, mono: false,
+            plainClass: (type, data) => self.collectionTypeClass(type, data, charge),
+            genericSize: (type, data, size) => names.il2cppGenericSize(type, data, size, self.profile.genericCachedClass, self.profile.classValueTypeBit, charge),
+            kindOffset: self.profile.typeKind, fieldType: self.profile.fieldType,
+            data: self.profile.typeData, cached: self.profile.genericCachedClass, instanceSize: self.profile.classInstanceSize }
+        types.storageMember(type, 0)?.validateStorage(names.width as u32, 1 << 0x12)?
+        let class = types.classFromType(type)?
+        return fields.listLayout(class, types, current => self.fieldCount(current, names))
     }
 
     private fn listLayout(object: address, charge: () -> bool) -> UnityListLayout! {
@@ -13259,6 +13387,31 @@ private struct MonoModule {
         return class
     }
 
+    private fn keyedTypeLayout(type: address, charge: () -> bool, resolve: (UnityFields, address, UnityCollectionTypes, (address) -> i32!) -> UnityKeyedLayout!) -> UnityKeyedLayout! {
+        let names = UnityClassNames { width: self.pointerBytes(),
+            name: self.layout.className, namespace: self.layout.classNamespace, declaring: None }
+        let fields = UnityFields { names, parent: self.layout.classParent,
+            fields: self.layout.classFields, fieldName: self.layout.fieldName,
+            fieldValue: self.layout.fieldValue, stride: self.layout.fieldStride }
+        let types = UnityCollectionTypes { names, charge, mono: true,
+            plainClass: (type, data) => names.pointer(type, data else throw "Unity profile lacks type data metadata"),
+            genericSize: (type, data, size) => names.monoGenericSize(type, data, size, charge),
+            data: self.layout.typeData, kindOffset: self.layout.typeKind,
+            cached: None,
+            instanceSize: self.layout.classInstanceSize, fieldType: self.layout.fieldType }
+        types.storageMember(type, 0)?.validateStorage(names.width as u32, 1 << 0x12)?
+        let class = types.classFromType(type)?
+        return (resolve)(fields, class, types, current => self.fieldCount(current, names))
+    }
+
+    private fn dictionaryTypeLayout(type: address, charge: () -> bool) -> UnityKeyedLayout! {
+        return self.keyedTypeLayout(type, charge, (fields, class, types, count) => fields.dictionaryLayout(class, types, count))
+    }
+
+    private fn setTypeLayout(type: address, charge: () -> bool) -> UnityKeyedLayout! {
+        return self.keyedTypeLayout(type, charge, (fields, class, types, count) => fields.setLayout(class, types, count))
+    }
+
     private fn keyedLayout(object: address, charge: () -> bool, resolve: (UnityFields, address, UnityCollectionTypes, (address) -> i32!) -> UnityKeyedLayout!) -> UnityKeyedLayout! {
         let names = UnityClassNames { width: self.pointerBytes(),
             name: self.layout.className, namespace: self.layout.classNamespace, declaring: None }
@@ -13303,6 +13456,28 @@ private struct MonoModule {
         return class
     }
 
+    private fn typeStorage(type: address, bytes: u32, kinds: u32, charge: () -> bool) -> bool! {
+        let names = UnityClassNames { width: self.pointerBytes(),
+            name: self.layout.className, namespace: self.layout.classNamespace, declaring: None }
+        let types = UnityCollectionTypes { names, charge, mono: true,
+            plainClass: (type, data) => names.pointer(type, data else throw "Unity profile lacks type data metadata"),
+            genericSize: (type, data, size) => names.monoGenericSize(type, data, size, charge),
+            kindOffset: self.layout.typeKind, fieldType: self.layout.fieldType,
+            data: self.layout.typeData, cached: None, instanceSize: self.layout.classInstanceSize }
+        return types.storageMember(type, 0)?.validateStorage(bytes, kinds)
+    }
+
+    private fn vectorElementType(type: address, charge: () -> bool) -> address! {
+        let names = UnityClassNames { width: self.pointerBytes(),
+            name: self.layout.className, namespace: self.layout.classNamespace, declaring: None }
+        let types = UnityCollectionTypes { names, charge, mono: true,
+            plainClass: (type, data) => names.pointer(type, data else throw "Unity profile lacks type data metadata"),
+            genericSize: (type, data, size) => names.monoGenericSize(type, data, size, charge),
+            kindOffset: self.layout.typeKind, fieldType: self.layout.fieldType,
+            data: self.layout.typeData, cached: None, instanceSize: self.layout.classInstanceSize }
+        return types.arrayElementType(type, self.layout.classFields)
+    }
+
     private fn typeClass(type: address, charge: () -> bool) -> address! {
         let names = UnityClassNames { width: self.pointerBytes(),
             name: self.layout.className, namespace: self.layout.classNamespace, declaring: None }
@@ -13338,6 +13513,22 @@ private struct MonoModule {
         let fields = names.member(class, self.layout.classFields, names.width)?
         let byval = names.member(fields, 4 * names.width, 2 * names.width)?
         return types.sameArrayType(byval, declared, self.layout.classFields)
+    }
+
+    private fn listTypeLayout(type: address, charge: () -> bool) -> UnityListLayout! {
+        let names = UnityClassNames { width: self.pointerBytes(),
+            name: self.layout.className, namespace: self.layout.classNamespace, declaring: None }
+        let fields = UnityFields { names, parent: self.layout.classParent,
+            fields: self.layout.classFields, fieldName: self.layout.fieldName,
+            fieldValue: self.layout.fieldValue, stride: self.layout.fieldStride }
+        let types = UnityCollectionTypes { names, charge, mono: true,
+            plainClass: (type, data) => names.pointer(type, data else throw "Unity profile lacks type data metadata"),
+            genericSize: (type, data, size) => names.monoGenericSize(type, data, size, charge),
+            kindOffset: self.layout.typeKind, fieldType: self.layout.fieldType,
+            data: self.layout.typeData, cached: None, instanceSize: self.layout.classInstanceSize }
+        types.storageMember(type, 0)?.validateStorage(names.width as u32, 1 << 0x12)?
+        let class = types.classFromType(type)?
+        return fields.listLayout(class, types, current => self.fieldCount(current, names))
     }
 
     private fn listLayout(object: address, charge: () -> bool) -> UnityListLayout! {

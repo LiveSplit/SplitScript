@@ -4,6 +4,21 @@
 use crate::*;
 
 #[test]
+fn managed_collection_type_layout_runtime() {
+    run_layout_fixtures(
+        "type-contract",
+        "tests/managed_collection_type_runtime.mjs",
+        [
+            ("mono", include_str!("../tests/mono_collection_type.split")),
+            (
+                "il2cpp",
+                include_str!("../tests/il2cpp_collection_type.split"),
+            ),
+        ],
+    );
+}
+
+#[test]
 fn managed_collection_layout_runtime() {
     run_layout_fixtures(
         "list",

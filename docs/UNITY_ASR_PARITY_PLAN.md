@@ -2389,6 +2389,40 @@ when their containing collection is empty. That work, live-reference contracts,
 shared metadata traversal/scheduling, native platform validation, and the final
 sub-30,000-byte explicit Lunistice target remain unfinished.
 
+## Metadata-only nested collection contracts (2026-09-20)
+
+Mono and IL2CPP now expose private adapters that resolve List, Map, and Set
+layouts from a declared type address without an object instance. They share the
+existing collection shape readers, including closed-class field discovery,
+reference/value storage checks, and charged metadata walks. Companion adapters
+provide vector element types and scalar/string storage validation. The unified
+runtime dispatches to the selected backend.
+
+A compiler-owned probe composes these adapters for List<String>,
+Map<String, String>, Set<String>, array<List<String>>, and
+array<Map<String, List<String>>>. Its memory fixtures contain no live collection
+or child objects and reject any attempted object read. In both Debug and Release,
+672 Mono cases and 224 IL2CPP cases pass across 32/64-bit targets, the three
+collection fixture Mono families, and entry/parallel Map/Set layouts. Cases cover
+ordinary and cached generic class metadata, wrong collection families and
+namespaces, parent cycles, mismatched or unreadable string leaves, wrong storage
+widths, null metadata, generic value/reference distinctions, exhausted work, and
+successful retries after repair. All seven private layout suites pass.
+
+All 38 baseline artifacts retain their exact module/section sizes, function and
+type counts, normalized function-body sizes, helper sets, and memory accounting;
+none retains these new adapters. Lunistice remains 60,215 bytes with the explicit
+profile and 185,565 with automatic selection. Both edition runtime scenarios
+pass. The reviewed baseline refresh changes generated expression/type identities
+and compile timing; final size acceptance is still open.
+
+These adapters are a prerequisite, not yet a change to public decoder behavior.
+The next step is to emit reachable schema-specific metadata checks, invoke them
+before collection layout caching (including cache hits and empty collections),
+and cache only successful recursive proofs per attachment. This must retain only
+the metadata adapters needed by each reachable schema. The unfinished work listed
+in the previous section remains open.
+
 ## Source map for implementation
 
 Upstream links below are pinned to the reviewed tip; the PR table provides the historical changes.

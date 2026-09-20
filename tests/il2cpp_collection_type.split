@@ -1,0 +1,35 @@
+// Compiler-owned probe: all inputs are type metadata, without live objects.
+state "game.exe" {}
+onAttach { await __splitscript_stdlib_collection_probe() }
+fn __splitscript_stdlib_collection_probe() {
+    let module = retry { process.loadedModule("GameAssembly.dll") else throw "waiting for runtime" }
+    let pointerSize = retry module.pointerSize()
+    let runtime = await Unity.il2cpp(if pointerSize == PointerSize.Bit32 { Il2CppProfile.unity2022_3_0f1X86() } else { Il2CppProfile.unity2022_3_0f1X64() })
+    while true {
+        let type = (process.read<u64>(0x60000) else 0) as address
+        let shape = process.read<u8>(0x60008) else 0
+        let width = process.read<u32>(0x60010) else 0
+        let budget = process.read<u32>(0x60014) else 0
+        let work: u32 = 0
+        let charge = () => { work += 1; work <= budget }
+        let verify: () -> bool! = () => {
+            if shape >= 3 { type = runtime.vectorElementType(type, charge)? }
+            let element = if shape == 0 || shape == 3 {
+                runtime.listTypeLayout(type, charge)?.elements.elementType(0)?
+            } else {
+                let layout = if shape == 2 { runtime.setTypeLayout(type, charge)? }
+                    else { runtime.dictionaryTypeLayout(type, charge)? }
+                if shape != 2 { runtime.typeStorage(layout.members[2].typeAddress, width, 1 << 0x0e, charge)? }
+                layout.members[layout.members.length() - 1].typeAddress
+            }
+            if shape == 4 { element = runtime.listTypeLayout(element, charge)?.elements.elementType(0)? }
+            runtime.typeStorage(element, width, 1 << 0x0e, charge)
+        }
+        match (verify)() {
+            Ok(_) => setVariable("result", "ok"),
+            Err(error) => setVariable("result", error),
+        }
+        setVariable("work", work)
+        await nextTick()
+    }
+}
