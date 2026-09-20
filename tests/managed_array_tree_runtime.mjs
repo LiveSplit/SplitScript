@@ -1,3 +1,4 @@
+import {writeManagedArrayType} from './support/managed_type_fixture.mjs';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { SplitScriptHost } from './support/splitscript_host.mjs';
@@ -17,6 +18,7 @@ for (const mono of [true, false]) for (const width of [32, 64]) {
             const data = new Uint8Array(size), view = new DataView(data.buffer);
             if (size === 8) view.setBigUint64(0, BigInt(value), true);
             else if (size === 2) view.setUint16(0, Number(value), true);
+            else if (size === 1) view.setUint8(0, Number(value));
             else view.setUint32(0, Number(value), true);
             write(at, data);
         };
@@ -39,6 +41,7 @@ for (const mono of [true, false]) for (const width of [32, 64]) {
         fields(klass, 0x50000n, [['instance', 0x10], ['children', 0x10], ['value', 0x18]]);
         const root = 0x70000n, child = 0x71000n, rootArray = 0x80000n, childArray = 0x88000n;
         const vector = (at, values) => {
+            writeManagedArrayType(fixture, {mono,width,ptr,number}, at, 0x12);
             ptr(at + BigInt(2 * bytes), 0); ptr(at + BigInt(3 * bytes), values.length);
             values.forEach((value, index) => ptr(at + BigInt((4 + index) * bytes), value));
         };

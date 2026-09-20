@@ -1,4 +1,4 @@
-import {writeVectorElementType} from './support/managed_type_fixture.mjs';
+import {writeVectorElementType, writeManagedArrayType} from './support/managed_type_fixture.mjs';
 import assert from 'node:assert/strict';
 import {SplitScriptHost} from './support/splitscript_host.mjs';
 import {createKeyedCollectionFixture} from './support/keyed_collection_fixture.mjs';
@@ -58,6 +58,7 @@ for (const family of Object.keys(layouts)) for (const width of [32,64]) for (con
         else for(const [name,offset] of outer)number(at+BigInt(offset),bytes,0);
     };
     empty(object);
+    writeManagedArrayType(f, {mono,width,family,ptr,number}, 0x80000n, {kind:0x15});
     ptr(0x80000n+BigInt(2*bytes),0); ptr(0x80000n+BigInt(3*bytes),1);
     ptr(0x80000n+BigInt(4*bytes),object);
     let fieldReads=0;

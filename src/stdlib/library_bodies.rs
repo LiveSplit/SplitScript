@@ -23,6 +23,7 @@ pub(crate) const PROVIDER_PREPARATION_FUNCTION: &str =
 pub(crate) const PROVIDER_BINDINGS_TYPE: &str = "__splitscript_stdlib_provider_bindings";
 pub(crate) const MANAGED_POINTER_SIZE_FIELD: &str = "__pointer_size";
 pub(crate) const MANAGED_LIST_LAYOUT_FIELD: &str = "__list_layout";
+pub(crate) const MANAGED_ARRAY_TYPE_FIELD: &str = "__array_type";
 pub(crate) const MANAGED_MAP_READ_FIELD: &str = "__map_read";
 pub(crate) const MANAGED_SET_READ_FIELD: &str = "__set_read";
 pub(crate) const MANAGED_KEYED_VERIFY_FIELD: &str = "__keyed_verify";
@@ -290,6 +291,9 @@ fn managed_preparation_source(
         source.push_str(&format!(
             "    {MANAGED_LIST_LAYOUT_FIELD}: (address, u32, u32, ManagedReadContext) -> UnityListLayout!,\n"
         ));
+        source.push_str(&format!(
+            "    {MANAGED_ARRAY_TYPE_FIELD}: (address, u32, u32, u32, ManagedReadContext) -> address!,\n"
+        ));
     }
     if !classes.is_empty() {
         source.push_str(&format!(
@@ -416,6 +420,20 @@ fn managed_backend_binding_source(
         "            let {MANAGED_POINTER_SIZE_FIELD}: u32 = {pointer_size}\n"
     ));
     source.push_str(&format!(
+        "            let __array_layout_cache: [UnityArrayLayout] = []\n\
+                     let {MANAGED_ARRAY_TYPE_FIELD}: (address, u32, u32, u32, ManagedReadContext) -> address! = (object, depth, elementBytes, elementKinds, context) => {{\n\
+                         let charge = () => Unity.chargeManagedWork(context)\n\
+                         let class = {module}.arrayClass(object, charge)?\n\
+                         for cached in __array_layout_cache {{ if !charge() {{ throw \"managed read work limit exceeded\" }} if cached.runtimeClass == class {{ return cached.validate(depth, elementBytes, elementKinds) }} }}\n\
+                         let layout = {module}.arrayLayout(class, charge)?\n\
+                         if {module}.arrayClass(object, charge)? != class {{ throw \"managed array class changed during discovery\" }}\n\
+                         layout.validate(depth, elementBytes, elementKinds)?\n\
+                         if __array_layout_cache.length() >= 1024 {{ __array_layout_cache.clear() }}\n\
+                         __array_layout_cache.push(layout)\n\
+                         return class\n\
+                     }}\n"
+    ));
+    source.push_str(&format!(
         "            let __list_layout_cache: [UnityListLayout] = []\n\
                      let {MANAGED_LIST_LAYOUT_FIELD}: (address, u32, u32, ManagedReadContext) -> UnityListLayout! = (object, elementBytes, elementKinds, context) => {{\n\
                          if !Unity.chargeManagedWork(context) {{ throw \"managed read work limit exceeded\" }}\n\
@@ -522,6 +540,7 @@ fn managed_backend_binding_source(
     push_provider_context_initializers(&mut source, contexts, "                ");
     source.push_str(&format!("                {MANAGED_POINTER_SIZE_FIELD},\n"));
     source.push_str(&format!("                {MANAGED_LIST_LAYOUT_FIELD},\n"));
+    source.push_str(&format!("                {MANAGED_ARRAY_TYPE_FIELD},\n"));
     source.push_str(&format!(
         "                {MANAGED_MAP_READ_FIELD}, {MANAGED_SET_READ_FIELD}, {MANAGED_KEYED_VERIFY_FIELD},\n"
     ));

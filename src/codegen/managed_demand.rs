@@ -97,6 +97,15 @@ pub(super) fn prune(
     if !reachable.managed_decoders().any(|ty| {
         matches!(
             capabilities.managed_decoder(ty).unwrap().kind,
+            crate::managed_read::ManagedDecoderKind::Array { .. }
+        )
+    }) {
+        remove.insert(crate::stdlib::MANAGED_ARRAY_TYPE_FIELD.to_owned());
+        remove.insert("__array_layout_cache".to_owned());
+    }
+    if !reachable.managed_decoders().any(|ty| {
+        matches!(
+            capabilities.managed_decoder(ty).unwrap().kind,
             crate::managed_read::ManagedDecoderKind::List { .. }
         )
     }) {

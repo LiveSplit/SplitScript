@@ -19,6 +19,37 @@ export function writeVectorElementType({mono, width, family, ptr, number, fixtur
 }
 
 const plainTypes = new WeakMap();
+const arrayTypes = new WeakMap();
+// Explicit object headers and runtime type graphs for owned-array fixtures.
+// A nested one-element JS array denotes SZARRAY; objects describe inline values.
+export function writeManagedArrayType(fixture, {mono, width, family = 'V2', ptr, number}, object, element) {
+    let state = arrayTypes.get(fixture);
+    if (!state) { state = {types: new Map(), next: 0x30000000n}; arrayTypes.set(fixture, state); }
+    const p = BigInt(width / 8);
+    const typeOf = shape => {
+        const key = JSON.stringify(shape);
+        if (state.types.has(key)) return state.types.get(key);
+        const klass = state.next; state.next += 0x1000n;
+        const type = klass + (mono ? BigInt(byValueOffsets[family][width]) : 4n * p);
+        const kind = Array.isArray(shape) ? 0x1d : typeof shape === 'number' ? shape : shape.kind;
+        const result = {klass, type, kind, vtable: klass + 0x800n};
+        state.types.set(key, result);
+        number(type + p + 2n, 1, kind); ptr(result.vtable, klass);
+        if (kind === 0x1d) {
+            const child = typeOf(shape[0]);
+            ptr(type, mono ? child.klass : child.type); result.element = child;
+        } else if (kind === 0x11) {
+            if (mono) {
+                ptr(type, klass); number(klass + (p === 8n ? 0x1cn : 0x10n), 4, Number(2n * p) + shape.bytes);
+            } else writeIl2cppPlainType(fixture, {ptr, number}, type, klass, shape.bytes);
+        } else if (kind === 0x15) writeGenericType({mono, width, ptr, number, cachedClass: klass}, type, shape.value ?? false, shape.bytes ?? 16);
+        return result;
+    };
+    const array = typeOf([element]);
+    ptr(object, mono ? array.vtable : array.klass);
+    return array;
+}
+
 // The public collection fixtures use Unity 2022.3. Its data union stores a
 // metadata definition handle, distinct from both the type and runtime class.
 export function writeIl2cppPlainType(fixture, {ptr, number}, type, klass, valueBytes) {

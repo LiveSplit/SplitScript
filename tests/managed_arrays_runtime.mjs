@@ -1,3 +1,4 @@
+import {writeManagedArrayType} from './support/managed_type_fixture.mjs';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { SplitScriptHost } from './support/splitscript_host.mjs';
@@ -7,7 +8,7 @@ const [wasm] = process.argv.slice(2);
 const profiles = JSON.parse(await readFile(new URL('./fixtures/mono-pe-profiles.json', import.meta.url)));
 let cases = 0;
 for (const mono of [true, false]) for (const width of [32, 64]) {
-    for (const mode of ['seed', 'mutate', 'replace', 'empty', 'null array', 'null row', 'null element', 'null leaf', 'bounds', 'unreadable header', 'unreadable slot', 'unreadable child', 'failed sibling', 'cycle', 'count overflow', 'address overflow', 'shared element budget', 'inline element budget']) {
+    for (const mode of ['cached metadata', 'wrong element kind', 'wrong empty nested kind', 'wrong inline width', 'wrong depth', 'non-array class', 'unreadable class', 'type cycle', 'type depth overflow', 'compatible class replacement', 'torn class', 'seed', 'mutate', 'replace', 'empty', 'null array', 'null row', 'null element', 'null leaf', 'bounds', 'unreadable header', 'unreadable slot', 'unreadable child', 'failed sibling', 'cycle', 'count overflow', 'address overflow', 'shared element budget', 'inline element budget']) {
         const wide = width === 64, bytes = width / 8;
         const fixture = mono ? createMonoPeFixture(profiles.builds.find(p => p.width === width && p.version === 'V2'))
             : createIl2cppPeFixture({width, version:[2022, 3, 0, 37029]});
@@ -17,6 +18,7 @@ for (const mono of [true, false]) for (const width of [32, 64]) {
             const data = new Uint8Array(size), view = new DataView(data.buffer);
             if (size === 8) view.setBigUint64(0, BigInt(value), true);
             else if (size === 2) view.setUint16(0, Number(value), true);
+            else if (size === 1) view.setUint8(0, Number(value));
             else view.setUint32(0, Number(value), true);
             write(at, data);
         };
@@ -58,6 +60,8 @@ for (const mono of [true, false]) for (const width of [32, 64]) {
             for (let i = 0; i < value.length; i++) number(at + BigInt(bytes * 2 + 4 + i * 2), 2, value.charCodeAt(i));
         };
         const vector = (at, values, stride = bytes) => {
+            const element = at === nested ? [0x0e] : at === leaves ? 0x12 : at === numbers ? 0x08 : at === pointers ? 0x19 : at === pairs || at === 0x300000n || at === 0xa0000n ? {kind:0x11,bytes:8} : 0x0e;
+            writeManagedArrayType(fixture, {mono,width,ptr,number}, at, element);
             ptr(at + BigInt(2 * bytes), 0);
             ptr(at + BigInt(3 * bytes), values.length);
             values.forEach((value, i) => number(at + BigInt(4 * bytes + i * stride), stride, value));
@@ -67,10 +71,22 @@ for (const mono of [true, false]) for (const width of [32, 64]) {
         vector(inner, [string, 0n, tail]); vector(empty, []); vector(leaves, [leaf, 0n]);
         vector(numbers, [1, 2, 3], 4); vector(pointers, [0n, wide ? 0xffffffffffffffffn : 0xffffffffn]);
         vector(pairs, [0x0000000200000001n, 0x0000000400000003n], 8);
+        const originalArray = writeManagedArrayType(fixture, {mono,width,ptr,number}, nested, [0x0e]);
+        const replacementClass = originalArray.klass + 0x10000000n;
+        const replacementType = replacementClass + originalArray.type - originalArray.klass;
+        const replacementVtable = replacementClass + 0x800n;
+        for (let i = 0n; i < 0x200n; i++) memory.set(replacementClass + i, memory.get(originalArray.klass + i) ?? 0);
+        ptr(replacementVtable, replacementClass);
+        const replacementHeader = mono ? replacementVtable : replacementClass;
+        let armedClassChange = false, replacementActive = false;
         const reads = [], read = fixture.process.read;
         fixture.process.read = request => {
             const address = BigInt.asUintN(64, request.address);
             reads.push({ ...request, address });
+            if (armedClassChange && address === nested + BigInt(4 * bytes)) {
+                replacementActive = !replacementActive;
+                ptr(nested, replacementActive ? replacementHeader : mono ? originalArray.vtable : originalArray.klass);
+            }
             return read({ ...request, address });
         };
         const host = await SplitScriptHost.instantiate(wasm);
@@ -80,6 +96,26 @@ for (const mono of [true, false]) for (const width of [32, 64]) {
         const normalize = value => value.replace(/\s/g, '');
         const seedNested = '[Some([Some("seed",),None,Some("tail",),],),None,Some([],),]';
         let expected = seedNested;
+        if (mode === 'wrong element kind') writeManagedArrayType(fixture, {mono,width,ptr,number}, inner, 0x08);
+        if (mode === 'wrong empty nested kind') {
+            vector(nested, []); writeManagedArrayType(fixture, {mono,width,ptr,number}, nested, [0x08]);
+        }
+        if (mode === 'wrong inline width') writeManagedArrayType(fixture, {mono,width,ptr,number}, pairs, {kind:0x11,bytes:4});
+        if (mode === 'wrong depth') writeManagedArrayType(fixture, {mono,width,ptr,number}, nested, 0x0e);
+        if (mode === 'non-array class') {
+            const scalar = originalArray.element.element;
+            ptr(nested, mono ? scalar.vtable : scalar.klass);
+        }
+        if (mode === 'unreadable class') ptr(nested, 0x2e000000n);
+        if (mode === 'type cycle') {
+            ptr(replacementType, mono ? replacementClass : replacementType); ptr(nested, replacementHeader);
+        }
+        if (mode === 'type depth overflow') {
+            let shape = 0x0e; for (let i = 0; i < 64; i++) shape = [shape];
+            writeManagedArrayType(fixture, {mono,width,ptr,number}, nested, shape);
+        }
+        if (mode === 'compatible class replacement') ptr(nested, replacementHeader);
+        if (mode === 'torn class') armedClassChange = true;
         if (mode === 'mutate') { text(string, 'new'); expected = seedNested.replace('seed', 'new'); }
         if (mode === 'replace') { vector(inner, [tail]); expected = '[Some([Some("tail",),],),None,Some([],),]'; }
         if (mode === 'empty') { vector(nested, []); expected = '[]'; }
@@ -115,15 +151,40 @@ for (const mono of [true, false]) for (const width of [32, 64]) {
         assert.equal(normalize(host.variables.get('pairs')), '[[1,2,],[3,4,],]', label);
         assert.equal(normalize(host.variables.get('pointers')), `[0,${limit},]`, label);
         assert.equal(normalize(host.variables.get('leaves')), mode === 'null leaf' ? '[None,None,]' : '[Some(Leaf{text:"tail",},),None,]', label);
-        const successful = ['seed', 'mutate', 'replace', 'empty', 'null row', 'null element', 'null leaf'].includes(mode);
+        const successful = ['cached metadata', 'compatible class replacement', 'seed', 'mutate', 'replace', 'empty', 'null row', 'null element', 'null leaf'].includes(mode);
         assert.equal(host.variables.get('result') === 'ok', successful, `${label}: result`);
+        if (mode.startsWith('wrong ')) assert.match(host.variables.get('result'), /incompatible/, label);
+        if (mode === 'non-array class') assert.match(host.variables.get('result'), /not a vector/, label);
+        if (mode === 'type cycle') assert.match(host.variables.get('result'), /cycle/, label);
+        if (mode === 'type depth overflow') assert.match(host.variables.get('result'), /depth limit/, label);
+        if (mode === 'torn class') assert.match(host.variables.get('result'), /class changed/, label);
+        if (mode.startsWith('wrong ')) {
+            const rejected = mode === 'wrong inline width' ? pairs : mode === 'wrong element kind' ? inner : nested;
+            assert(!reads.some(({address}) => address === rejected + BigInt(4 * bytes)), `${label}: rejected type read payload`);
+        }
         if (mode === 'cycle') assert.match(host.variables.get('result'), /cycle/, label);
         if (mode.includes('budget')) assert.match(host.variables.get('result'), /budget/, label);
         for (const { address, length } of reads) assert(address + BigInt(Math.max(length, 1) - 1) <= limit, `${label}: overflowing read`);
         if (mode === 'count overflow') assert(!reads.some(read => read.address === nested + BigInt(4 * bytes)), `${label}: invalid count read payload`);
         if (mode === 'shared element budget') assert(!reads.some(read => read.address === 0x200000n + BigInt(4 * bytes)), `${label}: child replenished budget`);
-        assert(reads.length < (mode.includes('budget') ? 17000 : 200), `${label}: excessive host reads`);
+        assert(reads.length < (mode.includes('budget') ? 17000 : mode === 'type depth overflow' ? 700 : 200), `${label}: excessive host reads`);
         if (mode === 'inline element budget') assert(!reads.some(read => read.address === 0x300000n + BigInt(4 * bytes + 8191 * 8)), `${label}: inline children replenished budget`);
+        if (mode.startsWith('wrong ') || ['non-array class', 'unreadable class', 'type cycle', 'type depth overflow', 'torn class'].includes(mode)) {
+            armedClassChange = false;
+            writeManagedArrayType(fixture, {mono,width,ptr,number}, nested, [0x0e]);
+            writeManagedArrayType(fixture, {mono,width,ptr,number}, inner, 0x0e);
+            writeManagedArrayType(fixture, {mono,width,ptr,number}, pairs, {kind:0x11,bytes:8});
+            ptr(nested + BigInt(3 * bytes), 3);
+            host.updateUntil(() => host.variables.get('result') === 'ok', `${label}: metadata repair`);
+            assert.equal(normalize(host.variables.get('nested')), seedNested, label);
+        }
+        if (mode === 'cached metadata') {
+            assert(!reads.some(({address}) => address >= 0x30000000n && address < 0x30100000n && (!mono || address % 0x1000n !== 0x800n)), `${label}: cached layout reread type metadata`);
+            host.setProcessOpen('game.exe', false); host.update(2);
+            host.addProcess('game.exe', fixture.process); host.variables.delete('result'); reads.length = 0;
+            host.updateUntil(() => host.variables.get('result') === 'ok', `${label}: reattach`);
+            assert(reads.some(({address}) => address === originalArray.type + BigInt(bytes + 2)), `${label}: reused previous attachment metadata`);
+        }
         cases++;
     }
 }

@@ -176,6 +176,20 @@ impl FailurePayloadDemand {
             let plan = capabilities.managed_decoder(ty).unwrap();
             if matches!(
                 plan.kind,
+                crate::managed_read::ManagedDecoderKind::Array { .. }
+            ) {
+                let address = semantics
+                    .types()
+                    .id_for_core(crate::stdlib::CoreTypeId::Address);
+                for target in &results[&plan.output] {
+                    dependencies
+                        .entry(*target)
+                        .or_default()
+                        .extend(&results[&address]);
+                }
+            }
+            if matches!(
+                plan.kind,
                 crate::managed_read::ManagedDecoderKind::List { .. }
             ) {
                 let layout = semantics

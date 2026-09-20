@@ -2127,6 +2127,58 @@ Full generic argument/type identity, recursive raw-array contracts, attachment
 metadata scheduling, native platform validation, and final size acceptance still
 remain before the overall goal is complete.
 
+## Recursive array storage contracts (2026-09-20)
+
+Owned raw-array decoders now validate the runtime array class before reading
+payloads. Both providers obtain the class's embedded by-value type and require
+SZARRAY metadata. Nested vector element types are resolved recursively, including
+through nullable schema layers, so an empty outer array cannot conceal an
+incompatible scalar element kind or an incorrect nesting depth. Primitive and
+reference widths, ordinary inline value sizes, and generic reference/value
+classification use the shared storage proofs from the preceding slices.
+
+Each attachment caches successful array metadata by runtime class. Every schema
+use checks its element kind, width, and nesting against that cache; schema
+validation is not bypassed after a cache hit. The object class is checked again
+after discovery and payload decoding, rejecting replacement during the read.
+Discovery detects metadata cycles, caps nesting at 64, and charges the same root
+work counter as sibling fields and payload decoding. Failed reads preserve the
+previous owned snapshot. Failed discovery is retryable and new attachments create
+fresh caches. Array payload bounds and cycle checks remain in place.
+
+The new callback and cache are removed when no reachable managed array decoder
+needs them. Compiler checks cover both selected backends, scalar/string reads,
+raw arrays, Lists, Maps, Sets, and an unused array declaration. Array metadata
+errors propagate through the existing demand-driven error paths. The fixtures
+now include explicit runtime array classes and element graphs instead of only
+array lengths and payloads.
+
+All 34 public array/collection artifacts validate and pass runtime fixtures in
+Debug and Release. The focused array harness passes 116 cases per profile,
+including wrong element kinds, empty nested mismatches, exact inline sizes,
+non-array classes, metadata cycles/depth limits, compatible replacement, torn
+class reads, repair, cache reuse, and cache reset after reattachment. Recursive
+class-array snapshots, freezing, collection nesting, and shared metadata budgets
+also pass. Generated documentation validates 561 pages.
+
+Thirty of 38 size fixtures retain their previous module/section sizes,
+function/type counts, and body-size multisets. This includes both Lunistice
+variants, scalar/string scripts, and List-only scripts. Explicit Lunistice remains
+58,187 bytes, with automatic selection at 182,552. The array and nested-array
+fixtures add 9,625/9,975 bytes for IL2CPP and 5,836/6,196 for Mono. The Map and Set
+fixtures contain array values, and add 2,791/2,962 bytes for IL2CPP and 2,840/2,864
+for Mono. These changes add the checked metadata route, cache, schema checks, and
+error data. Scratch, ABI read capacity, and minimum memory pages stay unchanged.
+The generic and inline type readers are still shared across array schemas;
+schema-specific elimination remains part of final size acceptance.
+
+This closes recursive raw-vector storage-kind/width/nesting checks. Nominal class
+identity and complete generic argument identity remain open, including metadata
+proofs for empty Lists and keyed collections. List/keyed backing-array class
+agreement, attachment scheduling, native platform validation, and the final size
+requirements are also still unfinished. This does not mark the overall goal
+complete.
+
 ## Source map for implementation
 
 Upstream links below are pinned to the reviewed tip; the PR table provides the historical changes.

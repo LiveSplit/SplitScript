@@ -1,4 +1,4 @@
-import {writeVectorElementType, writeGenericType} from './support/managed_type_fixture.mjs';
+import {writeVectorElementType, writeGenericType, writeManagedArrayType} from './support/managed_type_fixture.mjs';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { SplitScriptHost } from './support/splitscript_host.mjs';
@@ -82,6 +82,7 @@ for (const backend of [...Object.keys(monoLayouts), 'il2cpp']) for (const width 
     const rowsArray = 0x80000n, row = 0x81000n, vectors = 0x82000n, strings = 0x83000n;
     const nestedArray = 0x84000n, childrenArray = 0x85000n, string = 0x90000n, tail = 0x92000n;
     const vector = (at, values, capacity = values.length, stride = bytes) => {
+        writeManagedArrayType(fixture, {mono,width,family:backend,ptr,number}, at, at === vectors ? {kind:0x15} : 0x0e);
         ptr(at + BigInt(2 * bytes), 0); ptr(at + BigInt(3 * bytes), capacity);
         values.forEach((value, index) => number(at + BigInt(4 * bytes + index * stride), stride, value));
     };

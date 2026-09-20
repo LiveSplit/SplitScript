@@ -1,3 +1,4 @@
+import {writeManagedArrayType} from './support/managed_type_fixture.mjs';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { SplitScriptHost } from './support/splitscript_host.mjs';
@@ -17,6 +18,7 @@ for (const mono of [true, false]) for (const width of [32, 64]) {
             const data = new Uint8Array(size), view = new DataView(data.buffer);
             if (size === 8) view.setBigUint64(0, BigInt(value), true);
             else if (size === 2) view.setUint16(0, Number(value), true);
+            else if (size === 1) view.setUint8(0, Number(value));
             else view.setUint32(0, Number(value), true);
             write(at, data);
         };
@@ -58,6 +60,8 @@ for (const mono of [true, false]) for (const width of [32, 64]) {
             for (let i = 0; i < value.length; i++) number(at + BigInt(bytes * 2 + 4 + i * 2), 2, value.charCodeAt(i));
         };
         const vector = (at, values, stride = bytes) => {
+            const element = at === nested ? [0x0e] : at === leaves ? 0x12 : at === numbers ? 0x08 : at === pointers ? 0x19 : at === pairs || at === 0x300000n || at === 0xa0000n ? {kind:0x11,bytes:8} : 0x0e;
+            writeManagedArrayType(fixture, {mono,width,ptr,number}, at, element);
             ptr(at + BigInt(2 * bytes), 0);
             ptr(at + BigInt(3 * bytes), values.length);
             values.forEach((value, i) => number(at + BigInt(4 * bytes + i * stride), stride, value));

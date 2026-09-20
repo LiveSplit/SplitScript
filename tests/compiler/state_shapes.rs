@@ -1946,14 +1946,16 @@ fn collection_storage_resolvers_follow_the_selected_backend() {
         for collection in [
             "i32",
             "String",
+            "[String]",
             "List<String>",
             "Map<String, String>",
             "Set<String>",
         ] {
-            let has_collection = collection.contains('<');
+            let has_array = collection.starts_with('[');
+            let has_collection = collection.contains('<') || has_array;
             let source = format!(
                 r#"
-                image "Assembly-CSharp" {{ class Probe {{ static {collection} values; }} }}
+                image "Assembly-CSharp" {{ class Probe {{ static {collection} values; static [String] unused; }} }}
                 state {selector} ["game.exe"] {{ values = Probe.values?; }}
             "#
             );
@@ -1974,6 +1976,14 @@ fn collection_storage_resolvers_follow_the_selected_backend() {
                     .iter()
                     .any(|(_, name)| name.contains("MonoGenericSize")),
                 mono && has_collection,
+                "{selector}: {collection}"
+            );
+            assert_eq!(
+                report
+                    .functions
+                    .iter()
+                    .any(|(_, name)| name.contains("ArrayLayout")),
+                has_array,
                 "{selector}: {collection}"
             );
             assert_eq!(

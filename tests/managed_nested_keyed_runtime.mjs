@@ -1,3 +1,4 @@
+import {writeManagedArrayType} from './support/managed_type_fixture.mjs';
 import {writeGenericType} from './support/managed_type_fixture.mjs';
 import assert from 'node:assert/strict';
 import { SplitScriptHost } from './support/splitscript_host.mjs';
@@ -28,6 +29,7 @@ for (const parallel of [false, true]) for (const mode of ['seed', 'reorder', 'mu
     if (dictionary) number(f.valueType + BigInt(bytes + 2), 1, 0x1d);
     number(inner.valueType + BigInt(bytes + 2), 1, 0x1d);
     const vector = (at, values) => {
+        writeManagedArrayType(f, {mono,width,family,ptr,number}, at, 0x0e);
         ptr(at + BigInt(2 * bytes), 0); ptr(at + BigInt(3 * bytes), values.length);
         values.forEach((item, i) => ptr(at + BigInt((4 + i) * bytes), item));
     };

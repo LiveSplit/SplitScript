@@ -96,6 +96,18 @@ pub(super) fn compile(
                     ),
                 ));
                 locals.push((3, ValType::I64));
+            } else {
+                let (_, _, callable) = binding(lowering, crate::stdlib::MANAGED_ARRAY_TYPE_FIELD);
+                locals.push((1, nullable(lowering.gc.val_type(Type::Callable(callable)))));
+                locals.push((
+                    1,
+                    nullable(
+                        lowering
+                            .gc
+                            .val_type(Type::Result(array_type_result(lowering))),
+                    ),
+                ));
+                locals.push((1, ValType::I64));
             }
         }
         _ => {}
@@ -494,6 +506,65 @@ impl Reader<'_, '_> {
         }
     }
 
+    fn array_type(&self, f: &mut Function, element: TypeId, depth: u32, remember: bool) {
+        let l = self.lowering;
+        let (structure, field, callable) = binding(l, crate::stdlib::MANAGED_ARRAY_TYPE_FIELD);
+        let callable_type = l.gc.index(Type::Callable(callable));
+        f.instruction(&I::GlobalGet(
+            l.runtime_globals.provider_preparation_value.unwrap(),
+        ))
+        .instruction(&I::RefAsNonNull)
+        .instruction(&I::StructGet {
+            struct_type_index: l.gc.index(Type::Struct(structure)),
+            field_index: field,
+        })
+        .instruction(&I::LocalTee(11))
+        .instruction(&I::StructGet {
+            struct_type_index: callable_type,
+            field_index: 1,
+        })
+        .instruction(&I::LocalGet(1))
+        .instruction(&I::I32Const(depth as i32));
+        storage_width(f, self, element);
+        f.instruction(&I::I32Const(storage_kinds(self, element) as i32))
+            .instruction(&I::LocalGet(CONTEXT))
+            .instruction(&I::LocalGet(11))
+            .instruction(&I::StructGet {
+                struct_type_index: callable_type,
+                field_index: 0,
+            })
+            .instruction(&I::CallRef(l.gc.callable_function_index(callable)))
+            .instruction(&I::LocalSet(12));
+        let result = array_type_result(l);
+        self.forward_result_failure(f, result, 12);
+        self.result_field(f, result, 12, 0, Type::Address);
+        if remember {
+            f.instruction(&I::LocalSet(13));
+        } else {
+            f.instruction(&I::LocalGet(13)).instruction(&I::I64Ne);
+            self.fail_if(f, "managed array class changed during the read");
+        }
+    }
+
+    fn array_types(&self, f: &mut Function, mut element: TypeId) {
+        let mut depth = 0;
+        loop {
+            self.array_type(f, element, depth, depth == 0);
+            while let ManagedDecoderKind::Optional { value } =
+                self.capabilities.managed_decoder(element).unwrap().kind
+            {
+                element = value;
+            }
+            let ManagedDecoderKind::Array { element: child } =
+                self.capabilities.managed_decoder(element).unwrap().kind
+            else {
+                break;
+            };
+            element = child;
+            depth += 1;
+        }
+    }
+
     fn array(&self, f: &mut Function, element: TypeId) {
         let l = self.lowering;
         let TypeKind::Array { layout, .. } = l.semantics.types().kind(self.value) else {
@@ -558,6 +629,8 @@ impl Reader<'_, '_> {
         );
         if self.list {
             f.instruction(&I::I32Const(2)).instruction(&I::LocalSet(8));
+        } else {
+            self.array_types(f, element);
         }
         super::runtime_helpers::process::emit_invalid_managed_span(f, 1, 2, |f| {
             f.instruction(&I::LocalGet(2))
@@ -693,6 +766,8 @@ impl Reader<'_, '_> {
             .instruction(&I::End);
         if self.list {
             self.verify_list_header(f);
+        } else {
+            self.array_type(f, element, 0, false);
         }
         self.leave(f);
         f.instruction(&I::LocalGet(9)).instruction(&I::LocalGet(6));
@@ -721,6 +796,17 @@ fn list_layout_result(l: &EmissionContext<'_>) -> ResultTypeId {
 fn list_binding(
     l: &EmissionContext<'_>,
 ) -> (crate::ast::StructId, u32, crate::ast::CallableTypeId) {
+    binding(l, crate::stdlib::MANAGED_LIST_LAYOUT_FIELD)
+}
+
+fn array_type_result(l: &EmissionContext<'_>) -> ResultTypeId {
+    result_for(l.semantics.types().id_for_core(CoreTypeId::Address), l)
+}
+
+fn binding(
+    l: &EmissionContext<'_>,
+    name: &str,
+) -> (crate::ast::StructId, u32, crate::ast::CallableTypeId) {
     let structure = l
         .structs
         .iter()
@@ -730,7 +816,7 @@ fn list_binding(
         .fields
         .iter()
         .enumerate()
-        .find(|(_, field)| field.name == crate::stdlib::MANAGED_LIST_LAYOUT_FIELD)
+        .find(|(_, field)| field.name == name)
         .unwrap();
     let TypeKind::Callable { layout, .. } = l
         .semantics
