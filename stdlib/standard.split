@@ -1320,6 +1320,10 @@ namespace Unity {
     @intrinsic(ManagedFieldAddress)
     private fn managedFieldAddress(base: address, offset: u32, pointerSize: u32) -> address;
 
+    // Shares field, collection, and metadata work across a materialization root.
+    @intrinsic(ManagedChargeWork)
+    private fn chargeManagedWork(context: ManagedReadContext) -> bool;
+
     // Builds the provider's backend-independent context after auto-detection.
     private fn providerAuto() -> async UnityRuntime {
         loop {
@@ -1723,41 +1727,41 @@ private struct UnityRuntime {
         }
     }
 
-    private fn dictionaryLayout(object: address) -> UnityKeyedLayout! {
+    private fn dictionaryLayout(object: address, charge: () -> bool) -> UnityKeyedLayout! {
         return match self.backend {
             UnityRuntimeBackend.Il2cpp => {
                 let runtime = self.il2cpp else return Err("missing IL2CPP runtime")
-                runtime.dictionaryLayout(object)
+                runtime.dictionaryLayout(object, charge)
             },
             UnityRuntimeBackend.Mono => {
                 let runtime = self.mono else return Err("missing Mono runtime")
-                runtime.dictionaryLayout(object)
+                runtime.dictionaryLayout(object, charge)
             },
         }
     }
 
-    private fn setLayout(object: address) -> UnityKeyedLayout! {
+    private fn setLayout(object: address, charge: () -> bool) -> UnityKeyedLayout! {
         return match self.backend {
             UnityRuntimeBackend.Il2cpp => {
                 let runtime = self.il2cpp else return Err("missing IL2CPP runtime")
-                runtime.setLayout(object)
+                runtime.setLayout(object, charge)
             },
             UnityRuntimeBackend.Mono => {
                 let runtime = self.mono else return Err("missing Mono runtime")
-                runtime.setLayout(object)
+                runtime.setLayout(object, charge)
             },
         }
     }
 
-    private fn listLayout(object: address) -> UnityListLayout! {
+    private fn listLayout(object: address, charge: () -> bool) -> UnityListLayout! {
         return match self.backend {
             UnityRuntimeBackend.Il2cpp => {
                 let runtime = self.il2cpp else return Err("missing IL2CPP runtime")
-                runtime.listLayout(object)
+                runtime.listLayout(object, charge)
             },
             UnityRuntimeBackend.Mono => {
                 let runtime = self.mono else return Err("missing Mono runtime")
-                runtime.listLayout(object)
+                runtime.listLayout(object, charge)
             },
         }
     }
@@ -1960,10 +1964,11 @@ private struct UnityFields {
 
     // A collection's layout belongs to the corlib ancestor, never a derived
     // class that happens to shadow its implementation fields.
-    private fn corlibClass(class: address, expected: String) -> address! {
+    private fn corlibClass(class: address, expected: String, types: UnityCollectionTypes) -> address! {
         let current = class
         let visited: [address] = []
         while current != 0 {
+            types.chargeWork()?
             if visited.length() >= 128 || visited.contains(current) {
                 throw "Unity collection inheritance is cyclic or exceeds the metadata work limit"
             }
@@ -1978,7 +1983,8 @@ private struct UnityFields {
     }
 
     private fn listLayout(class: address, types: UnityCollectionTypes, readCount: (address) -> i32!) -> UnityListLayout! {
-        let owner = self.corlibClass(class, "List`1")?
+        let owner = self.corlibClass(class, "List`1", types)?
+        types.chargeWork()?
         let count = (readCount)(owner)?
         if count < 0 || count > 4096 { throw "Unity collection field count exceeds the metadata work limit" }
         let fields = self.names.pointer(owner, self.fields)?
@@ -1987,6 +1993,7 @@ private struct UnityFields {
         let size: u32? = None
         let index: u32 = 0
         while index < (count as u32) {
+            types.chargeWork()?
             let field = self.names.member(fields, (index as u64) * self.stride, self.stride)?
             index += 1
             let namePointer = self.names.pointer(field, self.fieldName)?
@@ -2025,6 +2032,7 @@ private struct UnityFields {
     // unreadable entry cannot prove a unique, complete shape.
     private fn collectionMembers(class: address, wanted: [[String]], types: UnityCollectionTypes,
         readCount: (address) -> i32!, header: u32) -> [UnityCollectionMember]! {
+        types.chargeWork()?
         let count = (readCount)(class)?
         if count < 0 || count > 4096 { throw "Unity collection field count exceeds the metadata work limit" }
         let fields = self.names.pointer(class, self.fields)?
@@ -2033,6 +2041,7 @@ private struct UnityFields {
         for _ in wanted { found.push(None) }
         let index: u32 = 0
         while index < (count as u32) {
+            types.chargeWork()?
             let field = self.names.member(fields, (index as u64) * self.stride, self.stride)?
             index += 1
             let namePointer = self.names.pointer(field, self.fieldName)?
@@ -2147,7 +2156,7 @@ private struct UnityFields {
 
     private fn dictionaryLayout(class: address, types: UnityCollectionTypes,
         readCount: (address) -> i32!) -> UnityKeyedLayout! {
-        let owner = self.corlibClass(class, "Dictionary`2")?
+        let owner = self.corlibClass(class, "Dictionary`2", types)?
         // Each complete shape proves itself; malformed partial shapes cannot
         // produce a descriptor through the alternative route.
         let entries = self.entryLayout(class, owner,
@@ -2163,7 +2172,7 @@ private struct UnityFields {
 
     private fn setLayout(class: address, types: UnityCollectionTypes,
         readCount: (address) -> i32!) -> UnityKeyedLayout! {
-        let owner = self.corlibClass(class, "HashSet`1")?
+        let owner = self.corlibClass(class, "HashSet`1", types)?
         let slots = self.entryLayout(class, owner,
             [["_buckets", "m_buckets"], ["_slots", "m_slots"], ["_count", "m_count"], ["_lastIndex", "m_lastIndex"]],
             [["hashCode"], ["next"], ["value"]], types, readCount)
@@ -8847,36 +8856,38 @@ private struct UnityModule {
         return class
     }
 
-    private fn keyedLayout(object: address, resolve: (UnityFields, address, UnityCollectionTypes, (address) -> i32!) -> UnityKeyedLayout!) -> UnityKeyedLayout! {
+    private fn keyedLayout(object: address, charge: () -> bool, resolve: (UnityFields, address, UnityCollectionTypes, (address) -> i32!) -> UnityKeyedLayout!) -> UnityKeyedLayout! {
         let names = UnityClassNames { width: self.pointerSize as u64,
             name: self.profile.className, namespace: self.profile.classNamespace, declaring: None }
+        if !(charge)() { throw "managed read work limit exceeded" }
         let class = self.collectionClass(object)?
         let fields = UnityFields { names, parent: self.profile.classParent,
             fields: self.profile.classFields, fieldName: self.profile.fieldName,
             fieldValue: self.profile.fieldValue, stride: self.profile.fieldStride }
-        let types = UnityCollectionTypes { names, mono: false,
+        let types = UnityCollectionTypes { names, charge, mono: false,
             data: self.profile.typeData, kindOffset: self.profile.typeKind,
             cached: self.profile.genericCachedClass,
             instanceSize: self.profile.classInstanceSize, fieldType: self.profile.fieldType }
         return (resolve)(fields, class, types, current => self.fieldCount(current, names))
     }
 
-    private fn dictionaryLayout(object: address) -> UnityKeyedLayout! {
-        return self.keyedLayout(object, (fields, class, types, count) => fields.dictionaryLayout(class, types, count))
+    private fn dictionaryLayout(object: address, charge: () -> bool) -> UnityKeyedLayout! {
+        return self.keyedLayout(object, charge, (fields, class, types, count) => fields.dictionaryLayout(class, types, count))
     }
 
-    private fn setLayout(object: address) -> UnityKeyedLayout! {
-        return self.keyedLayout(object, (fields, class, types, count) => fields.setLayout(class, types, count))
+    private fn setLayout(object: address, charge: () -> bool) -> UnityKeyedLayout! {
+        return self.keyedLayout(object, charge, (fields, class, types, count) => fields.setLayout(class, types, count))
     }
 
-    private fn listLayout(object: address) -> UnityListLayout! {
+    private fn listLayout(object: address, charge: () -> bool) -> UnityListLayout! {
         let names = UnityClassNames { width: self.pointerSize as u64,
             name: self.profile.className, namespace: self.profile.classNamespace, declaring: None }
+        if !(charge)() { throw "managed read work limit exceeded" }
         let class = self.collectionClass(object)?
         let fields = UnityFields { names, parent: self.profile.classParent,
             fields: self.profile.classFields, fieldName: self.profile.fieldName,
             fieldValue: self.profile.fieldValue, stride: self.profile.fieldStride }
-        let types = UnityCollectionTypes { names, mono: false,
+        let types = UnityCollectionTypes { names, charge, mono: false,
             kindOffset: self.profile.typeKind, fieldType: self.profile.fieldType,
             data: None, cached: None, instanceSize: None }
         return fields.listLayout(class, types, current => self.fieldCount(current, names))
@@ -13023,36 +13034,38 @@ private struct MonoModule {
         return class
     }
 
-    private fn keyedLayout(object: address, resolve: (UnityFields, address, UnityCollectionTypes, (address) -> i32!) -> UnityKeyedLayout!) -> UnityKeyedLayout! {
+    private fn keyedLayout(object: address, charge: () -> bool, resolve: (UnityFields, address, UnityCollectionTypes, (address) -> i32!) -> UnityKeyedLayout!) -> UnityKeyedLayout! {
         let names = UnityClassNames { width: self.pointerBytes(),
             name: self.layout.className, namespace: self.layout.classNamespace, declaring: None }
+        if !(charge)() { throw "managed read work limit exceeded" }
         let class = self.collectionClass(object)?
         let fields = UnityFields { names, parent: self.layout.classParent,
             fields: self.layout.classFields, fieldName: self.layout.fieldName,
             fieldValue: self.layout.fieldValue, stride: self.layout.fieldStride }
-        let types = UnityCollectionTypes { names, mono: true,
+        let types = UnityCollectionTypes { names, charge, mono: true,
             data: self.layout.typeData, kindOffset: self.layout.typeKind,
             cached: None,
             instanceSize: self.layout.classInstanceSize, fieldType: self.layout.fieldType }
         return (resolve)(fields, class, types, current => self.fieldCount(current, names))
     }
 
-    private fn dictionaryLayout(object: address) -> UnityKeyedLayout! {
-        return self.keyedLayout(object, (fields, class, types, count) => fields.dictionaryLayout(class, types, count))
+    private fn dictionaryLayout(object: address, charge: () -> bool) -> UnityKeyedLayout! {
+        return self.keyedLayout(object, charge, (fields, class, types, count) => fields.dictionaryLayout(class, types, count))
     }
 
-    private fn setLayout(object: address) -> UnityKeyedLayout! {
-        return self.keyedLayout(object, (fields, class, types, count) => fields.setLayout(class, types, count))
+    private fn setLayout(object: address, charge: () -> bool) -> UnityKeyedLayout! {
+        return self.keyedLayout(object, charge, (fields, class, types, count) => fields.setLayout(class, types, count))
     }
 
-    private fn listLayout(object: address) -> UnityListLayout! {
+    private fn listLayout(object: address, charge: () -> bool) -> UnityListLayout! {
         let names = UnityClassNames { width: self.pointerBytes(),
             name: self.layout.className, namespace: self.layout.classNamespace, declaring: None }
+        if !(charge)() { throw "managed read work limit exceeded" }
         let class = self.collectionClass(object)?
         let fields = UnityFields { names, parent: self.layout.classParent,
             fields: self.layout.classFields, fieldName: self.layout.fieldName,
             fieldValue: self.layout.fieldValue, stride: self.layout.fieldStride }
-        let types = UnityCollectionTypes { names, mono: true,
+        let types = UnityCollectionTypes { names, charge, mono: true,
             kindOffset: self.layout.typeKind, fieldType: self.layout.fieldType,
             data: None, cached: None, instanceSize: None }
         return fields.listLayout(class, types, current => self.fieldCount(current, names))
@@ -14956,6 +14969,8 @@ struct CatalogSuspensionProbe {
 @representation(gcStruct, nullable)
 @valueUsage(localVariable)
 private struct UnityCollectionTypes {
+    /// Root work counter shared with payload decoding and sibling layouts.
+    private charge: () -> bool,
     /// Target-width checked metadata reads.
     private names: UnityClassNames,
     /// Whether array type data directly names its element class.
@@ -14971,13 +14986,20 @@ private struct UnityCollectionTypes {
     /// Type pointer offset in a field entry, if measured.
     private fieldType: u64?,
 
+    private fn chargeWork() -> bool! {
+        if !(self.charge)() { throw "managed read work limit exceeded" }
+        return true
+    }
+
     private fn kind(typeAddress: address) -> u8! {
+        self.chargeWork()?
         if typeAddress == 0 { throw "Unity collection field type is null" }
         let offset = self.kindOffset else throw "Unity profile lacks type kind metadata"
         return process.read<u8>(self.names.member(typeAddress, offset, 1)?)
     }
 
     private fn fieldTypeAddress(field: address) -> address! {
+        self.chargeWork()?
         let offset = self.fieldType else throw "Unity profile lacks field type metadata"
         let typeAddress = self.names.pointer(field, offset)?
         if typeAddress == 0 { throw "Unity collection field type is null" }
@@ -14987,6 +15009,7 @@ private struct UnityCollectionTypes {
     // An array's inflated element class is the metadata owner of entry fields.
     // Plain IL2CPP class/value-type indices are deliberately not pointer-cast.
     private fn arrayElementClass(typeAddress: address) -> address! {
+        self.chargeWork()?
         if self.kind(typeAddress)? != 0x1d { throw "Unity collection backing field is not a vector" }
         let dataOffset = self.data else throw "Unity profile lacks type data metadata"
         let data = self.names.pointer(typeAddress, dataOffset)?
@@ -15002,6 +15025,7 @@ private struct UnityCollectionTypes {
     }
 
     private fn stride(class: address) -> u32! {
+        self.chargeWork()?
         let offset = self.instanceSize else throw "Unity profile lacks instance size metadata"
         let size = process.read<i32>(self.names.member(class, offset, 4)?)?
         let header = 2 * self.names.width

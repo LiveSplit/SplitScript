@@ -8,7 +8,7 @@ use std::collections::HashMap;
 pub(crate) const MAX_SNAPSHOT_DEPTH: u32 = 64;
 pub(crate) const MAX_SNAPSHOT_OBJECTS: i64 = 1024;
 pub(crate) const MAX_SNAPSHOT_WORK: i64 = 16_384;
-/// Depth, object visits, field visits, active object path, then byte work.
+/// Depth, object visits, shared field/comparison/metadata work, active object path, then byte work.
 /// Collection reads append a shared element counter to this base context.
 pub(crate) const SNAPSHOT_BYTE_SLOT: u32 = 3 + MAX_SNAPSHOT_DEPTH;
 pub(crate) const SNAPSHOT_CONTEXT_SLOTS: u32 = SNAPSHOT_BYTE_SLOT + 1;

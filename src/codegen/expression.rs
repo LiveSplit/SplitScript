@@ -5117,6 +5117,14 @@ fn compile_expr_unconverted(
                 compile_receiver(function, target, context);
                 function.instruction(&Instruction::I64ReinterpretF64);
             }
+            IntrinsicId::ManagedChargeWork => {
+                compile_expr(function, args[0], context);
+                function.instruction(&Instruction::Call(
+                    context
+                        .runtime_helpers
+                        .function(RuntimeHelperId::ChargeManagedWork),
+                ));
+            }
             IntrinsicId::ManagedFieldAddress => {
                 for argument in args {
                     compile_expr(function, *argument, context);

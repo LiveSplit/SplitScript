@@ -10,8 +10,8 @@ fn __splitscript_stdlib_collection_probe() {
         let object = (process.read<u64>(0x60000) else 0) as address
         let dictionary = (process.read<u8>(0x60008) else 0) == 0
         let result = if missing != 0 {
-            runtime.keyedLayout(object, (fields, class, types, count) => {
-                let altered = UnityCollectionTypes { names: types.names, mono: types.mono,
+            runtime.keyedLayout(object, () => true, (fields, class, types, count) => {
+                let altered = UnityCollectionTypes { names: types.names, mono: types.mono, charge: types.charge,
                     data: if missing == 2 { None } else { types.data },
                     kindOffset: if missing == 1 { None } else { types.kindOffset },
                     cached: if missing == 5 { None } else { types.cached },
@@ -21,7 +21,7 @@ fn __splitscript_stdlib_collection_probe() {
                     else { fields.setLayout(class, altered, count) }
             })
         }
-            else if dictionary { runtime.dictionaryLayout(object) } else { runtime.setLayout(object) }
+            else if dictionary { runtime.dictionaryLayout(object, () => true) } else { runtime.setLayout(object, () => true) }
         match result {
             Ok(layout) => {
                 setVariable("class", layout.runtimeClass)

@@ -1521,7 +1521,10 @@ A child declared `Child` becomes an owned `Child` inside the snapshot; the same
 field on a live parent yields `Child.Ref`. Nullable children preserve [`None`].
 Remote changes do not mutate an existing snapshot. Recursive class schemas are
 supported, but remote object cycles fail. Nested reads share limits of 64 active
-objects, 1,024 object visits, and 16,384 active field reads per operation.
+objects, 1,024 object visits, and 16,384 work units per operation. Field reads,
+Map/Set key comparisons, collection metadata discovery, and layout-cache searches
+share this work budget across all nested values. Cached layouts skip metadata
+field-table scans; failed reads publish no partial result.
 Snapshots, arrays, strings, and completed instance searches materialize owned
 values; generated support is retained only when reachable.
 

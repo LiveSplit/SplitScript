@@ -455,10 +455,13 @@ snapshot escapes. Previous snapshots keep their values when remote objects
 change or a later read fails. Recursive schemas are allowed, but an object
 cycle along the active read path fails; a shared child reached through separate
 completed paths is copied independently. Each nested snapshot operation is
-limited to 64 active objects, 1,024 total object visits, and 16,384 active field
-reads. Conditional fields follow the active attachment shape and inactive
-fields do not consume this work budget. Snapshot readers and the shared read
-context are generated only when needed:
+limited to 64 active objects, 1,024 total object visits, and 16,384 work units.
+Snapshot field reads, Map/Set key comparisons, collection layout-cache searches,
+and collection metadata discovery share that work counter across nested values.
+Metadata charges each class/field visit and bounded type/count operation before
+performing it. Cached layouts skip field-table discovery. Conditional snapshot
+fields follow the active attachment shape; skipped fields do not charge a read.
+Snapshot readers and the shared read context are generated only when needed:
 
 ```splitscript
 state Unity ["game.exe"] {

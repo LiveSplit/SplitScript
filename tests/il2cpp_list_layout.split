@@ -7,7 +7,7 @@ fn __splitscript_stdlib_collection_probe() {
     let runtime = await Unity.il2cpp(if width == PointerSize.Bit32 { Il2CppProfile.unity2022_3_0f1X86() } else { Il2CppProfile.unity2022_3_0f1X64() })
     while true {
         let object = (process.read<u64>(0x60000) else 0) as address
-        match runtime.listLayout(object) {
+        match runtime.listLayout(object, () => true) {
             Ok(layout) => {
                 setVariable("class", layout.runtimeClass)
                 setVariable("owner", layout.declaringClass)

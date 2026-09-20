@@ -1783,6 +1783,42 @@ fixtures by 19,149–19,246 bytes. Automatic Lunistice is now 182,416 bytes, wit
 both edition scenarios passing. The final explicit Lunistice size requirement
 and remaining metadata/error requirements remain open.
 
+## Shared collection metadata work budget (2026-09-20)
+
+List/Map/Set metadata callbacks now receive the materialization's existing
+`ManagedReadContext`. A private mutating intrinsic charges its existing work
+counter; no new counter or public API is introduced. The same 16,384-unit limit
+covers snapshot field reads, keyed comparisons, layout-cache searches, collection
+class/field visits, and bounded type/count operations. Charges precede the
+corresponding work, including alternate shape attempts and cold sibling layouts.
+Local structural bounds remain in place. Completed layouts retain no read context
+and stay cached by runtime class for the attachment; cached reads do not walk
+remote field tables, and process replacement discards those layouts.
+
+A new public-runtime fixture reads arrays of Lists, Maps, and Sets across Mono
+V1Cattrs/V2/V3 and IL2CPP at both widths. Each individual 4,096-field layout is
+valid, but four cold sibling layouts exhaust their combined root work allowance.
+All 24 cases pass in each build profile, with at most 16,354 measured field-table
+reads before rejection. No partial root is returned; a fresh root can finish using
+already validated layouts, subsequent reads perform no field-table reads, and a
+new attachment repeats discovery rather than retaining stale cache entries.
+
+All 28 affected public collection artifacts pass runtime checks, including nested
+collections, classes, inline values, frozen snapshots, and payload-budget cases.
+Private List and keyed layout/slot tests pass in Debug and Release. The six
+intrinsic-contract tests verify the new operation's mutating effects and existing
+runtime-helper dependency. This closes shared work accounting for metadata
+performed during collection materialization; broader attachment-time metadata
+cursors and structured nested error paths remain separate unfinished work.
+
+The size review leaves all 32 fixtures without managed List/Map/Set reads unchanged in
+module/section sizes, function/type counts, and function-body size multisets.
+Explicit Lunistice remains 58,178 bytes and automatic Lunistice 182,416 bytes.
+The six collection fixtures grow by 477–548 bytes for context parameters,
+work-charge closures/calls, and type-adapter plumbing. No new counter storage or
+scratch allocation is needed. Both Lunistice edition scenarios pass; the final
+explicit size target remains open.
+
 ## Source map for implementation
 
 Upstream links below are pinned to the reviewed tip; the PR table provides the historical changes.

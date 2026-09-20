@@ -1,0 +1,30 @@
+image "Assembly-CSharp" {
+    class ProfileProbe {
+        static [List<String>] lists;
+        static [Map<String, String>] maps;
+        static [Set<String>] sets;
+    }
+}
+state Unity ["game.exe"] {}
+onAttach {
+    let kind = process.read<u8>(0x60080) else 0
+    loop {
+        if kind == 0 {
+            match ProfileProbe.lists {
+                Ok(value) => { setVariable("length", value.length()); setVariable("error", "") },
+                Err(error) => setVariable("error", error),
+            }
+        } else if kind == 1 {
+            match ProfileProbe.maps {
+                Ok(value) => { setVariable("length", value.length()); setVariable("error", "") },
+                Err(error) => setVariable("error", error),
+            }
+        } else {
+            match ProfileProbe.sets {
+                Ok(value) => { setVariable("length", value.length()); setVariable("error", "") },
+                Err(error) => setVariable("error", error),
+            }
+        }
+        await nextTick()
+    }
+}

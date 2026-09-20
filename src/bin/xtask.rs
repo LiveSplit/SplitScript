@@ -46,6 +46,20 @@ const COMPILE_FIXTURES: &[CompileFixture] = &[
 
 const RUNTIME_FIXTURES: &[RuntimeFixture] = &[
     RuntimeFixture {
+        source: "tests/managed_metadata_budget.split",
+        output: "managed_metadata_budget_debug.wasm",
+        profile: "debug",
+        harness: "tests/managed_metadata_budget_runtime.mjs",
+        extra_arguments: &[],
+    },
+    RuntimeFixture {
+        source: "tests/managed_metadata_budget.split",
+        output: "managed_metadata_budget_release.wasm",
+        profile: "release",
+        harness: "tests/managed_metadata_budget_runtime.mjs",
+        extra_arguments: &[],
+    },
+    RuntimeFixture {
         source: "tests/process_selection.split",
         output: "process_selection.wasm",
         profile: "release",

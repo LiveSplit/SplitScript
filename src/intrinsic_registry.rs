@@ -675,6 +675,7 @@ const fn dependency_roots(id: IntrinsicId) -> &'static [DependencyRoot] {
         ],
         IntrinsicId::ProcessReadRelative32 => &[Helper(Runtime::ReadRelative32)],
         IntrinsicId::ManagedFieldAddress => &[Helper(Runtime::ManagedFieldAddress)],
+        IntrinsicId::ManagedChargeWork => &[Helper(Runtime::ChargeManagedWork)],
         // The dependency walker selects a concrete reader backend from the
         // receiver type. Static roots here would retain every emulator.
         IntrinsicId::MemoryReaderReadUtf8 | IntrinsicId::MemoryReaderReadUtf16Le => &[MemoryReader],
@@ -1521,6 +1522,21 @@ pub(crate) const fn contract(id: IntrinsicId) -> IntrinsicContract {
                 T_ITERATOR_STEP,
             ),
             MUTATES_ALLOCATES,
+            Everywhere,
+            RepresentationPrimitive
+        ),
+        IntrinsicId::ManagedChargeWork => contract!(
+            ManagedChargeWork,
+            Function,
+            signature(
+                NO_TYPE_PARAMETERS,
+                None,
+                params![value(ContractTypeRef::Standard(
+                    StdlibTypeId::ManagedReadContext
+                ))],
+                BOOL
+            ),
+            MUTATES,
             Everywhere,
             RepresentationPrimitive
         ),

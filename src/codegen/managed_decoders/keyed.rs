@@ -170,6 +170,7 @@ pub(super) fn compile(
         crate::managed_read::MAX_MANAGED_READ_BYTES,
         false,
     );
+    f.instruction(&I::LocalGet(CONTEXT));
     callback_end(&mut f, l, read_callable, 5);
     f.instruction(&I::LocalSet(6));
     r.forward_result_failure(&mut f, read_result, 6);

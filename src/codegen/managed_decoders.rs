@@ -368,6 +368,7 @@ impl Reader<'_, '_> {
             field_index: 1,
         })
         .instruction(&I::LocalGet(1))
+        .instruction(&I::LocalGet(CONTEXT))
         .instruction(&I::LocalGet(11))
         .instruction(&I::StructGet {
             struct_type_index: callable_type,

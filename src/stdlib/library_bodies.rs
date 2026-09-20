@@ -288,12 +288,12 @@ fn managed_preparation_source(
     if !classes.is_empty() {
         source.push_str(&format!("    {MANAGED_POINTER_SIZE_FIELD}: u32,\n"));
         source.push_str(&format!(
-            "    {MANAGED_LIST_LAYOUT_FIELD}: (address) -> UnityListLayout!,\n"
+            "    {MANAGED_LIST_LAYOUT_FIELD}: (address, ManagedReadContext) -> UnityListLayout!,\n"
         ));
     }
     if !classes.is_empty() {
         source.push_str(&format!(
-            "    {MANAGED_MAP_READ_FIELD}: (address, u32, u32, u32, u32, u32, u32, u64) -> UnityKeyedRead!,\n    {MANAGED_SET_READ_FIELD}: (address, u32, u32, u32, u32, u32, u32, u64) -> UnityKeyedRead!,\n"
+            "    {MANAGED_MAP_READ_FIELD}: (address, u32, u32, u32, u32, u32, u32, u64, ManagedReadContext) -> UnityKeyedRead!,\n    {MANAGED_SET_READ_FIELD}: (address, u32, u32, u32, u32, u32, u32, u64, ManagedReadContext) -> UnityKeyedRead!,\n"
         ));
         source.push_str(&format!(
             "    {MANAGED_KEYED_VERIFY_FIELD}: (UnityKeyedRead) -> bool!,\n"
@@ -417,10 +417,11 @@ fn managed_backend_binding_source(
     ));
     source.push_str(&format!(
         "            let __list_layout_cache: [UnityListLayout] = []\n\
-                     let {MANAGED_LIST_LAYOUT_FIELD}: (address) -> UnityListLayout! = object => {{\n\
+                     let {MANAGED_LIST_LAYOUT_FIELD}: (address, ManagedReadContext) -> UnityListLayout! = (object, context) => {{\n\
+                         if !Unity.chargeManagedWork(context) {{ throw \"managed read work limit exceeded\" }}\n\
                          let class = {module}.collectionClass(object)?\n\
-                         for cached in __list_layout_cache {{ if cached.runtimeClass == class {{ return cached }} }}\n\
-                         let layout = {module}.listLayout(object)?\n\
+                         for cached in __list_layout_cache {{ if !Unity.chargeManagedWork(context) {{ throw \"managed read work limit exceeded\" }} if cached.runtimeClass == class {{ return cached }} }}\n\
+                         let layout = {module}.listLayout(object, () => Unity.chargeManagedWork(context))?\n\
                          if layout.runtimeClass != class {{ throw \"managed list class changed during discovery\" }}\n\
                          if __list_layout_cache.length() >= 1024 {{ __list_layout_cache.clear() }}\n\
                          __list_layout_cache.push(layout)\n\
@@ -429,10 +430,11 @@ fn managed_backend_binding_source(
     ));
     source.push_str(&format!(
         "            let __map_layout_cache: [UnityKeyedLayout] = []\n\
-                     let {MANAGED_MAP_READ_FIELD}: (address, u32, u32, u32, u32, u32, u32, u64) -> UnityKeyedRead! = (object, keyBytes, valueBytes, keyKinds, valueKinds, scanBudget, elementBudget, byteBudget) => {{\n\
+                     let {MANAGED_MAP_READ_FIELD}: (address, u32, u32, u32, u32, u32, u32, u64, ManagedReadContext) -> UnityKeyedRead! = (object, keyBytes, valueBytes, keyKinds, valueKinds, scanBudget, elementBudget, byteBudget, context) => {{\n\
+                         if !Unity.chargeManagedWork(context) {{ throw \"managed read work limit exceeded\" }}\n\
                          let class = {module}.collectionClass(object)?\n\
-                         for cached in __map_layout_cache {{ if cached.runtimeClass == class {{ return cached.readSlots(object, keyBytes, valueBytes, keyKinds, valueKinds, scanBudget, elementBudget, byteBudget) }} }}\n\
-                         let layout = {module}.dictionaryLayout(object)?\n\
+                         for cached in __map_layout_cache {{ if !Unity.chargeManagedWork(context) {{ throw \"managed read work limit exceeded\" }} if cached.runtimeClass == class {{ return cached.readSlots(object, keyBytes, valueBytes, keyKinds, valueKinds, scanBudget, elementBudget, byteBudget) }} }}\n\
+                         let layout = {module}.dictionaryLayout(object, () => Unity.chargeManagedWork(context))?\n\
                          if layout.runtimeClass != class {{ throw \"managed dictionary class changed during discovery\" }}\n\
                          if __map_layout_cache.length() >= 1024 {{ __map_layout_cache.clear() }}\n\
                          __map_layout_cache.push(layout)\n\
@@ -442,10 +444,11 @@ fn managed_backend_binding_source(
     ));
     source.push_str(&format!(
         "            let __set_layout_cache: [UnityKeyedLayout] = []\n\
-                     let {MANAGED_SET_READ_FIELD}: (address, u32, u32, u32, u32, u32, u32, u64) -> UnityKeyedRead! = (object, keyBytes, valueBytes, keyKinds, valueKinds, scanBudget, elementBudget, byteBudget) => {{\n\
+                     let {MANAGED_SET_READ_FIELD}: (address, u32, u32, u32, u32, u32, u32, u64, ManagedReadContext) -> UnityKeyedRead! = (object, keyBytes, valueBytes, keyKinds, valueKinds, scanBudget, elementBudget, byteBudget, context) => {{\n\
+                         if !Unity.chargeManagedWork(context) {{ throw \"managed read work limit exceeded\" }}\n\
                          let class = {module}.collectionClass(object)?\n\
-                         for cached in __set_layout_cache {{ if cached.runtimeClass == class {{ return cached.readSlots(object, keyBytes, valueBytes, keyKinds, valueKinds, scanBudget, elementBudget, byteBudget) }} }}\n\
-                         let layout = {module}.setLayout(object)?\n\
+                         for cached in __set_layout_cache {{ if !Unity.chargeManagedWork(context) {{ throw \"managed read work limit exceeded\" }} if cached.runtimeClass == class {{ return cached.readSlots(object, keyBytes, valueBytes, keyKinds, valueKinds, scanBudget, elementBudget, byteBudget) }} }}\n\
+                         let layout = {module}.setLayout(object, () => Unity.chargeManagedWork(context))?\n\
                          if layout.runtimeClass != class {{ throw \"managed set class changed during discovery\" }}\n\
                          if __set_layout_cache.length() >= 1024 {{ __set_layout_cache.clear() }}\n\
                          __set_layout_cache.push(layout)\n\
