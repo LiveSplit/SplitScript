@@ -83,7 +83,8 @@ fn twoDigits(value) {
 }
 
 fn LevelTimeParts.toString() {
-    return `{self.minutes as u32}:{twoDigits(self.seconds as u32)}.{twoDigits(self.hundredths as u32)}`
+    return `{self.minutes as u32}:{twoDigits(self.seconds as u32)}.{twoDigits(self.hundredths
+        as u32)}`
 }
 
 fn levelText(level) {

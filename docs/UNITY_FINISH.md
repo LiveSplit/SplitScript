@@ -32,7 +32,8 @@ These are stored measurements, inspected without rebuilding:
 | `57ed738` | 49,437 | Bounded synchronous class scan |
 | `7545e6f` | 43,627 | Bounded image scan and fixed-width discovery |
 | `c4b0e39` | 41,504 | Debug-only descriptor sanity checks |
-| Current tested working tree | 40,194 | Direct field binding |
+| `c5089e5` | 40,194 | Direct field binding |
+| Current tested working tree | 38,995 | Smaller lookup continuations |
 
 Historical evidence: `tests/baselines/unity.json` at each revision. Current
 evidence: `target/unity-baseline/report.json` (ephemeral build artifact).
@@ -261,3 +262,29 @@ this retained patch. General compiler optimizations remain deferred.
 **Remaining:** remove another 10,195 bytes to get strictly below 30,000, then run
 the final repository checks. The finite functional audit found no further
 missing requested features. No game was launched.
+
+
+## Smaller lookup continuations
+
+Moved field-name expansion into a synchronous helper, removed the image lookup
+forwarding future, and merged required-class validation into the class scan
+continuation. Static-slot lookup retries its table read and checked offset
+together. Matching, ambiguity, missing-class behavior, and cancellation are
+preserved. These are library changes to the discovery routines introduced by
+the Unity migration; general compiler optimizations remain deferred.
+
+Explicit Lunistice shrinks **40,194 -> 38,995 bytes** (-1,199); automatic selection
+shrinks **168,934 -> 167,631 bytes** (-1,303). All 38 baseline artifacts shrink or
+stay unchanged, with identical runtime helper sets, scratch capacities, read
+capacities, and initial page counts. The static-slot retry adds a 36-byte error
+literal while removing substantially more continuation code and types. Nine
+unaffected artifacts retain identical normalized function bodies and sections.
+The Lunistice source fingerprint changes only because of a line wrap; compiling
+the prior source with the current compiler produces byte-identical Release Wasm.
+
+All 33 metadata artifacts and 38 runtime scenarios pass, both Release Lunistice
+editions pass, and documentation validation passes. Logs are
+`target/unity-lookup-continuations-*.log`.
+
+**Remaining:** remove another 8,996 bytes to get strictly below 30,000, then
+complete final repository verification. No game was launched.

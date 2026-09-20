@@ -2562,16 +2562,22 @@ private struct UnityFields {
         return Ok(UnityFieldCursor { current, fields, count, index, depth, visited, selected, error: None })
     }
 
-    private fn find(class: address, names: [String], readCount: (address) -> i32!) -> async UnityField? {
-        if names.length() > 256 {
-            print("Unity field aliases exceed the metadata work limit")
-            await process.closed()
-        }
+    // Name expansion does no remote work and has no suspension points.
+    private fn aliases(names: [String]) -> [String] {
         let aliases: [String] = []
         for name in names {
             aliases.push(name)
             aliases.push(`<{name}>k__BackingField`)
         }
+        return aliases
+    }
+
+    private fn find(class: address, names: [String], readCount: (address) -> i32!) -> async UnityField? {
+        if names.length() > 256 {
+            print("Unity field aliases exceed the metadata work limit")
+            await process.closed()
+        }
+        let aliases = self.aliases(names)
         let cursor = UnityFieldCursor { current: class, fields: 0, count: -1,
             index: 0, depth: 0, visited: 0, selected: None, error: None }
         loop {
@@ -9160,7 +9166,16 @@ private struct UnityModule {
         /// The managed assembly name.
         name: String,
     ) -> async UnityImage {
-        return await self.imageNamed(name)
+        let cursor = UnityImageCursor { begin: 0, count: 0, index: 0, image: 0, error: None }
+        loop {
+            cursor = retry self.imageStep(name, cursor)
+            match cursor.error {
+                Some(error) => { print(error); await process.closed() },
+                None => {},
+            }
+            if cursor.image != 0 { return UnityImage { address: cursor.image, module: self } }
+            await nextTick()
+        }
     }
 
     // Resolve collection storage on demand. Failed metadata is an ordinary
@@ -9419,18 +9434,6 @@ private struct UnityModule {
         return UnityImageCursor { begin, count, index, image: 0, error: None }
     }
 
-    private fn imageNamed(name: String) -> async UnityImage {
-        let cursor = UnityImageCursor { begin: 0, count: 0, index: 0, image: 0, error: None }
-        loop {
-            cursor = retry self.imageStep(name, cursor)
-            match cursor.error {
-                Some(error) => { print(error); await process.closed() },
-                None => {},
-            }
-            if cursor.image != 0 { return UnityImage { address: cursor.image, module: self } }
-            await nextTick()
-        }
-    }
 
     // A failed batch leaves the caller's cursor unchanged. Only this small
     // continuation crosses an async boundary, rather than every memory read.
@@ -9484,7 +9487,7 @@ private struct UnityModule {
         return UnityClassCursor { count, start, table, index, selected, pending, done, error: None }
     }
 
-    private fn probeClasses(image: address, names: [String], matches: (address, String, String) -> bool!) -> async UnityClass? {
+    private fn findClass(image: address, names: [String], matches: (address, String, String) -> bool!) -> async UnityClass {
         let cursor = UnityClassCursor { count: 0, start: 0, table: 0, index: 0,
             selected: 0, pending: false, done: false, error: None }
         loop {
@@ -9494,15 +9497,17 @@ private struct UnityModule {
                 None => {},
             }
             if cursor.done {
-                // index below count denotes conflicting matches, represented
-                // by the existing zero-address class sentinel.
-                return if cursor.selected != 0 || cursor.index < cursor.count {
-                    Some(UnityClass { address: cursor.selected, module: self })
-                } else { None }
+                if cursor.selected != 0 { return UnityClass { address: cursor.selected, module: self } }
+                // A conflicting match ends the scan before its final index.
+                if cursor.index < cursor.count {
+                    print(`multiple Unity classes match metadata names {names}`)
+                } else {
+                    print(`no Unity class matches metadata names {names}`)
+                }
+                await process.closed()
             }
             await nextTick()
         }
-        return None
     }
 
     private fn fieldCount(class: address, memory: UnityClassNames) -> i32! {
@@ -9580,26 +9585,14 @@ private struct UnityImage {
                 await process.closed()
             }
         }
-        return await self.classMatching(names, (class, candidate, name) => matcher.matches(class, candidate, name))
+        return await self.module.findClass(self.address, names, (class, candidate, name) => matcher.matches(class, candidate, name))
     }
 
     private fn classAnyFlat(names: [String]) -> async UnityClass {
         let matcher = self.classNames()
-        return await self.classMatching(names, (class, candidate, name) => matcher.matchesFlat(class, candidate, name))
+        return await self.module.findClass(self.address, names, (class, candidate, name) => matcher.matchesFlat(class, candidate, name))
     }
 
-    private fn classMatching(names: [String], matches: (address, String, String) -> bool!) -> async UnityClass {
-        let candidate = await self.module.probeClasses(self.address, names, matches)
-        let class = candidate else {
-            print(`no Unity class matches metadata names {names}`)
-            await process.closed()
-        }
-        if class.address == 0 {
-            print(`multiple Unity classes match metadata names {names}`)
-            await process.closed()
-        }
-        return class
-    }
 
 }
 
@@ -9710,13 +9703,16 @@ private struct UnityClass {
         return await owner.staticSlot(field.offset)
     }
 
+    // Retry the table and checked offset together; neither needs a nested future.
+    private fn readStaticSlot(offset: u32) -> address! {
+        let table = self.module.readPointerMember(self.address, self.module.profile.classStatics)?
+        let slot = Unity.managedFieldAddress(table, offset, self.module.pointerSize)
+        if slot == 0 { throw "Unity static field address overflows" }
+        return slot
+    }
+
     private fn staticSlot(offset: u32) -> async address {
-        loop {
-            let table = await self.staticTable()
-            let slot = Unity.managedFieldAddress(table, offset, self.module.pointerSize)
-            if slot != 0 { return slot }
-            await nextTick()
-        }
+        return retry self.readStaticSlot(offset)
     }
 
     // Preserves completed absence for conditional schema fields.
