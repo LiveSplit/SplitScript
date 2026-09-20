@@ -1180,6 +1180,20 @@ const RUNTIME_FIXTURES: &[RuntimeFixture] = &[
         extra_arguments: &[],
     },
     RuntimeFixture {
+        source: "tests/il2cpp_profiles.split",
+        output: "unity_metadata_bounds.wasm",
+        profile: "release",
+        harness: "tests/unity_metadata_bounds_runtime.mjs",
+        extra_arguments: &[],
+    },
+    RuntimeFixture {
+        source: "tests/il2cpp_profiles.split",
+        output: "unity_metadata_bounds_debug.wasm",
+        profile: "debug",
+        harness: "tests/unity_metadata_bounds_runtime.mjs",
+        extra_arguments: &[],
+    },
+    RuntimeFixture {
         source: "tests/unity_nested_metadata.split",
         output: "unity_nested_metadata.wasm",
         profile: "release",

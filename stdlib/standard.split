@@ -1960,6 +1960,40 @@ private struct UnityClassNames {
         } else { process.read<u64>(slot)? as address })
     }
 
+    private fn requiredPointer(base: address, offset: u64) -> address! {
+        let value = self.pointer(base, offset)?
+        if value == 0 { throw "Unity metadata pointer is null" }
+        return value
+    }
+
+    // Profiles select either the assembly or image name. Resolve the image
+    // lazily for assembly-relative names, and never return a null image.
+    private fn namedImage(assembly: address, imageOffset: u64, assemblyName: u64?, imageName: u64?, requested: String) -> address! {
+        let image: address = 0
+        let candidate = match imageName {
+            Some(offset) => {
+                image = self.requiredPointer(assembly, imageOffset)?
+                self.text(image, offset)?
+            },
+            None => {
+                let offset = assemblyName else throw "Unity profile lacks an assembly name route"
+                self.text(assembly, offset)?
+            },
+        }
+        if candidate != requested { return 0 }
+        if image == 0 { image = self.requiredPointer(assembly, imageOffset)? }
+        return image
+    }
+
+    private fn matchesAny(class: address, names: [String], matches: (address, String, String) -> bool!) -> bool! {
+        let candidate = self.text(class, self.name)?
+        let selected = false
+        for name in names {
+            if (matches)(class, candidate, name)? { selected = true }
+        }
+        return selected
+    }
+
     private fn unboxedSize(class: address, offset: u64) -> u32! {
         let size = process.read<i32>(self.member(class, offset, 4)?)?
         let header = 2 * self.width
@@ -2074,6 +2108,42 @@ private struct UnityClassNames {
             }
         }
         return Ok(false)
+    }
+}
+
+/// A bounded IL2CPP class-table scan owned by one lookup.
+///
+/// # Example
+///
+/// Discover a managed class
+///
+/// ```splitscript
+/// image "Assembly-CSharp" { class Player {} }
+/// state Unity ["game.exe"] {}
+/// ```
+@representation(gcStruct, nullable)
+@valueUsage(localVariable)
+private struct UnityClassCursor {
+    /// Number of slots; zero requests a fresh header read.
+    private count: u32,
+    /// First class index belonging to the image.
+    private start: u32,
+    /// Runtime class pointer table.
+    private table: address,
+    /// Next slot within this image.
+    private index: u32,
+    /// Unique matching class so far.
+    private selected: address,
+    /// Whether a null slot may still initialize.
+    private pending: bool,
+    /// Whether the lookup has a final result.
+    private done: bool,
+    /// Structural rejection that waits for a new attachment.
+    private error: String?,
+
+    private fn reject(message: String) -> UnityClassCursor {
+        return UnityClassCursor { count: 0, start: 0, table: 0, index: 0,
+            selected: 0, pending: false, done: true, error: Some(message) }
     }
 }
 
@@ -9258,9 +9328,11 @@ private struct UnityModule {
     }
 
     private fn imageNamed(name: String) -> async UnityImage {
+        let memory = UnityClassNames { width: self.pointerSize as u64,
+            name: 0, namespace: 0, declaring: None }
         loop {
-            let begin = retry self.readNullablePointer(self.assemblies)
-            let end = retry self.readNullableMember(self.assemblies, self.pointerSize as u64)
+            let begin = retry memory.pointer(self.assemblies, 0)
+            let end = retry memory.pointer(self.assemblies, self.pointerSize as u64)
             if end < begin || ((end as u64) - (begin as u64)) % (self.pointerSize as u64) != 0 {
                 print("IL2CPP assembly vector is malformed")
                 await process.closed()
@@ -9272,20 +9344,11 @@ private struct UnityModule {
             }
             let index: u64 = 0
             while index < count {
-                let assembly = retry self.readNullableMember(begin, index * (self.pointerSize as u64))
+                let assembly = retry memory.pointer(begin, index * (self.pointerSize as u64))
                 if assembly != 0 {
-                    let image = retry self.readPointerMember(assembly, self.profile.assemblyImage)
-                    let namePointer = retry {
-                        match self.profile.imageAssemblyName {
-                            Some(offset) => self.readPointerMember(image, offset)?,
-                            None => {
-                                let offset = self.profile.assemblyName else throw "IL2CPP profile lacks an assembly name route"
-                                self.readPointerMember(assembly, offset)?
-                            },
-                        }
-                    }
-                    let candidate = retry process.readUtf8(namePointer, 256)
-                    if candidate == name { return UnityImage { address: image, module: self } }
+                    let image = retry memory.namedImage(assembly, self.profile.assemblyImage,
+                        self.profile.assemblyName, self.profile.imageAssemblyName, name)
+                    if image != 0 { return UnityImage { address: image, module: self } }
                 }
                 index += 1
                 if index % 64 == 0 { await nextTick() }
@@ -9294,44 +9357,77 @@ private struct UnityModule {
         }
     }
 
-    // A readable complete table distinguishes absence from pending metadata.
-    // Null entries are sparse slots and do not end the table.
-    private fn probeClasses(image: address, names: [String], matches: (address, String, String) -> bool!) -> async UnityClass? {
-        let count = retry self.readU32Member(image, self.profile.imageTypeCount)
-        if count > 1048576 {
-            print("IL2CPP type table exceeds the metadata work limit")
-            await process.closed()
+    // A failed batch leaves the caller's cursor unchanged. Only this small
+    // continuation crosses an async boundary, rather than every memory read.
+    private fn classStep(image: address, cursor: UnityClassCursor, names: [String],
+        matches: (address, String, String) -> bool!) -> UnityClassCursor! {
+        let memory = UnityClassNames { width: self.pointerSize as u64,
+            name: self.profile.className, namespace: 0, declaring: None }
+        let count = cursor.count
+        let start = cursor.start
+        let table = cursor.table
+        if count == 0 {
+            count = process.read<u32>(memory.member(image, self.profile.imageTypeCount, 4)?)?
+            if count > 1048576 { return cursor.reject("IL2CPP type table exceeds the metadata work limit") }
+            if count == 0 { return cursor }
+            let handle = if self.profile.imageTypeStart.indirect {
+                memory.requiredPointer(image, self.profile.imageTypeStart.offset)?
+            } else { memory.member(image, self.profile.imageTypeStart.offset, 4)? }
+            let signedStart = process.read<i32>(memory.member(handle, 0, 4)?)?
+            if signedStart < 0 { return cursor.reject("IL2CPP image has a negative type start") }
+            start = signedStart as u32
+            table = memory.requiredPointer(self.typeInfoTable, 0)?
         }
-        let startAddress = retry self.member(image, self.profile.imageTypeStart.offset)
-        let handle = if self.profile.imageTypeStart.indirect {
-            retry self.readPointer(startAddress)
-        } else { startAddress }
-        let start = retry process.read<i32>(handle)
-        if start < 0 {
-            print("IL2CPP image has a negative type start")
-            await process.closed()
-        }
-        let table = retry self.readPointer(self.typeInfoTable)
-        let selected: address = 0
-        let index: u32 = 0
-        while index < count {
+        let index = cursor.index
+        let selected = cursor.selected
+        let pending = cursor.pending
+        let work: u32 = 0
+        while index < count && work < 64 {
             let slot = ((start as u64) + (index as u64)) * (self.pointerSize as u64)
-            let class = retry self.readNullableMember(table, slot)
-            if class != 0 {
-                let candidate = retry self.readName(class, self.profile.className)
-                for name in names {
-                    if retry (matches)(class, candidate, name) {
-                        if selected != 0 && selected != class {
-                            return Some(UnityClass { address: 0, module: self })
-                        }
-                        selected = class
+            let class = memory.pointer(table, slot)?
+            if class == 0 { pending = true } else {
+                if memory.matchesAny(class, names, matches)? {
+                    if selected != 0 && selected != class {
+                        return UnityClassCursor { count, start, table, index,
+                            selected: 0, pending: false, done: true, error: None }
                     }
+                    selected = class
                 }
             }
             index += 1
-            if index % 64 == 0 { await nextTick() }
+            work += 1
         }
-        return if selected == 0 { None } else { Some(UnityClass { address: selected, module: self }) }
+        let done = index == count
+        // A populated table proves absence. An unmatched sparse table must be
+        // scanned again, including its header, while classes initialize.
+        if done && selected == 0 && pending {
+            count = 0
+            index = 0
+            pending = false
+            done = false
+        }
+        return UnityClassCursor { count, start, table, index, selected, pending, done, error: None }
+    }
+
+    private fn probeClasses(image: address, names: [String], matches: (address, String, String) -> bool!) -> async UnityClass? {
+        let cursor = UnityClassCursor { count: 0, start: 0, table: 0, index: 0,
+            selected: 0, pending: false, done: false, error: None }
+        loop {
+            cursor = retry self.classStep(image, cursor, names, matches)
+            match cursor.error {
+                Some(error) => { print(error); await process.closed() },
+                None => {},
+            }
+            if cursor.done {
+                // index below count denotes conflicting matches, represented
+                // by the existing zero-address class sentinel.
+                return if cursor.selected != 0 || cursor.index < cursor.count {
+                    Some(UnityClass { address: cursor.selected, module: self })
+                } else { None }
+            }
+            await nextTick()
+        }
+        return None
     }
 
     private fn fieldCount(class: address, memory: UnityClassNames) -> i32! {
@@ -13598,8 +13694,10 @@ private struct MonoModule {
         /// Managed assembly name without a file extension.
         name: String,
     ) -> async MonoImage {
+        let memory = UnityClassNames { width: self.pointerBytes(),
+            name: 0, namespace: 0, declaring: None }
         while true {
-            let link = match self.readPointer(self.assemblies) {
+            let link = match memory.requiredPointer(self.assemblies, 0) {
                 Ok(address) => address,
                 Err(_) => 0 as address,
             }
@@ -13609,30 +13707,11 @@ private struct MonoModule {
                     print("Mono assembly list is cyclic or exceeds the metadata work limit")
                     await process.closed()
                 }
-                let assembly = retry self.readPointer(link)
-                let next = retry self.readNullablePointer(link.add(self.pointerBytes()))
-                let namePointer = retry {
-                    match self.layout.imageAssemblyName {
-                        Some(offset) => {
-                            let image = self.readPointer(assembly.add(self.layout.assemblyImage))?
-                            self.readPointer(image.add(offset))?
-                        },
-                        None => {
-                            let offset = self.layout.assemblyName else throw "Mono profile lacks an assembly name route"
-                            self.readPointer(assembly.add(offset))?
-                        },
-                    }
-                }
-                let candidate = retry process.readUtf8(namePointer, 256)
-                if candidate == name {
-                    let image = retry self.readPointer(
-                        assembly.add(self.layout.assemblyImage),
-                    )
-                    return MonoImage {
-                        address: image,
-                        module: self,
-                    }
-                }
+                let assembly = retry memory.requiredPointer(link, 0)
+                let next = retry memory.pointer(link, self.pointerBytes())
+                let image = retry memory.namedImage(assembly, self.layout.assemblyImage,
+                    self.layout.assemblyName, self.layout.imageAssemblyName, name)
+                if image != 0 { return MonoImage { address: image, module: self } }
                 link = next
                 visited += 1
                 if visited % 64 == 0 { await nextTick() }
@@ -13647,23 +13726,23 @@ private struct MonoModule {
 
     // Owns the raw-address traversal exposed through MonoImage.class().
     private fn classAnyInImage(image: address, names: [String], matches: (address, String, String) -> bool!) -> async MonoClass {
+        let memory = UnityClassNames { width: self.pointerBytes(),
+            name: self.layout.className, namespace: self.layout.classNamespace, declaring: self.layout.classDeclaring }
         while true {
             let selectedClass: address = 0
             let ambiguous = false
-            let cache = image.add(self.layout.imageClassCache)
-            let bucketCount = retry process.read<i32>(cache.add(self.layout.hashSize))
+            let cache = retry memory.member(image, self.layout.imageClassCache, 1)
+            let bucketCount = retry process.read<i32>(memory.member(cache, self.layout.hashSize, 4)?)
             if bucketCount < 0 || bucketCount > 1048576 {
                 print("Mono class cache count is invalid or exceeds the metadata work limit")
                 await process.closed()
             }
             if bucketCount > 0 {
-                let table = retry self.readPointer(cache.add(self.layout.hashTable))
+                let table = retry memory.requiredPointer(cache, self.layout.hashTable)
                 let bucket: i32 = 0
                 let visited: u32 = 0
                 while bucket < bucketCount {
-                    let classAddress = retry self.readNullablePointer(
-                        table.add((bucket as u64) * self.pointerBytes()),
-                    )
+                    let classAddress = retry memory.pointer(table, (bucket as u64) * self.pointerBytes())
                     let slow = classAddress
                     let steps: u32 = 0
                     while classAddress != 0 {
@@ -13671,27 +13750,14 @@ private struct MonoModule {
                             print("Mono class cache exceeds the metadata work limit")
                             await process.closed()
                         }
-                        let namePointer = retry self.readPointer(
-                            classAddress.add(self.layout.className),
-                        )
-                        let candidateName = retry process.readUtf8(namePointer, 256)
-                        let candidateIndex: u32 = 0
-                        while candidateIndex < names.length() {
-                            let name = names[candidateIndex]
-                            if retry (matches)(classAddress, candidateName, name) {
-                                if selectedClass != 0 && selectedClass != classAddress {
-                                    ambiguous = true
-                                }
-                                selectedClass = classAddress
-                            }
-                            candidateIndex += 1
+                        if retry memory.matchesAny(classAddress, names, matches) {
+                            if selectedClass != 0 && selectedClass != classAddress { ambiguous = true }
+                            selectedClass = classAddress
                         }
-                        classAddress = retry self.readNullablePointer(
-                            classAddress.add(self.layout.classNextCache),
-                        )
+                        classAddress = retry memory.pointer(classAddress, self.layout.classNextCache)
                         steps += 1
                         if steps % 2 == 0 {
-                            slow = retry self.readNullablePointer(slow.add(self.layout.classNextCache))
+                            slow = retry memory.pointer(slow, self.layout.classNextCache)
                         }
                         if classAddress != 0 && classAddress == slow {
                             print("Mono class cache contains a cycle")
@@ -13703,6 +13769,7 @@ private struct MonoModule {
                     bucket += 1
                     if bucket % 64 == 0 { await nextTick() }
                 }
+                if visited == 0 { await nextTick(); continue }
                 if ambiguous {
                     print(`multiple Unity classes match metadata names {names}`)
                     await process.closed()

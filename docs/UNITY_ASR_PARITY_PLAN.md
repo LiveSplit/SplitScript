@@ -1,5 +1,9 @@
 # Unity support: ASR research and SplitScript implementation plan
 
+Current finish scope and execution order: [Unity finish audit](UNITY_FINISH.md).
+That document supersedes the sequencing and stale completion checklist below;
+the historical research and implementation evidence remain useful.
+
 Status: core recursive managed values and snapshots, measured IL2CPP profiles, and Windows/Linux/macOS Mono automatic attachment are implemented. Explicit Windows/Linux/macOS Mono family selectors are also implemented. Nested materialization error paths, recursive collection contracts, and runtime class checks for snapshots and live references are implemented. Remaining work includes shared metadata traversal/scheduling, the final parity and coverage audit, native platform validation, and final size acceptance. See [implementation progress](#implementation-progress).
 
 ## Objective and baseline
@@ -8,7 +12,7 @@ Bring the improvements from ero-qt's ASR Unity series into SplitScript's schema-
 
 The explicit-profile Lunistice Release artifact must return **below 30,000 bytes**
 before this work is complete, aiming for its earlier 23–28 KB range. The current
-roughly 57 KB artifact is a temporary regression, not an accepted final budget.
+roughly 49 KB artifact is a temporary regression, not an accepted final budget.
 Focus the reduction on the Unity discovery code introduced by this migration:
 specialize known profile facts and avoid unnecessarily large generated async
 walks. Preserve the actual script, metadata correctness, and behavior checks;
