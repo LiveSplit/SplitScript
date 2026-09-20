@@ -49,6 +49,18 @@ fn mono_static_field_paths_preserve_declaring_owners() {
 }
 
 #[test]
+fn il2cpp_plain_storage_profiles() {
+    run_layout_fixtures(
+        "plain-storage",
+        "tests/il2cpp_plain_storage_runtime.mjs",
+        [(
+            "il2cpp",
+            include_str!("../tests/il2cpp_plain_storage.split"),
+        )],
+    );
+}
+
+#[test]
 fn il2cpp_generic_storage_profiles() {
     run_layout_fixtures(
         "generic-storage",

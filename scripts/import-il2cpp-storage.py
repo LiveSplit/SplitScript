@@ -46,6 +46,12 @@ def measure(manifest_path, cache, tool):
         typ = layout["Il2CppType"]["fields"]
         generic = layout["Il2CppGenericClass"]["fields"]
         expected = profile["offsets"]
+        width = profile["width"] // 8
+        if cls["byval_arg"].get("type") != "Il2CppType" or cls["byval_arg"]["offset"] != expected["class.namespace"] + width:
+            raise ValueError(f"{profile['name']}: embedded type relationship mismatch")
+        definition = cls.get("typeDefinition", cls.get("typeMetadataHandle"))
+        if definition is None or definition["offset"] != expected["class.parent"] + 2 * width:
+            raise ValueError(f"{profile['name']}: class definition relationship mismatch")
         for name, member in [("name", "name"), ("namespace", "namespaze"),
                              ("declaring_type", "declaringType"), ("parent", "parent"),
                              ("fields", "fields"), ("static_fields", "static_fields"),
@@ -88,7 +94,7 @@ def measure(manifest_path, cache, tool):
             raise ValueError("Checked-in IL2CPP storage facts differ from measurements")
     else:
         output.write_text(text, encoding="utf-8", newline="\n")
-    print("Verified 20 PDBs, 220 ASR layout facts, and all 22 value-type bits")
+    print("Verified 20 PDBs, 220 ASR layout facts, 40 class member relationships, and all 22 value-type bits")
 
 
 if __name__ == "__main__":

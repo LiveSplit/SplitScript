@@ -1,3 +1,4 @@
+import {writeIl2cppPlainType} from './support/managed_type_fixture.mjs';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { SplitScriptHost } from './support/splitscript_host.mjs';
@@ -7,7 +8,7 @@ import { createIl2cppPeFixture } from './support/il2cpp_pe_fixture.mjs';
 const [wasm, backend] = process.argv.slice(2);
 const mono = backend === 'mono';
 const profiles = JSON.parse(await readFile(new URL('./fixtures/mono-pe-profiles.json', import.meta.url)));
-const modes = ['derived', 'direct', 'renamed', 'reversed members', 'signed hash', 'entry boundary',
+const modes = ['ordinary entry class', 'derived', 'direct', 'renamed', 'reversed members', 'signed hash', 'entry boundary',
     'wrong namespace', 'wrong name', 'cycle', 'missing buckets', 'missing backing', 'missing count',
     'missing member', 'duplicate field', 'duplicate member', 'outer overlap', 'inner overlap',
     'negative offset', 'outer header', 'inner header', 'negative size', 'zero stride', 'oversized stride',
@@ -25,7 +26,7 @@ const monoLayouts = {
 };
 for (const family of mono ? Object.keys(monoLayouts) : ['il2cpp']) for (const width of [32, 64]) for (const dictionary of [true, false]) for (const parallel of [false, true]) for (const mode of modes) {
     if (mode.startsWith('payload ') && !parallel) continue;
-    if (mono && ['plain element type', 'array element type', 'null generic data', 'missing cached class'].includes(mode)) continue;
+    if (mono && ['ordinary entry class', 'plain element type', 'array element type', 'null generic data', 'missing cached class'].includes(mode)) continue;
     if (family === 'V1Cattrs' && ['unreadable generic', 'null definition'].includes(mode)) continue;
     const wide = width === 64, bytes = width / 8, header = 2 * bytes;
     const fixture = mono ? createMonoPeFixture(profiles.builds.find(p => p.width === width && p.version === family))
@@ -139,6 +140,7 @@ for (const family of mono ? Object.keys(monoLayouts) : ['il2cpp']) for (const wi
     number(0x6000an, 1, family === 'V1Cattrs' ? 1 : family === 'V3' ? 3 : 2);
     number(0x60009n, 1, ['missing kind', 'missing data', 'missing field type', 'missing instance size', 'missing cached class'].indexOf(mode) + 1);
     if (mode === 'null type data') ptr(vectorType, 0);
+    if (mode === 'ordinary entry class') writeIl2cppPlainType(fixture, {ptr, number}, elementType, entry, stride);
     if (mode === 'plain element type') number(elementType + BigInt(typeKindOffset), 1, 0x11);
     if (mode === 'array element type') number(elementType + BigInt(typeKindOffset), 1, 0x1d);
     if (mode === 'null generic data') ptr(elementType, 0);
@@ -168,7 +170,7 @@ for (const family of mono ? Object.keys(monoLayouts) : ['il2cpp']) for (const wi
     host.addProcess('game.exe', fixture.process); host.start();
     const label = `${family}/${width}/${dictionary ? 'map' : 'set'}/${parallel ? 'parallel' : 'entries'}/${mode}`;
     host.updateUntil(() => host.variables.has('result'), label);
-    const success = ['derived', 'direct', 'renamed', 'reversed members', 'signed hash', 'entry boundary'].includes(mode);
+    const success = ['ordinary entry class', 'derived', 'direct', 'renamed', 'reversed members', 'signed hash', 'entry boundary'].includes(mode);
     assert.equal(host.variables.get('result') === 'ok', success, `${label}: ${host.variables.get('result')}`);
     if (success) {
         assert.equal(BigInt(host.variables.get('class')), mode === 'direct' ? owner : root, label);

@@ -26,7 +26,6 @@ const monoLayouts = {
 };
 for (const backend of [...Object.keys(monoLayouts), 'il2cpp']) for (const width of [32, 64]) for (const mode of modes) {
     const mono = backend !== 'il2cpp';
-    if (!mono && mode === 'wrong inline schema') continue;
     const wide = width === 64, bytes = width / 8;
     const fixture = mono ? createMonoPeFixture(profiles.builds.find(p => p.width === width && p.version === backend))
         : createIl2cppPeFixture({width, version: [2022, 3, 0, 37029]});
@@ -58,7 +57,7 @@ for (const backend of [...Object.keys(monoLayouts), 'il2cpp']) for (const width 
                 ptr(field + BigInt(mono ? 0 : bytes), type);
                 number(type + BigInt(bytes + 2), 1, text === '_items' ? 0x1d : 0x08);
                 if (text === '_items') {
-                    const elementType = writeVectorElementType({mono, width, family: backend, ptr, number}, type, typeBase + 0x1000n, elementKind);
+                    const elementType = writeVectorElementType({mono, width, family: backend, ptr, number, fixture}, type, typeBase + 0x1000n, elementKind);
                     if (elementKind === 0x11 && mode.startsWith('generic ')) writeGenericType({mono, width, ptr, number, cachedClass: typeBase + 0x1000n}, elementType, true, 8);
                 }
             }
@@ -253,7 +252,7 @@ for (const backend of [...Object.keys(monoLayouts), 'il2cpp']) for (const width 
     }
     if (mode.startsWith('replacement ')) {
         assert.match(host.variables.get('result'), /invalid backing or count field types/, label);
-        if (mode === 'replacement items type') writeVectorElementType({mono, width, family: backend, ptr, number}, 0x55200n, 0x56000n, 0x1d);
+        if (mode === 'replacement items type') writeVectorElementType({mono, width, family: backend, ptr, number, fixture}, 0x55200n, 0x56000n, 0x1d);
         else number(0x55200n + BigInt(bytes + 2), 1, 0x08);
         host.updateUntil(() => host.variables.get('result') === 'ok' && normalize(host.variables.get('rows')) === '[]', label);
     }

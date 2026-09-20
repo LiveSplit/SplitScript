@@ -8906,6 +8906,7 @@ private struct UnityModule {
             fields: self.profile.classFields, fieldName: self.profile.fieldName,
             fieldValue: self.profile.fieldValue, stride: self.profile.fieldStride }
         let types = UnityCollectionTypes { names, charge, mono: false,
+            plainClass: (type, data) => self.collectionTypeClass(type, data, charge),
             genericSize: (type, data, size) => names.il2cppGenericSize(type, data, size, self.profile.genericCachedClass, self.profile.classValueTypeBit, charge),
             data: self.profile.typeData, kindOffset: self.profile.typeKind,
             cached: self.profile.genericCachedClass,
@@ -8930,10 +8931,19 @@ private struct UnityModule {
             fields: self.profile.classFields, fieldName: self.profile.fieldName,
             fieldValue: self.profile.fieldValue, stride: self.profile.fieldStride }
         let types = UnityCollectionTypes { names, charge, mono: false,
+            plainClass: (type, data) => self.collectionTypeClass(type, data, charge),
             genericSize: (type, data, size) => names.il2cppGenericSize(type, data, size, self.profile.genericCachedClass, self.profile.classValueTypeBit, charge),
             kindOffset: self.profile.typeKind, fieldType: self.profile.fieldType,
             data: self.profile.typeData, cached: None, instanceSize: self.profile.classInstanceSize }
         return fields.listLayout(class, types, current => self.fieldCount(current, names))
+    }
+
+    private fn collectionTypeClass(typeAddress: address, data: u64?, charge: () -> bool) -> address! {
+        let table = UnityIl2CppTypeTable {
+            names: UnityClassNames { width: self.pointerSize as u64,
+                name: self.profile.className, namespace: self.profile.classNamespace, declaring: None },
+            profile: self.profile, assemblies: self.assemblies, table: self.typeInfoTable, charge }
+        return table.resolve(typeAddress, data)
     }
 
     // Checked target address arithmetic is shared by the metadata readers.
@@ -13122,6 +13132,7 @@ private struct MonoModule {
             fields: self.layout.classFields, fieldName: self.layout.fieldName,
             fieldValue: self.layout.fieldValue, stride: self.layout.fieldStride }
         let types = UnityCollectionTypes { names, charge, mono: true,
+            plainClass: (type, data) => names.pointer(type, data else throw "Unity profile lacks type data metadata"),
             genericSize: (type, data, size) => names.monoGenericSize(type, data, size, charge),
             data: self.layout.typeData, kindOffset: self.layout.typeKind,
             cached: None,
@@ -13146,6 +13157,7 @@ private struct MonoModule {
             fields: self.layout.classFields, fieldName: self.layout.fieldName,
             fieldValue: self.layout.fieldValue, stride: self.layout.fieldStride }
         let types = UnityCollectionTypes { names, charge, mono: true,
+            plainClass: (type, data) => names.pointer(type, data else throw "Unity profile lacks type data metadata"),
             genericSize: (type, data, size) => names.monoGenericSize(type, data, size, charge),
             kindOffset: self.layout.typeKind, fieldType: self.layout.fieldType,
             data: self.layout.typeData, cached: None, instanceSize: self.layout.classInstanceSize }
@@ -15037,6 +15049,181 @@ struct CatalogSuspensionProbe {
     }
 }
 
+/// Checked resolution of ordinary IL2CPP types through the definition table.
+///
+/// # Example
+///
+/// Select a runtime for managed schemas
+///
+/// ```splitscript
+/// let runtime = await Unity.il2cpp(Il2CppProfile.unity2022_3_0f1X64())
+/// ```
+@representation(gcStruct, nullable)
+@valueUsage(localVariable)
+private struct UnityIl2CppTypeTable {
+    /// Target-width checked memory operations.
+    private names: UnityClassNames,
+    /// Selected metadata layout.
+    private profile: Il2CppProfile,
+    /// Address of the loaded assembly vector.
+    private assemblies: address,
+    /// Address of the type definition class-table pointer.
+    private table: address,
+    /// Shared root work budget.
+    private charge: () -> bool,
+
+    private fn work() -> bool! {
+        if !(self.charge)() { throw "managed read work limit exceeded" }
+        return true
+    }
+
+    private fn pointer(base: address, offset: u64) -> address! {
+        self.work()?
+        if base == 0 { throw "IL2CPP type metadata pointer is null" }
+        return self.names.pointer(base, offset)
+    }
+
+    private fn integer(base: address, offset: u64) -> i32! {
+        self.work()?
+        if base == 0 { throw "IL2CPP type metadata pointer is null" }
+        return process.read<i32>(self.names.member(base, offset, 4)?)
+    }
+
+    private fn kind(typeAddress: address) -> u8! {
+        self.work()?
+        if typeAddress == 0 { throw "IL2CPP type metadata pointer is null" }
+        let offset = self.profile.typeKind else throw "Unity profile lacks type kind metadata"
+        return process.read<u8>(self.names.member(typeAddress, offset, 1)?)
+    }
+
+    // Exact source/PDB layouts place byval_arg after namespaze, and the
+    // definition pointer two pointer words after parent, in every supported ABI.
+    private fn byval(class: address) -> address! {
+        let namespace = self.names.member(class, self.profile.classNamespace, self.names.width)?
+        return self.names.member(namespace, self.names.width, 2 * self.names.width)
+    }
+
+    private fn definition(class: address) -> address! {
+        let parent = self.names.member(class, self.profile.classParent, self.names.width)?
+        return self.pointer(parent, 2 * self.names.width)
+    }
+
+    private fn imageStart(image: address) -> u64! {
+        let location = self.names.member(image, self.profile.imageTypeStart.offset, 4)?
+        let handle = if self.profile.imageTypeStart.indirect { self.pointer(location, 0)? } else { location }
+        let start = self.integer(handle, 0)?
+        if start < 0 { throw "IL2CPP image has a negative type start" }
+        return start as u64
+    }
+
+    private fn imageCount(image: address, start: u64) -> u64! {
+        let count = self.integer(image, self.profile.imageTypeCount)?
+        if count < 0 || count > 1048576 || start + (count as u64) > 0x80000000 {
+            throw "IL2CPP image type range is invalid"
+        }
+        return count as u64
+    }
+
+    private fn checkedClass(class: address, wanted: address, kind: u8, data: u64, index: u64, handles: bool) -> address! {
+        if class == 0 { throw "IL2CPP value type class is not initialized" }
+        let byval = self.byval(class)?
+        if self.kind(byval)? != kind { throw "IL2CPP type class has an incompatible kind" }
+        let stored = self.pointer(byval, data)?
+        let definition = self.definition(class)?
+        if definition == 0 || (if handles { stored != wanted || definition != wanted }
+            else { (stored as u32) != (index as u32) || stored == definition }) {
+            throw "IL2CPP type class does not match its definition"
+        }
+        return class
+    }
+
+    // Validate image membership before indexing, including when a definition
+    // handle supplied an index via two independently observed table entries.
+    private fn atIndex(begin: address, count: u64, table: address, index: u64, wanted: address, kind: u8, data: u64, handles: bool) -> address! {
+        let assemblyIndex: u64 = 0
+        while assemblyIndex < count {
+            let assembly = self.pointer(begin, assemblyIndex * self.names.width)?
+            if assembly != 0 {
+                let image = self.pointer(assembly, self.profile.assemblyImage)?
+                let start = self.imageStart(image)?
+                let length = self.imageCount(image, start)?
+                if index >= start && index - start < length {
+                    return self.checkedClass(self.pointer(table, index * self.names.width)?, wanted, kind, data, index, handles)
+                }
+            }
+            assemblyIndex += 1
+        }
+        throw "IL2CPP type index is outside the loaded images"
+    }
+
+    private fn resolve(typeAddress: address, dataOffset: u64?) -> address! {
+        let data = dataOffset else throw "Unity profile lacks type data metadata"
+        let kind = self.kind(typeAddress)?
+        if kind != 0x11 && kind != 0x12 { throw "IL2CPP type is not an ordinary class or value" }
+        let wanted = self.pointer(typeAddress, data)?
+        let table = self.pointer(self.table, 0)?
+        if table == 0 { throw "IL2CPP type table is not initialized" }
+        let begin = self.pointer(self.assemblies, 0)?
+        let end = self.pointer(self.assemblies, self.names.width)?
+        if end < begin || ((end as u64) - (begin as u64)) % self.names.width != 0 {
+            throw "IL2CPP assembly vector is malformed"
+        }
+        let count = ((end as u64) - (begin as u64)) / self.names.width
+        if count > 65536 { throw "IL2CPP assembly vector exceeds the metadata work limit" }
+        let anchor: address = 0
+        let anchorIndex: u64 = 0
+        let assemblyIndex: u64 = 0
+        while assemblyIndex < count {
+            let assembly = self.pointer(begin, assemblyIndex * self.names.width)?
+            if assembly != 0 {
+                let image = self.pointer(assembly, self.profile.assemblyImage)?
+                let start = self.imageStart(image)?
+                let length = self.imageCount(image, start)?
+                let index = start
+                while index - start < length {
+                    let class = self.pointer(table, index * self.names.width)?
+                    if class != 0 {
+                        let byval = self.byval(class)?
+                        let candidateKind = self.kind(byval)?
+                        if candidateKind == 0x11 || candidateKind == 0x12 {
+                            let stored = self.pointer(byval, data)?
+                            let definition = self.definition(class)?
+                            if definition != 0 && stored == definition {
+                                if stored == wanted { return self.checkedClass(class, wanted, kind, data, index, true) }
+                                // The metadata definitions form one contiguous table. Two
+                                // entries establish its stride without hard-coding a version.
+                                // The final class must independently carry the exact handle.
+                                if anchor != 0 && index > anchorIndex && stored > anchor {
+                                    let distance = (stored as u64) - (anchor as u64)
+                                    let indices = index - anchorIndex
+                                    if distance % indices == 0 {
+                                        let stride = distance / indices
+                                        if stride > 0 && stride <= 4096 && anchorIndex <= (anchor as u64) / stride {
+                                            let base = (anchor as u64) - anchorIndex * stride
+                                            if (wanted as u64) >= base && ((wanted as u64) - base) % stride == 0 {
+                                                let target = ((wanted as u64) - base) / stride
+                                                if target < 0x80000000 { return self.atIndex(begin, count, table, target, wanted, kind, data, true) }
+                                            }
+                                        }
+                                    }
+                                }
+                                if anchor == 0 { anchor = stored; anchorIndex = index }
+                            } else if definition != 0 && (stored as u32) == (index as u32) {
+                                let target = (wanted as u32) as u64
+                                if target >= 0x80000000 { throw "IL2CPP type definition index is negative" }
+                                return self.atIndex(begin, count, table, target, wanted, kind, data, false)
+                            }
+                        }
+                    }
+                    index += 1
+                }
+            }
+            assemblyIndex += 1
+        }
+        throw "IL2CPP type class is not initialized"
+    }
+}
+
 /// Checked type facts used only when discovering managed collection storage.
 ///
 /// # Example
@@ -15050,6 +15237,8 @@ struct CatalogSuspensionProbe {
 @representation(gcStruct, nullable)
 @valueUsage(localVariable)
 private struct UnityCollectionTypes {
+    /// Backend resolver for ordinary class and value-type metadata.
+    private plainClass: (address, u64?) -> address!,
     /// Backend generic storage resolver: zero is a reference, positive is an
     /// exact unboxed size, and negative means the metadata proof is unavailable.
     private genericSize: (address, u64?, u64?) -> i32!,
@@ -15090,8 +15279,8 @@ private struct UnityCollectionTypes {
         return typeAddress
     }
 
-    // An array's inflated element class is the metadata owner of entry fields.
-    // Plain IL2CPP class/value-type indices are deliberately not pointer-cast.
+    // The array element's runtime class owns its entry fields. Ordinary IL2CPP
+    // types resolve through the definition table; generic types use the cache.
     private fn arrayElementClass(typeAddress: address) -> address! {
         self.chargeWork()?
         if self.kind(typeAddress)? != 0x1d { throw "Unity collection backing field is not a vector" }
@@ -15099,7 +15288,9 @@ private struct UnityCollectionTypes {
         let data = self.names.pointer(typeAddress, dataOffset)?
         if data == 0 { throw "Unity collection array element metadata is null" }
         if self.mono { return data }
-        if self.kind(data)? != 0x15 { throw "Unity collection entry type is not an inflated generic instance" }
+        let kind = self.kind(data)?
+        if kind == 0x11 || kind == 0x12 { return (self.plainClass)(data, self.data) }
+        if kind != 0x15 { throw "Unity collection entry type is not an inflated generic instance" }
         let generic = self.names.pointer(data, dataOffset)?
         if generic == 0 { throw "Unity collection generic descriptor is null" }
         let cached = self.cached else throw "Unity profile lacks cached generic class metadata"
@@ -15141,15 +15332,14 @@ private struct UnityCollectionTypes {
         }
         return UnityCollectionMember { offset, typeAddress, kind,
             minimumWidth: self.minimumWidth(typeAddress, kind)?,
-            exactWidth: kind != 0x15 && (kind != 0x11 || self.mono) }
+            exactWidth: kind != 0x15 }
     }
 
-    // Mono's non-generic value types name their class directly. IL2CPP value
-    // types and generic instances still need further class/argument metadata.
+    // Ordinary values need the actual runtime class, not a metadata pointer.
     private fn minimumWidth(typeAddress: address, kind: u8) -> u32! {
-        if self.mono && kind == 0x11 {
-            let offset = self.data else throw "Unity profile lacks type data metadata"
-            let class = self.names.pointer(typeAddress, offset)?
+        if kind == 0x11 {
+            self.chargeWork()?
+            let class = (self.plainClass)(typeAddress, self.data)?
             if class == 0 { throw "Unity collection value type class is null" }
             return self.stride(class)
         }

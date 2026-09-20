@@ -2074,6 +2074,59 @@ identity, IL2CPP plain value-type resolution, recursive raw-array contracts,
 attachment metadata scheduling, native platform validation, and final size
 acceptance remain unfinished.
 
+## IL2CPP ordinary value storage (2026-09-20)
+
+Ordinary IL2CPP value types now resolve to runtime classes before List/Map/Set
+storage validation. Their instance size determines the exact unboxed width, so
+short and long inline schemas fail before reading collection payloads. Array
+entry metadata can also name an ordinary class, including non-generic Link
+records used by parallel collection layouts.
+
+The resolver uses the existing loaded-image ranges and type-definition class
+table. Older types contain signed definition indices; unused upper union bytes
+are ignored. Modern types contain definition handles, as shown by
+[GlobalMetadata::GetTypeInfoFromHandle](https://github.com/MlgmXyysd/libil2cpp/blob/master/libil2cpp/Unity_2022.3/2022.3.0f1/vm/GlobalMetadata.cpp).
+It does not treat either representation as a runtime class address. Two observed
+class-table entries can establish the contiguous definition table's stride and
+base. The computed index must belong to a loaded image, and the resulting class
+must independently carry the requested handle and storage kind. This avoids
+walking every preceding class in large sparse tables. With insufficient anchors,
+the scan remains bounded by the root work budget; resumable attachment traversal
+is still an outstanding requirement.
+
+The embedded by-value type follows the namespace pointer; the class definition
+member follows the parent pointer by two pointer words. All twenty retained PDB
+layout measurements and the exact 2021.3.11f1 header confirm these relationships.
+The PDB importer now checks both relationships when replaying a measurement. No
+new profile fields, version guess, signature scan, or process write is needed.
+Every resolver memory read charges the root budget and checks target address
+spans. Null, malformed, unavailable, and incompatible metadata remains a read
+failure and is retryable without replacing the previous snapshot.
+
+The private probe passes 462 scenarios per build profile across all 22 named
+profiles, including cross-image resolution, index zero, noisy union padding,
+sparse distant targets, incorrect kind/definition, pointer overflow, budget
+exhaustion, and repair. Private collection adapters pass in Debug and Release;
+IL2CPP keyed tests now include ordinary entry classes and all inline failure
+cases. The public inline schema checks formerly skipped for IL2CPP are enabled.
+Lists pass 430 scenarios per artifact; inline Maps and Sets each pass 144.
+The broader 28 public collection artifacts, compiler backend-retention checks,
+and 561-page documentation check are included in this slice's verification.
+
+All 32 non-collection size fixtures retain their previous module/section sizes,
+function/type counts, body-size multisets, and allocation accounting. Explicit
+Lunistice stays at 58,187 bytes and automatic selection at 182,552; base/DLC
+fixtures pass. The IL2CPP List/Map/Set fixtures grow by 3,656/4,023/3,917 bytes for
+the checked resolver, callback, and errors. Mono collection fixtures add
+78/248/193 bytes from the shared adapter callback; they retain no IL2CPP resolver.
+All scratch, read-capacity, and memory-page accounting is unchanged. Further
+schema-specific elimination within collection readers and the final Lunistice
+size target remain open; this is not final size acceptance.
+
+Full generic argument/type identity, recursive raw-array contracts, attachment
+metadata scheduling, native platform validation, and final size acceptance still
+remain before the overall goal is complete.
+
 ## Source map for implementation
 
 Upstream links below are pinned to the reviewed tip; the PR table provides the historical changes.

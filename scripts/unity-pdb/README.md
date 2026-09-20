@@ -27,7 +27,9 @@ Omit `--check` to update `tests/fixtures/il2cpp-storage-profiles.json`, then run
 ordinary IL2CPP profile importer. The storage importer verifies each PDB's SHA-256
 against the manifest and checks the existing ASR class, generic, and type offsets
 before deriving any bit. It also rejects disagreements with previously audited
-bits. No ASR checkout is changed.
+bits and checks the relative locations used to resolve ordinary type classes
+(`byval_arg` after `namespaze`, and the definition member two pointer words after
+`parent`). No ASR checkout is changed.
 
 For inspection of one PDB:
 

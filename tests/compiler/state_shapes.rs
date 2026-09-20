@@ -1938,12 +1938,19 @@ fn managed_error_paths_follow_observed_payloads() {
 }
 
 #[test]
-fn generic_storage_resolver_follows_the_selected_backend() {
+fn collection_storage_resolvers_follow_the_selected_backend() {
     for (selector, mono) in [
         ("Unity.mono(MonoVersion.V2)", true),
         ("Unity.il2cpp(Il2CppProfile.unity2022_3_0f1X64())", false),
     ] {
-        for collection in ["List<String>", "Map<String, String>", "Set<String>"] {
+        for collection in [
+            "i32",
+            "String",
+            "List<String>",
+            "Map<String, String>",
+            "Set<String>",
+        ] {
+            let has_collection = collection.contains('<');
             let source = format!(
                 r#"
                 image "Assembly-CSharp" {{ class Probe {{ static {collection} values; }} }}
@@ -1966,7 +1973,7 @@ fn generic_storage_resolver_follows_the_selected_backend() {
                     .functions
                     .iter()
                     .any(|(_, name)| name.contains("MonoGenericSize")),
-                mono,
+                mono && has_collection,
                 "{selector}: {collection}"
             );
             assert_eq!(
@@ -1974,7 +1981,15 @@ fn generic_storage_resolver_follows_the_selected_backend() {
                     .functions
                     .iter()
                     .any(|(_, name)| name.contains("Il2CppGenericSize")),
-                !mono,
+                !mono && has_collection,
+                "{selector}: {collection}"
+            );
+            assert_eq!(
+                report
+                    .functions
+                    .iter()
+                    .any(|(_, name)| name.contains("Il2CppTypeTable")),
+                !mono && has_collection,
                 "{selector}: {collection}"
             );
         }

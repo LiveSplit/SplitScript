@@ -1,3 +1,4 @@
+import {writeIl2cppPlainType} from './managed_type_fixture.mjs';
 import { readFile } from 'node:fs/promises';
 import { createMonoPeFixture } from './mono_pe_fixture.mjs';
 import { createIl2cppPeFixture } from './il2cpp_pe_fixture.mjs';
@@ -48,6 +49,7 @@ export function createKeyedCollectionFixture({family='V2', width=64, dictionary=
         ptr(valueType,0x3a000n+base);
         number(0x3a000n+base+BigInt(wide?0x1c:0x10),4,header+16);
     }
+    if (!mono && inline) writeIl2cppPlainType(fixture, {ptr, number}, valueType, valueClass, 16);
     const keyBytes=inline?1:bytes, valueBytes=inline?16:bytes;
     const names=parallel ? dictionary?['table','linkSlots','keySlots','valueSlots','touchedSlots','count']:['table','links','slots','touched','count']
         : dictionary?['_buckets','_entries','_count','_freeCount']:['_buckets','_slots','_count','_lastIndex'];

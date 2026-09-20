@@ -21,12 +21,12 @@ for(const family of backend==='mono'?['V1Cattrs','V2','V3']:['il2cpp'])for(const
     if(parallel&&['unreadable next','value overrun','short reference'].includes(mode))continue;
     if((parallel||!dictionary)&&mode==='key overrun')continue;
     if(!dictionary&&mode==='key kind mismatch')continue;
-    if(mode.startsWith('inline ')&&family==='il2cpp')continue;
     const genericValue=['generic inline','generic value as reference','generic wrong width'].includes(mode);
     const f=createKeyedCollectionFixture({family,width,dictionary,parallel,reversed:mode==='reversed',renamed:mode==='renamed',inline:mode.startsWith('inline')||genericValue});
     const {memory,number,ptr,object,vtable,root,outer,stride,hash,next,key,value,bytes}=f;
     const arrays=[0x80000n,0x120000n,0x180000n], limit=(1n<<BigInt(width))-1n;
-    const valueClassSize=0x3a000n+BigInt(width===64?0x1c:0x10);
+    const originalTypeData = Array.from({length:bytes},(_,i)=>BigInt(memory.get(f.valueType+BigInt(i))??0)<<BigInt(i*8)).reduce((a,b)=>a|b,0n);
+    const valueClassSize=0x3a000n+BigInt(family==='il2cpp'?(width===64?0xf8:0x80):(width===64?0x1c:0x10));
     if(mode==='inline wrong width')number(valueClassSize,4,2*bytes+8);
     if(mode==='inline null class')ptr(f.valueType,0);
     if(mode==='inline unreadable class')memory.delete(valueClassSize);
@@ -157,7 +157,7 @@ for(const family of backend==='mono'?['V1Cattrs','V2','V3']:['il2cpp'])for(const
     if(mode.startsWith('inline ')) {
         assert.equal(reads,0,`${label}: invalid value type read payload`);
         if(mode==='inline wrong width')assert.match(host.variables.get('result'),/width is incompatible/,label);
-        ptr(f.valueType,0x3a000n);number(valueClassSize,4,2*bytes+16);
+        ptr(f.valueType,originalTypeData);number(valueClassSize,4,2*bytes+16);
         host.updateUntil(()=>host.variables.get('result')==='ok',`${label}: recover metadata`);
     }
     maximumReads=Math.max(maximumReads,reads);cases++;
