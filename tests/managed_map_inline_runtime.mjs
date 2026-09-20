@@ -1,7 +1,7 @@
 import {writeGenericType} from './support/managed_type_fixture.mjs';
 import assert from 'node:assert/strict';
 import { SplitScriptHost } from './support/splitscript_host.mjs';
-import { createKeyedCollectionFixture } from './support/keyed_collection_fixture.mjs';
+import { createKeyedCollectionFixture, writeKeyedBackingArray } from './support/keyed_collection_fixture.mjs';
 const [wasm] = process.argv.slice(2);
 const layouts = {
     V1Cattrs: {32: [0x78, 0x68], 64: [0xb0, 0x9c]},
@@ -31,7 +31,7 @@ for (const parallel of [false, true]) for (const mode of ['generic', 'generic sh
     number(object + BigInt(outer.at(-1)[1]), 4, parallel ? 2 : 0);
     const arrays = [0x80000n, 0x120000n, 0x180000n];
     outer.slice(1, parallel ? -2 : 2).forEach((field, i) => {
-        ptr(object + BigInt(field[1]), arrays[i]);
+        ptr(object + BigInt(field[1]), arrays[i]); writeKeyedBackingArray(f, arrays[i], i);
         ptr(arrays[i] + BigInt(2 * bytes), 0); ptr(arrays[i] + BigInt(3 * bytes), 2);
     });
     const keySlot = i => parallel ? arrays[1] + BigInt(4 * bytes + i) : arrays[0] + BigInt(4 * bytes + i * stride + key);

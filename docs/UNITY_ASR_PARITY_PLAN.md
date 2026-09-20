@@ -2217,6 +2217,49 @@ Map/Set backing-array agreement, full recursive type identity, attachment
 scheduling, native platform validation, and the final Wasm size requirements
 remain open.
 
+## Map/Set backing-array agreement (2026-09-20)
+
+Map and Set slot readers now verify every non-null backing array against the
+collection field's declared vector type before scanning entries. This covers
+entry/slot arrays and old corlib's separate Link, key, and value arrays. Nested
+vectors must agree through their leaf kind; class and generic leaves must name
+the same runtime class when their type metadata addresses differ. An entry class
+with the same stride but different identity is rejected. Empty allocated arrays
+receive the same checks, so differently typed fields cannot share an arbitrary
+empty vector.
+
+Successful proofs are cached by array class and declared type for one attachment.
+Discovery and cache searches charge the current root's shared work budget;
+failed proofs are not cached. Slot results retain the observed backing classes
+and recheck them after scanning and after recursive child materialization, in
+addition to existing count, backing-pointer, and collection-class checks.
+Metadata repair remains retryable and failed roots retain their old snapshots.
+
+Private slot probes pass 1,692 Mono and 564 IL2CPP cases in each build profile.
+They cover mismatched kinds and same-width entry classes, parallel key/value
+arrays, empty storage, null/unreadable headers, class changes during and after
+scanning, boundary addresses, and repair. Public Maps pass 592 cases per artifact
+and Sets pass 576, including nested backing mismatches, same-class metadata
+repair, and class changes during child reads. Fixtures now provide explicit array
+headers instead of relying on unread header bytes. The invalid shared-empty
+parallel-array fixture now expects rejection; distinct correctly typed empty
+arrays still succeed. All 34 public array/collection artifacts validate and pass
+in Debug and Release, as do the six private layout tests, compiler retention
+checks, and 561-page documentation validation.
+
+Thirty-four of 38 baseline fixtures retain module/section sizes, function/type
+counts, and body-size multisets. Map/Set fixtures grow by 4,346/4,390 bytes for
+IL2CPP and 3,729/3,809 for Mono for type comparison, attachment caches, errors, and
+class rechecks. Scratch, read capacity, and minimum memory pages remain unchanged.
+Scripts without managed Map/Set reads retain none of this verification route.
+Explicit Lunistice remains 58,187 bytes and automatic selection 182,552 bytes.
+The strict size gate and Lunistice base/DLC behavior scenarios pass. These remain
+intermediate measurements; the final sub-30,000-byte target is open.
+
+Backing-array agreement does not prove the full recursive source-schema identity
+of class and generic leaves. That validation, shared metadata traversal and
+scheduling, native platform validation, and final size acceptance remain open.
+
 ## Source map for implementation
 
 Upstream links below are pinned to the reviewed tip; the PR table provides the historical changes.

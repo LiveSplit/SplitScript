@@ -84,8 +84,29 @@ export function createKeyedCollectionFixture({family='V2', width=64, dictionary=
     fields(owner,mono&&kindOffset!==null?definition:owner,(0x37000n + base),outer);
     fields(entry,mono&&kindOffset!==null?entryDefinition:entry,(0x38000n + base),members);
     number(entry+BigInt(mono?(wide?0x1c:0x10):(wide?0xf8:0x80)),4,stride+header);
+    if (mono) {
+        number(entry + byValueOffset + BigInt(bytes + 2), 1, 0x11);
+        ptr(entry + byValueOffset, entry);
+    }
     ptr(object,mono?vtable:root);ptr(vtable,root);
     number((0x60000n + base),8,object);number((0x60008n + base),1,dictionary?0:1);number((0x60009n + base),1,0);
     number((0x6000an + base),1,family==='V1Cattrs'?1:family==='V3'?3:2);
-    return {...fixture,number,ptr,object,vtable,root,owner,width,bytes,outer,stride,hash,next,key,value,keyBytes,valueBytes,keyType,valueType,keyClass,valueClass};
+    return {...fixture,number,ptr,object,vtable,root,owner,width,bytes,family,base,outer,stride,hash,next,key,value,keyBytes,valueBytes,keyType,valueType,keyClass,valueClass};
+}
+
+// Explicit array headers whose by-value type describes the collection's declared
+// vector. Payload writers call this separately; reads never fabricate metadata.
+export function writeKeyedBackingArray(f, object, index, destination = f) {
+    const {bytes, width, family, base, outer} = f;
+    const {memory, ptr} = destination;
+    const mono = family !== 'il2cpp';
+    const klass = 0x28000000n + base + BigInt(index * 0x1000);
+    const vtable = klass + 0x800n;
+    const byval = klass + BigInt(mono
+        ? ({V1Cattrs:{32:0x88,64:0xd0},V2:{32:0x70,64:0xb8},V3:{32:0x70,64:0xb8}})[family][width]
+        : 4 * bytes);
+    const declared = outer[index + 1][2];
+    for (let i = 0n; i < BigInt(2 * bytes); i++) memory.set(byval + i, memory.get(declared + i) ?? 0);
+    ptr(vtable, klass); ptr(object, mono ? vtable : klass);
+    return {klass, byval, vtable, declared};
 }

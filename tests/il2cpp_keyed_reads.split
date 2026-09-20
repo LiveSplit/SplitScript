@@ -31,7 +31,14 @@ fn __splitscript_stdlib_collection_probe() {
                 let byteBudget = process.read<u64>(0x60020) else 0
                 let keyKinds = process.read<u32>(0x60028) else 0
                 let valueKinds = process.read<u32>(0x6002c) else 0
-                match layout.readSlots(object, keyBytes, valueBytes, keyKinds, valueKinds, scanBudget, elementBudget, byteBudget) {
+                let arrayType: (address, address) -> address! = (array, declared) => match runtime.arrayClass(array, () => true) {
+                    Ok(class) => match runtime.verifyArrayType(class, declared, () => true) {
+                        Ok(_) => Ok(class),
+                        Err(error) => Err(error),
+                    },
+                    Err(error) => Err(error),
+                }
+                match layout.readSlots(object, keyBytes, valueBytes, keyKinds, valueKinds, scanBudget, elementBudget, byteBudget, arrayType) {
                     Ok(read) => {
                         process.read<u8>(0x60040)
                         match read.verify() {

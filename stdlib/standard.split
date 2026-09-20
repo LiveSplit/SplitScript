@@ -1779,6 +1779,19 @@ private struct UnityRuntime {
         }
     }
 
+    private fn verifyArrayType(class: address, declared: address, charge: () -> bool) -> bool! {
+        return match self.backend {
+            UnityRuntimeBackend.Il2cpp => {
+                let runtime = self.il2cpp else return Err("missing IL2CPP runtime")
+                runtime.verifyArrayType(class, declared, charge)
+            },
+            UnityRuntimeBackend.Mono => {
+                let runtime = self.mono else return Err("missing Mono runtime")
+                runtime.verifyArrayType(class, declared, charge)
+            },
+        }
+    }
+
     private fn listLayout(object: address, charge: () -> bool) -> UnityListLayout! {
         return match self.backend {
             UnityRuntimeBackend.Il2cpp => {
@@ -8970,6 +8983,19 @@ private struct UnityModule {
         return types.arrayLayout(class, byval, self.profile.classFields)
     }
 
+    private fn verifyArrayType(class: address, declared: address, charge: () -> bool) -> bool! {
+        let names = UnityClassNames { width: self.pointerSize as u64,
+            name: self.profile.className, namespace: self.profile.classNamespace, declaring: None }
+        let types = UnityCollectionTypes { names, charge, mono: false,
+            plainClass: (type, data) => self.collectionTypeClass(type, data, charge),
+            genericSize: (type, data, size) => names.il2cppGenericSize(type, data, size, self.profile.genericCachedClass, self.profile.classValueTypeBit, charge),
+            kindOffset: self.profile.typeKind, fieldType: self.profile.fieldType,
+            data: self.profile.typeData, cached: self.profile.genericCachedClass, instanceSize: self.profile.classInstanceSize }
+        let namespace = names.member(class, self.profile.classNamespace, names.width)?
+        let byval = names.member(namespace, names.width, 2 * names.width)?
+        return types.sameArrayType(byval, declared, self.profile.classFields)
+    }
+
     private fn listLayout(object: address, charge: () -> bool) -> UnityListLayout! {
         let names = UnityClassNames { width: self.pointerSize as u64,
             name: self.profile.className, namespace: self.profile.classNamespace, declaring: None }
@@ -13222,6 +13248,19 @@ private struct MonoModule {
         return types.arrayLayout(class, byval, self.layout.classFields)
     }
 
+    private fn verifyArrayType(class: address, declared: address, charge: () -> bool) -> bool! {
+        let names = UnityClassNames { width: self.pointerBytes(),
+            name: self.layout.className, namespace: self.layout.classNamespace, declaring: None }
+        let types = UnityCollectionTypes { names, charge, mono: true,
+            plainClass: (type, data) => names.pointer(type, data else throw "Unity profile lacks type data metadata"),
+            genericSize: (type, data, size) => names.monoGenericSize(type, data, size, charge),
+            kindOffset: self.layout.typeKind, fieldType: self.layout.fieldType,
+            data: self.layout.typeData, cached: None, instanceSize: self.layout.classInstanceSize }
+        let fields = names.member(class, self.layout.classFields, names.width)?
+        let byval = names.member(fields, 4 * names.width, 2 * names.width)?
+        return types.sameArrayType(byval, declared, self.layout.classFields)
+    }
+
     private fn listLayout(object: address, charge: () -> bool) -> UnityListLayout! {
         let names = UnityClassNames { width: self.pointerBytes(),
             name: self.layout.className, namespace: self.layout.classNamespace, declaring: None }
@@ -15387,6 +15426,29 @@ private struct UnityCollectionTypes {
         return element
     }
 
+    private fn sameArrayType(actual: address, declared: address, classFields: u64) -> bool! {
+        let depth: u32 = 0
+        loop {
+            if depth >= 64 { throw "Unity backing array type nesting exceeds the managed depth limit" }
+            let a = self.arrayElementType(actual, classFields)?
+            let b = self.arrayElementType(declared, classFields)?
+            let kind = self.kind(a)?
+            if kind != self.kind(b)? { throw "Unity backing array element type differs from its declared field" }
+            if kind == 0x1d {
+                actual = a
+                declared = b
+                depth += 1
+            } else {
+                if a != b && (kind == 0x11 || kind == 0x12 || kind == 0x15) {
+                    if self.arrayElementClass(actual)? != self.arrayElementClass(declared)? {
+                        throw "Unity backing array element class differs from its declared field"
+                    }
+                }
+                return true
+            }
+        }
+    }
+
     private fn arrayLayout(class: address, type: address, classFields: u64) -> UnityArrayLayout! {
         let elements: [UnityCollectionMember] = []
         let current = type
@@ -15634,7 +15696,7 @@ private struct UnityKeyedLayout {
     // and deducts the returned work before invoking any recursive child reader.
     // This adapter never dereferences key/value slots or reads spare capacity.
     private fn readSlots(object: address, keyBytes: u32, valueBytes: u32, keyKinds: u32, valueKinds: u32,
-        scanBudget: u32, elementBudget: u32, byteBudget: u64) -> UnityKeyedRead! {
+        scanBudget: u32, elementBudget: u32, byteBudget: u64, arrayType: (address, address) -> address!) -> UnityKeyedRead! {
         if object == 0 { throw "Unity collection object is null" }
         if byteBudget < 768 { throw "Unity collection exceeds the shared byte budget" }
         self.validateElementSizes(keyBytes, valueBytes, keyKinds, valueKinds)?
@@ -15658,6 +15720,7 @@ private struct UnityKeyedLayout {
         if bytes > byteBudget || bytes > 1048576 { throw "Unity collection exceeds the shared byte budget" }
         let names = self.pointerReads()
         let backing: [address] = []
+        let backingClasses: [address] = []
         let limit = if self.parallel { self.fields.length() - 2 } else { 2 }
         let field: u32 = 1
         while field < limit {
@@ -15666,6 +15729,11 @@ private struct UnityKeyedLayout {
         }
         if self.parallel {
             for array in backing { if array == 0 { throw "Unity parallel collection backing storage is not initialized" } }
+        }
+        field = 0
+        for array in backing {
+            backingClasses.push(if array == 0 { 0 as address } else { (arrayType)(array, self.fields[field + 1].typeAddress)? })
+            field += 1
         }
         let entries = self.arrayData(backing[0], self.stride as u64, touched as u32)?
         let keys: address = 0
@@ -15699,7 +15767,7 @@ private struct UnityKeyedLayout {
             index += 1
         }
         if slots.length() != (live as u32) { throw "Unity collection has fewer live slots than its count" }
-        let result = UnityKeyedRead { layout: self, object, counts, backing, slots, scanned: touched as u32, bytes }
+        let result = UnityKeyedRead { layout: self, object, counts, backing, backingClasses, slots, scanned: touched as u32, bytes }
         result.verify()?
         return result
     }
@@ -15747,6 +15815,8 @@ private struct UnityKeyedRead {
     private counts: [i32; 2],
     /// Original backing identities in metadata order, excluding buckets.
     private backing: [address],
+    /// Proven runtime classes of the original backing arrays.
+    private backingClasses: [address],
     /// Live slot addresses in remote storage order.
     private slots: [UnityKeyedSlot],
     /// Work charged against the root scan budget, including freed slots.
@@ -15765,6 +15835,13 @@ private struct UnityKeyedRead {
         for backing in self.backing {
             if names.pointer(self.object, self.layout.fields[index + 1].offset as u64)? != backing {
                 throw "Unity collection backing storage changed during the read"
+            }
+            if backing != 0 {
+                let header = names.pointer(backing, 0)?
+                let class = if self.layout.mono { names.pointer(header, 0)? } else { header }
+                if class != self.backingClasses[index] {
+                    throw "Unity collection backing array class changed during the read"
+                }
             }
             index += 1
         }

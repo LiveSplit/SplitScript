@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { SplitScriptHost } from './support/splitscript_host.mjs';
-import { createKeyedCollectionFixture } from './support/keyed_collection_fixture.mjs';
+import { createKeyedCollectionFixture, writeKeyedBackingArray } from './support/keyed_collection_fixture.mjs';
 
 const [wasm] = process.argv.slice(2);
 const fields = {
@@ -28,11 +28,11 @@ for (const family of Object.keys(fields)) for (const width of [32, 64]) for (con
     number(f.valueType + BigInt(bytes + 2), 1, 0x08); // System.Int32
     number(object + BigInt(outer[parallel ? 3 : 2][1]), 4, 2);
     number(object + BigInt(outer[parallel ? 4 : 3][1]), 4, 2);
-    ptr(object + BigInt(outer[1][1]), 0x80000n);
+    ptr(object + BigInt(outer[1][1]), 0x80000n); writeKeyedBackingArray(f, 0x80000n, 0);
     ptr(0x80000n + BigInt(2 * bytes), 0);
     ptr(0x80000n + BigInt(3 * bytes), 2);
     if (parallel) {
-        ptr(object + BigInt(outer[2][1]), 0x81000n);
+        ptr(object + BigInt(outer[2][1]), 0x81000n); writeKeyedBackingArray(f, 0x81000n, 1);
         ptr(0x81000n + BigInt(2 * bytes), 0);
         ptr(0x81000n + BigInt(3 * bytes), 2);
     }

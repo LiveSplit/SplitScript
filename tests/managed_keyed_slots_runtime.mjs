@@ -1,9 +1,9 @@
-import {writeGenericType} from './support/managed_type_fixture.mjs';
+import {writeGenericType, writeManagedArrayType} from './support/managed_type_fixture.mjs';
 import assert from 'node:assert/strict';
 import { SplitScriptHost } from './support/splitscript_host.mjs';
-import { createKeyedCollectionFixture } from './support/keyed_collection_fixture.mjs';
+import { createKeyedCollectionFixture, writeKeyedBackingArray } from './support/keyed_collection_fixture.mjs';
 const [wasm,backend]=process.argv.slice(2);
-const modes=['generic reference','generic inline','generic reference as value','generic value as reference','generic wrong width','generic null descriptor','generic unreadable descriptor','generic null class','generic unreadable flags','generic descriptor overflow','generic class overflow','holes','renamed','reversed','inline','empty allocated','empty null','all deleted','large capacity',
+const modes=['backing nonvector','backing wrong kind','backing wrong class','backing empty wrong class','backing key kind','backing value kind','backing null class','backing unreadable class','torn array class','postscan array class','generic reference','generic inline','generic reference as value','generic value as reference','generic wrong width','generic null descriptor','generic unreadable descriptor','generic null class','generic unreadable flags','generic descriptor overflow','generic class overflow','holes','renamed','reversed','inline','empty allocated','empty null','all deleted','large capacity',
     'negative first count','negative second count','count ordering','too many live','too few live',
     'null entries','short entries','array bounds','capacity overflow','array address overflow',
     'unreadable hash','unreadable next','unreadable count','unreadable backing','scan budget','element budget','byte budget',
@@ -16,6 +16,8 @@ const modes=['generic reference','generic inline','generic reference as value','
 let cases=0,maximumReads=0;
 const boundaryTimings=[];
 for(const family of backend==='mono'?['V1Cattrs','V2','V3']:['il2cpp'])for(const width of [32,64])for(const dictionary of [true,false])for(const parallel of [false,true])for(const mode of modes){
+    if (!parallel && ['backing key kind','backing value kind'].includes(mode)) continue;
+    if (!dictionary && mode === 'backing key kind') continue;
     if((!parallel||!dictionary)&&['short keys','null keys'].includes(mode))continue;
     if(!parallel&&['short values','null values'].includes(mode))continue;
     if(parallel&&['unreadable next','value overrun','short reference'].includes(mode))continue;
@@ -47,11 +49,11 @@ for(const family of backend==='mono'?['V1Cattrs','V2','V3']:['il2cpp'])for(const
         if(mode==='generic class overflow')ptr(generic.cached,limit-1n);
     }
     let touched=4,live=2,capacity=6;
-    if(mode==='empty allocated'||mode==='empty null'||mode==='empty at address limit'){touched=0;live=0;capacity=0;}
+    if(mode==='empty allocated'||mode==='empty null'||mode==='empty at address limit'||mode==='backing empty wrong class'){touched=0;live=0;capacity=0;}
     if(mode==='all deleted')live=0;
     if(mode==='large capacity')capacity=65536;
     if(mode==='scan boundary'||mode==='scan hard limit'){touched=mode==='scan boundary'?4096:4097;live=1;capacity=touched;}
-    if(mode==='empty at address limit')arrays.fill(limit-BigInt(4*bytes)+1n);
+    if(mode==='empty at address limit')arrays.forEach((_,i)=>arrays[i]=limit-BigInt((i+1)*4*bytes)+1n);
     let keyBytes=f.keyBytes,valueBytes=f.valueBytes,scanBudget=4096,elementBudget=16384,byteBudget=1048576;
     if(mode==='scan hard limit'){scanBudget=0xffffffff;byteBudget=0xffffffffffffffffn;}
     if(mode==='zero value width')valueBytes=0;
@@ -76,7 +78,25 @@ for(const family of backend==='mono'?['V1Cattrs','V2','V3']:['il2cpp'])for(const
     setCounts(touched,live);
     const backingFields=outer.slice(1,parallel?outer.length-2:2).map(x=>object+BigInt(x[1]));
     const vector=(at,count)=>{ptr(at+BigInt(2*bytes),0);ptr(at+BigInt(3*bytes),count);};
-    for(const [i,field]of backingFields.entries()){ptr(field,mode==='empty null'?0:arrays[i]);vector(arrays[i],capacity);}
+    for(const [i,field]of backingFields.entries()){ptr(field,mode==='empty null'?0:arrays[i]);vector(arrays[i],capacity);writeKeyedBackingArray(f,arrays[i],i);}
+    const originalBacking = writeKeyedBackingArray(f, arrays[0], 0);
+    if (mode === 'backing nonvector') number(originalBacking.byval + BigInt(bytes + 2), 1, 0x12);
+    if (mode === 'backing wrong kind') writeManagedArrayType(f, {mono:family!=='il2cpp',width,family,ptr,number}, arrays[0], 0x08);
+    if (mode === 'backing null class') ptr(arrays[0], 0);
+    if (mode === 'backing unreadable class') ptr(arrays[0], 0x27000000n);
+    if (mode === 'backing key kind' || mode === 'backing value kind') {
+        const index = mode === 'backing key kind' ? 1 : backingFields.length - 1;
+        writeManagedArrayType(f, {mono:family!=='il2cpp',width,family,ptr,number}, arrays[index], 0x08);
+    }
+    if (mode === 'backing wrong class' || mode === 'backing empty wrong class') {
+        for (let i = 0n; i < 0x200n; i++) memory.set(0x3e000n + i, memory.get(0x33000n + i) ?? 0);
+        if (family !== 'il2cpp') ptr(originalBacking.byval, 0x3e000n);
+        else {
+            ptr(originalBacking.byval, 0x51000n);
+            number(0x51000n + BigInt(bytes + 2), 1, 0x15);
+            ptr(0x51000n, 0x51200n); ptr(0x51200n + BigInt(3 * bytes), 0x3e000n);
+        }
+    }
     const liveIndices=live===0?[]:live===1?[touched-1]:[0,3];
     for(let i=0;i<touched;i++){
         const at=arrays[0]+BigInt(4*bytes+i*stride),occupied=liveIndices.includes(i);
@@ -114,14 +134,15 @@ for(const family of backend==='mono'?['V1Cattrs','V2','V3']:['il2cpp'])for(const
             reads++;
             const marker=address>=arrays[0]+BigInt(4*bytes)&&address<arrays[0]+BigInt(4*bytes+touched*stride);
             if(marker){const offset=Number(address-arrays[0]-BigInt(4*bytes))%stride;assert(offset===hash||(!parallel&&offset===next),`${mode}: read a child payload`);}
-            else assert(backingFields.some((_,i)=>address===arrays[i]+BigInt(2*bytes)||address===arrays[i]+BigInt(3*bytes)),`${mode}: read spare capacity`);
+            else assert(backingFields.some((_,i)=>address===arrays[i]||address===arrays[i]+BigInt(2*bytes)||address===arrays[i]+BigInt(3*bytes)),`${mode}: read spare capacity`);
         }
         const result=originalRead({...request,address});
         if(!torn&&((mode.startsWith('torn ')&&address===firstHash)||(mode.startsWith('postscan ')&&address===0x60040n))){
             torn=true;
             if(mode.endsWith('count'))number(first,4,99);
             if(mode.endsWith('backing'))ptr(backingFields[0],0);
-            if(mode.endsWith('class'))ptr(family==='il2cpp'?object:vtable,root+0x100n);
+            if (mode.endsWith('array class')) ptr(arrays[0], 0);
+            else if(mode.endsWith('class'))ptr(family==='il2cpp'?object:vtable,root+0x100n);
         }
         return result;
     };
@@ -140,6 +161,14 @@ for(const family of backend==='mono'?['V1Cattrs','V2','V3']:['il2cpp'])for(const
         assert.deepEqual(values('keys'),keys,label);assert.deepEqual(values('values'),vals,label);
         assert.equal(host.variables.get('scanned'),String(touched),label);assert.equal(host.variables.get('bytes'),String(cost),label);
     }else assert(host.variables.get('result').length>0,label);
+    if (mode.startsWith('backing ')) {
+        assert.equal(reads <= backingFields.length + 1, true, `${label}: invalid array scanned payload`);
+        if (mode.includes('wrong class')) assert.match(host.variables.get('result'), /element class differs/, label);
+        if (mode.endsWith('kind')) assert.match(host.variables.get('result'), /element type differs/, label);
+        for (const [i, array] of arrays.slice(0, backingFields.length).entries()) writeKeyedBackingArray(f, array, i);
+        host.updateUntil(() => host.variables.get('result') === 'ok', `${label}: repaired backing type`);
+    }
+    if (mode.endsWith('array class')) assert.notEqual(host.variables.get('result'), 'ok', label);
     if(mode==='retry'){number(firstHash,4,parallel?0x80000042:0x123);host.updateUntil(()=>host.variables.get('result')==='ok',label);}
     if(['scan budget','element budget','byte budget','header budget','scan hard limit','negative first count','negative second count','count ordering'].includes(mode))assert.equal(reads,0,`${label}: budget/count failure read backing storage`);
     if(['value kind mismatch','key kind mismatch','scalar wrong width'].includes(mode)) {

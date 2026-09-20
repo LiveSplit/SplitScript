@@ -1,7 +1,7 @@
 import {writeManagedArrayType} from './support/managed_type_fixture.mjs';
 import assert from 'node:assert/strict';
 import { SplitScriptHost } from './support/splitscript_host.mjs';
-import { createKeyedCollectionFixture } from './support/keyed_collection_fixture.mjs';
+import { createKeyedCollectionFixture, writeKeyedBackingArray } from './support/keyed_collection_fixture.mjs';
 const [wasm, kind] = process.argv.slice(2);
 const dictionary = kind === 'map';
 const layouts = {
@@ -34,7 +34,7 @@ for (const parallel of [false, true]) for (const active of [false, true]) for (c
     number(object + BigInt(outer.at(-1)[1]), 4, dictionary && !parallel ? 0 : 2);
     const arrays = [0x80000n, 0x120000n, 0x180000n];
     outer.slice(1, parallel ? -2 : 2).forEach((field, i) => {
-        ptr(object + BigInt(field[1]), arrays[i]);
+        ptr(object + BigInt(field[1]), arrays[i]); writeKeyedBackingArray(f, arrays[i], i);
         ptr(arrays[i] + BigInt(2 * bytes), 0); ptr(arrays[i] + BigInt(3 * bytes), 2);
     });
     const slot = i => parallel ? arrays[1] + BigInt((4 + i) * bytes) : arrays[0] + BigInt(4 * bytes + i * stride + (dictionary ? key : value));

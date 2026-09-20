@@ -1,8 +1,8 @@
-import {writeManagedArrayType} from './support/managed_type_fixture.mjs';
+import {writeManagedArrayType, writeVectorElementType} from './support/managed_type_fixture.mjs';
 import {writeGenericType} from './support/managed_type_fixture.mjs';
 import assert from 'node:assert/strict';
 import { SplitScriptHost } from './support/splitscript_host.mjs';
-import { createKeyedCollectionFixture } from './support/keyed_collection_fixture.mjs';
+import { createKeyedCollectionFixture, writeKeyedBackingArray } from './support/keyed_collection_fixture.mjs';
 const [wasm, kind] = process.argv.slice(2);
 const dictionary = kind === 'map';
 const layouts = {
@@ -26,8 +26,8 @@ for (const parallel of [false, true]) for (const mode of ['seed', 'reorder', 'mu
     number(0x58000n + BigInt(wide ? 0x18 : 0xc), 4, 0x10);
     ptr((mono ? 0x18000n : 0x16000n) + 0x10n, f.object);
     writeGenericType({mono, width, ptr, number, cachedClass: dictionary ? f.keyClass : f.valueClass}, dictionary ? f.keyType : f.valueType);
-    if (dictionary) number(f.valueType + BigInt(bytes + 2), 1, 0x1d);
-    number(inner.valueType + BigInt(bytes + 2), 1, 0x1d);
+    if (dictionary) writeVectorElementType({mono,width,family,ptr,number}, f.valueType, 0x3d000n, 0x0e);
+    writeVectorElementType({mono,width,family,ptr,number}, inner.valueType, 0x43d000n, 0x0e);
     const vector = (at, values) => {
         writeManagedArrayType(f, {mono,width,family,ptr,number}, at, 0x0e);
         ptr(at + BigInt(2 * bytes), 0); ptr(at + BigInt(3 * bytes), values.length);
@@ -43,7 +43,7 @@ for (const parallel of [false, true]) for (const mode of ['seed', 'reorder', 'mu
         number(object + BigInt(layout.outer.at(-1)[1]), 4, isMap && !isParallel ? 0 : entries.length);
         const arrays = [base, base + 0x10000n, base + 0x20000n];
         layout.outer.slice(1, isParallel ? -2 : 2).forEach((field, i) => {
-            ptr(object + BigInt(field[1]), arrays[i]); vector(arrays[i], Array(entries.length).fill(0n));
+            ptr(object + BigInt(field[1]), arrays[i]); vector(arrays[i], Array(entries.length).fill(0n)); writeKeyedBackingArray(layout, arrays[i], i, f);
         });
         entries.forEach(([key, value], i) => {
             const at = arrays[0] + BigInt(4 * bytes + i * layout.stride);

@@ -1,10 +1,10 @@
-import {writeManagedArrayType} from './support/managed_type_fixture.mjs';
+import {writeManagedArrayType, writeVectorElementType} from './support/managed_type_fixture.mjs';
 import assert from 'node:assert/strict';
 import { SplitScriptHost } from './support/splitscript_host.mjs';
-import { createKeyedCollectionFixture } from './support/keyed_collection_fixture.mjs';
+import { createKeyedCollectionFixture, writeKeyedBackingArray } from './support/keyed_collection_fixture.mjs';
 
 const [wasm] = process.argv.slice(2);
-const modes = ['wrong value schema', 'wrong key schema', 'seed', 'mutate', 'empty', 'shared empty backing', 'all deleted', 'large capacity', 'duplicate keys',
+const modes = ['backing nested kind', 'backing empty nested kind', 'backing wrong kind', 'backing empty wrong kind', 'backing null class', 'backing unreadable class', 'backing metadata repair', 'compatible backing class', 'torn backing class', 'wrong value schema', 'wrong key schema', 'seed', 'mutate', 'empty', 'shared empty backing', 'all deleted', 'large capacity', 'duplicate keys',
     'unreadable value', 'unreadable key', 'null map', 'scan budget', 'shared scan budget',
     'shared element budget', 'comparison budget', 'byte budget', 'backing cycle', 'torn count', 'torn backing', 'cached layout',
     'retry', 'freeze clear', 'freeze insert', 'freeze remove', 'freeze index', 'freeze child',
@@ -18,6 +18,7 @@ const fieldLayouts = {
 let cases = 0;
 for (const family of Object.keys(fieldLayouts)) for (const width of [32, 64])
 for (const parallel of [false, true]) for (const mode of modes) {
+    if (!parallel && ['backing nested kind', 'backing empty nested kind'].includes(mode)) continue;
     const f = createKeyedCollectionFixture({family, width, parallel});
     const {memory, number, ptr, object, bytes, outer, stride, hash, next, key, value} = f;
     const mono = family !== 'il2cpp', wide = width === 64;
@@ -34,13 +35,14 @@ for (const parallel of [false, true]) for (const mode of modes) {
         number(field + BigInt(wide ? 0x18 : 0xc), 4, offset);
     });
     // Dictionary values are SZARRAY references, with nullable String elements.
-    number(f.valueType + BigInt(bytes + 2), 1, 0x1d);
+    writeVectorElementType({mono,width,family,ptr,number}, f.valueType, 0x3d000n, 0x0e);
     ptr((mono ? 0x18000n : 0x16000n) + 0x28n, object);
     ptr((mono ? 0x18000n : 0x16000n) + 0x30n, object);
     const arrays = [0x80000n, 0x120000n, 0x180000n];
     const row = 0x220000n, tailRow = 0x221000n, text = 0x230000n, tail = 0x231000n;
     const vector = (at, values, capacity = values.length) => {
         writeManagedArrayType(f, {mono,width,family,ptr,number}, at, at === 0x240000n ? {kind:0x15} : 0x0e);
+        if (arrays.includes(at)) writeKeyedBackingArray(f, at, arrays.indexOf(at));
         ptr(at + BigInt(2 * bytes), 0); ptr(at + BigInt(3 * bytes), capacity);
         values.forEach((item, i) => ptr(at + BigInt(4 * bytes + i * bytes), item));
     };
@@ -51,7 +53,7 @@ for (const parallel of [false, true]) for (const mode of modes) {
     const first = object + BigInt(outer.at(-2)[1]), second = object + BigInt(outer.at(-1)[1]);
     const counts = (touched, live) => { number(first, 4, touched); number(second, 4, parallel ? live : touched - live); };
     const backing = outer.slice(1, parallel ? -2 : 2).map(field => object + BigInt(field[1]));
-    backing.forEach((field, i) => { ptr(field, arrays[i]); vector(arrays[i], [], 6); });
+    backing.forEach((field, i) => { ptr(field, arrays[i]); vector(arrays[i], [], 6); writeKeyedBackingArray(f, arrays[i], i); });
     const keySlot = i => parallel ? arrays[1] + BigInt(4 * bytes + i * bytes) : arrays[0] + BigInt(4 * bytes + i * stride + key);
     const valueSlot = i => parallel ? arrays[2] + BigInt(4 * bytes + i * bytes) : arrays[0] + BigInt(4 * bytes + i * stride + value);
     const marker = (i, live) => {
@@ -70,14 +72,25 @@ for (const parallel of [false, true]) for (const mode of modes) {
     number(0x6f000n, 4, 0);
     const limit = (1n << BigInt(width)) - 1n;
     const reads = [], originalRead = f.process.read;
-    let armed = false;
+    const originalBacking = writeKeyedBackingArray(f, arrays[0], 0);
+    const replacementClass = originalBacking.klass + 0x1000000n;
+    for (let i = 0n; i < 0x1000n; i++) memory.set(replacementClass + i, memory.get(originalBacking.klass + i) ?? 0);
+    ptr(replacementClass + 0x800n, replacementClass);
+    const originalHeader = mono ? originalBacking.vtable : originalBacking.klass;
+    const replacementHeader = mono ? replacementClass + 0x800n : replacementClass;
+    let armed = false, alternateHeader = false, repairType;
+
     f.process.read = request => {
         const address = BigInt.asUintN(64, request.address);
         assert(address + BigInt(Math.max(request.length, 1) - 1) <= limit, `${mode}: overflowing host read`);
         reads.push(address);
         const result = originalRead({...request, address});
-        if (armed && address === text + BigInt(2 * bytes + 4)) {
-            armed = false;
+        if (armed && address === (mode === 'torn backing class' ? keySlot(0) : text + BigInt(2 * bytes + 4))) {
+            if (mode !== 'torn backing class') armed = false;
+            if (mode === 'torn backing class') {
+                alternateHeader = !alternateHeader;
+                ptr(arrays[0], alternateHeader ? replacementHeader : originalHeader);
+            }
             if (mode === 'torn count') counts(4, 1);
             if (mode === 'torn backing') ptr(backing[0], 0);
         }
@@ -93,10 +106,23 @@ for (const parallel of [false, true]) for (const mode of modes) {
     assert(before.maps.includes(before.rows), `${label}: nested map`);
     assert(before.tree.includes(before.rows), `${label}: snapshot map`);
     reads.length = 0;
-    let success = ['seed', 'mutate', 'empty', 'shared empty backing', 'all deleted', 'large capacity', 'cached layout', 'local mutable'].includes(mode);
+    let success = ['seed', 'mutate', 'empty', 'shared empty backing', 'all deleted', 'large capacity', 'cached layout', 'local mutable', 'compatible backing class'].includes(mode);
+    if (mode === 'backing wrong kind' || mode === 'backing empty wrong kind' || mode === 'backing metadata repair') {
+        if (mode === 'backing empty wrong kind') counts(0, 0);
+        repairType = writeManagedArrayType(f, {mono,width,family,ptr,number}, arrays[0], 0x08).type;
+    }
+    if (mode === 'backing nested kind' || mode === 'backing empty nested kind') {
+        if (mode === 'backing empty nested kind') counts(0, 0);
+        writeManagedArrayType(f, {mono,width,family,ptr,number}, arrays[backing.length - 1], [0x08]);
+    }
+    if (mode === 'backing null class') ptr(arrays[0], 0);
+    if (mode === 'backing unreadable class') ptr(arrays[0], 0x27000000n);
+    if (mode === 'compatible backing class') ptr(arrays[0], replacementHeader);
+    if (mode === 'torn backing class') armed = true;
     if (mode === 'mutate') string(text, 'new');
     if (mode === 'empty') counts(0, 0);
     if (mode === 'shared empty backing') {
+        success = !parallel;
         counts(0, 0); vector(arrays[0], []);
         backing.forEach(field => ptr(field, arrays[0]));
     }
@@ -139,13 +165,25 @@ for (const parallel of [false, true]) for (const mode of modes) {
     for (const field of ['rows', 'maps', 'tree']) {
         let expected = before[field];
         if (mode === 'mutate') expected = expected.replaceAll('seed', 'new');
-        if (['empty', 'shared empty backing', 'all deleted'].includes(mode)) expected = expected.replaceAll(before.rows, 'Map{}');
+        if (['empty', 'shared empty backing', 'all deleted'].includes(mode) && success) expected = expected.replaceAll(before.rows, 'Map{}');
         assert.equal(normalize(host.variables.get(field)), expected, `${label}: ${field}`);
     }
     assert.equal(host.variables.get('result') === 'ok', success, `${label}: ${host.variables.get('result')}`);
     if (mode === 'unreadable value') assert.match(host.variables.get('result'), /^map value\[0\]: \[0\]: /, label);
     if (mode === 'unreadable key') assert.match(host.variables.get('result'), /^map key\[0\]: managed string/, label);
     if (mode === 'local mutable') assert.equal(host.variables.get('local'), '1', label);
+    if (mode.startsWith('backing ') && mode !== 'backing cycle' || mode === 'torn backing class') {
+        if (mode.endsWith('kind') || mode === 'backing metadata repair') {
+            assert.match(host.variables.get('result'), /backing array element type differs/, label);
+            assert(!reads.includes(arrays[0] + BigInt(4 * bytes + hash)), `${label}: incompatible array read entry payload`);
+        }
+        if (mode === 'torn backing class') assert.match(host.variables.get('result'), /backing array class changed/, label);
+        armed = false;
+        if (mode === 'backing metadata repair') {
+            for (let i = 0n; i < BigInt(2 * bytes); i++) memory.set(repairType + i, memory.get(originalBacking.declared + i) ?? 0);
+        } else backing.forEach((_, i) => writeKeyedBackingArray(f, arrays[i], i));
+        host.updateUntil(() => host.variables.get('result') === 'ok', `${label}: repaired backing metadata`);
+    }
     if (mode === 'retry') {
         ptr(row + BigInt(4 * bytes), text); string(text, 'new');
         host.updateUntil(() => host.variables.get('result') === 'ok', label);

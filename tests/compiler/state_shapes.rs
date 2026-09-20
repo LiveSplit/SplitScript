@@ -1982,6 +1982,14 @@ fn collection_storage_resolvers_follow_the_selected_backend() {
                 report
                     .functions
                     .iter()
+                    .any(|(_, name)| name.contains("VerifyArrayType")),
+                collection.starts_with("Map<") || collection.starts_with("Set<"),
+                "{selector}: {collection}"
+            );
+            assert_eq!(
+                report
+                    .functions
+                    .iter()
                     .any(|(_, name)| name.contains("ArrayLayout")),
                 has_array || collection.starts_with("List<"),
                 "{selector}: {collection}"

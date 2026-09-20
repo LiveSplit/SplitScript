@@ -135,6 +135,8 @@ pub(super) fn prune(
         && remove.contains(crate::stdlib::MANAGED_SET_READ_FIELD)
     {
         remove.insert(crate::stdlib::MANAGED_KEYED_VERIFY_FIELD.to_owned());
+        remove.insert("__keyed_array".to_owned());
+        remove.insert("__keyed_array_cache".to_owned());
     }
     let mut images = HashMap::new();
     let mut needed_images = HashSet::new();
