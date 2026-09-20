@@ -177,6 +177,7 @@ impl FailurePayloadDemand {
             if matches!(
                 plan.kind,
                 crate::managed_read::ManagedDecoderKind::Array { .. }
+                    | crate::managed_read::ManagedDecoderKind::List { .. }
             ) {
                 let address = semantics
                     .types()

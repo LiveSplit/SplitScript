@@ -2100,10 +2100,9 @@ private struct UnityFields {
         if (itemsOffset as u64) < sizeEnd && (sizeOffset as u64) < itemsEnd {
             throw "Unity list fields overlap"
         }
-        let typeAddress = types.arrayElementType(itemsType, self.fields)?
-        let element = types.storageMember(typeAddress, 0)?
+        let elements = types.arrayLayout(class, itemsType, self.fields)?
         return Ok(UnityListLayout { runtimeClass: class, declaringClass: owner,
-            items: itemsOffset, size: sizeOffset, element })
+            items: itemsOffset, size: sizeOffset, elements })
     }
 
     // Read every required field on the exact corlib/entry owner. A missing or
@@ -9542,8 +9541,8 @@ private struct UnityListLayout {
     /// ```
     size: u32,
 
-    /// Validated storage facts for the backing vector's element type.
-    private element: UnityCollectionMember,
+    /// Validated storage facts for the backing vector and nested vector types.
+    private elements: UnityArrayLayout,
 }
 
 /// Describes where an IL2CPP image stores its first type index.

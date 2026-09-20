@@ -1,4 +1,4 @@
-import {writeVectorElementType, writeGenericType} from './support/managed_type_fixture.mjs';
+import {writeVectorElementType, writeGenericType, writeManagedArrayType} from './support/managed_type_fixture.mjs';
 import assert from 'node:assert/strict';
 import { SplitScriptHost } from './support/splitscript_host.mjs';
 import { createKeyedCollectionFixture } from './support/keyed_collection_fixture.mjs';
@@ -55,6 +55,7 @@ for (const parallel of [false, true]) for (const mode of ['seed', 'mutate', 'dup
         ptr(0x390000n + shift, klass);
     }
     const vector = (at, values, capacity = values.length) => {
+        writeManagedArrayType(f, {mono,width,family,ptr,number}, at, at === 0x800000n || at === 0x801000n ? {kind:0x15} : 0x0e);
         ptr(at + BigInt(2 * bytes), 0); ptr(at + BigInt(3 * bytes), capacity);
         values.forEach((item, i) => ptr(at + BigInt((4 + i) * bytes), item));
     };

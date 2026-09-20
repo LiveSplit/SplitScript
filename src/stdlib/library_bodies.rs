@@ -289,7 +289,7 @@ fn managed_preparation_source(
     if !classes.is_empty() {
         source.push_str(&format!("    {MANAGED_POINTER_SIZE_FIELD}: u32,\n"));
         source.push_str(&format!(
-            "    {MANAGED_LIST_LAYOUT_FIELD}: (address, u32, u32, ManagedReadContext) -> UnityListLayout!,\n"
+            "    {MANAGED_LIST_LAYOUT_FIELD}: (address, u32, u32, u32, address, ManagedReadContext) -> UnityListLayout!,\n"
         ));
         source.push_str(&format!(
             "    {MANAGED_ARRAY_TYPE_FIELD}: (address, u32, u32, u32, ManagedReadContext) -> address!,\n"
@@ -435,13 +435,14 @@ fn managed_backend_binding_source(
     ));
     source.push_str(&format!(
         "            let __list_layout_cache: [UnityListLayout] = []\n\
-                     let {MANAGED_LIST_LAYOUT_FIELD}: (address, u32, u32, ManagedReadContext) -> UnityListLayout! = (object, elementBytes, elementKinds, context) => {{\n\
+                     let {MANAGED_LIST_LAYOUT_FIELD}: (address, u32, u32, u32, address, ManagedReadContext) -> UnityListLayout! = (object, depth, elementBytes, elementKinds, expectedClass, context) => {{\n\
                          if !Unity.chargeManagedWork(context) {{ throw \"managed read work limit exceeded\" }}\n\
                          let class = {module}.collectionClass(object)?\n\
-                         for cached in __list_layout_cache {{ if !Unity.chargeManagedWork(context) {{ throw \"managed read work limit exceeded\" }} if cached.runtimeClass == class {{ cached.element.validateStorage(elementBytes, elementKinds)?; return cached }} }}\n\
+                         if expectedClass != 0 && class != expectedClass {{ throw \"managed list class changed during the read\" }}\n\
+                         for cached in __list_layout_cache {{ if !Unity.chargeManagedWork(context) {{ throw \"managed read work limit exceeded\" }} if cached.runtimeClass == class {{ cached.elements.validate(depth, elementBytes, elementKinds)?; return cached }} }}\n\
                          let layout = {module}.listLayout(object, () => Unity.chargeManagedWork(context))?\n\
                          if layout.runtimeClass != class {{ throw \"managed list class changed during discovery\" }}\n\
-                         layout.element.validateStorage(elementBytes, elementKinds)?\n\
+                         layout.elements.validate(depth, elementBytes, elementKinds)?\n\
                          if __list_layout_cache.length() >= 1024 {{ __list_layout_cache.clear() }}\n\
                          __list_layout_cache.push(layout)\n\
                          return layout\n\

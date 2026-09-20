@@ -7,7 +7,7 @@ import { createIl2cppPeFixture } from './support/il2cpp_pe_fixture.mjs';
 
 const [wasm] = process.argv.slice(2);
 const profiles = JSON.parse(await readFile(new URL('./fixtures/mono-pe-profiles.json', import.meta.url)));
-const modes = ['generic record', 'generic short schema', 'wrong array schema', 'wrong scalar schema', 'wrong inline schema', 'seed', 'mutate', 'empty', 'large spare capacity', 'null empty backing',
+const modes = ['declared nested scalar', 'declared nested scalar null', 'declared nested cycle', 'backing element kind', 'backing nested kind', 'empty backing nested kind', 'backing inline width', 'torn list class', 'torn backing class', 'wrong nested schema', 'generic record', 'generic short schema', 'wrong array schema', 'wrong scalar schema', 'wrong inline schema', 'seed', 'mutate', 'empty', 'large spare capacity', 'null empty backing',
     'negative count', 'count exceeds capacity', 'element budget', 'null backing', 'null list',
     'indexed string', 'unreadable size', 'unreadable backing slot', 'unreadable live slot', 'unreadable string',
     'null nested list', 'class cycle', 'shared element budget', 'capacity overflow',
@@ -64,7 +64,7 @@ for (const backend of [...Object.keys(monoLayouts), 'il2cpp']) for (const width 
         });
     };
     fields(0x14000n, 0x50000n, [['rows', 0x10], ['vectors', 0x18], ['nested', 0x20], ['instance', 0x28],
-        ['children', 0x10], ['tags', 0x18], ['value', 0x20], ['numbers', 0x30], ['pointers', 0x38], ['records', 0x40], ['wrongRows', 0x10], ['wrongNumbers', 0x30], ['shortRecords', 0x40]]);
+        ['children', 0x10], ['tags', 0x18], ['value', 0x20], ['numbers', 0x30], ['pointers', 0x38], ['records', 0x40], ['wrongRows', 0x10], ['wrongNumbers', 0x30], ['shortRecords', 0x40], ['wrongNestedRows', 0x10]]);
     const listClass = 0x31000n, definition = 0x32000n, generic = 0x35000n, vtable = 0x39000n;
     for (const klass of [listClass, definition]) for (let i = 0n; i < 0x200n; i++) memory.set(klass + i, 0);
     ptr(listClass + BigInt(nameOffset), 0x40000n); name(0x40000n, 'List`1');
@@ -82,7 +82,12 @@ for (const backend of [...Object.keys(monoLayouts), 'il2cpp']) for (const width 
     const rowsArray = 0x80000n, row = 0x81000n, vectors = 0x82000n, strings = 0x83000n;
     const nestedArray = 0x84000n, childrenArray = 0x85000n, string = 0x90000n, tail = 0x92000n;
     const vector = (at, values, capacity = values.length, stride = bytes) => {
-        writeManagedArrayType(fixture, {mono,width,family:backend,ptr,number}, at, at === vectors ? {kind:0x15} : 0x0e);
+        const element = at === rowsArray || at === 0x8a000n ? [0x0e]
+            : at === vectors || at === nestedArray ? {kind:0x15}
+            : at === childrenArray || mode.startsWith('depth') && at >= 0x100000n ? 0x12
+            : at === 0x86000n ? 0x08 : at === 0x87000n ? 0x19
+            : at === 0x88000n ? {kind:mode.startsWith('generic ') ? 0x15 : 0x11,value:true,bytes:8} : 0x0e;
+        writeManagedArrayType(fixture, {mono,width,family:backend,ptr,number}, at, element);
         ptr(at + BigInt(2 * bytes), 0); ptr(at + BigInt(3 * bytes), capacity);
         values.forEach((value, index) => number(at + BigInt(4 * bytes + index * stride), stride, value));
     };
@@ -119,6 +124,14 @@ for (const backend of [...Object.keys(monoLayouts), 'il2cpp']) for (const width 
     ptr(statics + 0x30n, 0x76000n); list(0x76000n, 0x86000n, 3); vector(0x86000n, [1, -2, 3], 3, 4);
     ptr(statics + 0x38n, 0x77000n); list(0x77000n, 0x87000n, 2); vector(0x87000n, [0n, wide ? 0xffffffffffffffffn : 0xffffffffn]);
     ptr(statics + 0x40n, 0x79000n); list(0x79000n, 0x88000n, 2); vector(0x88000n, [0x0000000200000001n, 0x0000000400000003n], 2, 8);
+    const alternateListClass = 0xc00000n, alternateListVtable = 0xc00800n;
+    for (let i = 0n; i < 0x200n; i++) memory.set(alternateListClass + i, memory.get(listClass + i) ?? 0);
+    ptr(alternateListVtable, alternateListClass);
+    const arrayType = writeManagedArrayType(fixture, {mono,width,family:backend,ptr,number}, rowsArray, [0x0e]);
+    const alternateArrayClass = arrayType.klass + 0x10000000n, alternateArrayVtable = alternateArrayClass + 0x800n;
+    for (let i = 0n; i < 0x200n; i++) memory.set(alternateArrayClass + i, memory.get(arrayType.klass + i) ?? 0);
+    ptr(alternateArrayVtable, alternateArrayClass);
+    let alternateActive = false;
     const limit = (1n << BigInt(width)) - 1n, reads = [], read = fixture.process.read;
     let armed = false;
     fixture.process.read = request => {
@@ -127,7 +140,11 @@ for (const backend of [...Object.keys(monoLayouts), 'il2cpp']) for (const width 
         if ((mode.startsWith('wrong ') || mode === 'generic short schema') && address === 0x6f000n) reads.length = 0;
         reads.push({address, length: request.length});
         if (armed && address === rowsArray + BigInt(4 * bytes)) {
-            armed = false;
+            if (mode === 'torn list class' || mode === 'torn backing class') {
+                alternateActive = !alternateActive;
+                if (mode === 'torn list class') ptr(rows, mono ? alternateActive ? alternateListVtable : vtable : alternateActive ? alternateListClass : listClass);
+                else ptr(rowsArray, mono ? alternateActive ? alternateArrayVtable : arrayType.vtable : alternateActive ? alternateArrayClass : arrayType.klass);
+            } else armed = false;
             if (mode === 'torn size') number(rows + BigInt(3 * bytes), 4, 0);
             if (mode === 'torn backing') ptr(rows + BigInt(2 * bytes), 0x8a000n);
         }
@@ -153,7 +170,7 @@ for (const backend of [...Object.keys(monoLayouts), 'il2cpp']) for (const width 
     if (mode.startsWith('torn')) { text(string, 'new'); vector(0x8a000n, [row]); armed = true; }
     if (mode === 'seed' || mode === 'generic record') success = true;
     if (mode === 'generic short schema') { number(0x6f000n, 4, 8); success = true; }
-    if (mode.startsWith('wrong ')) { number(0x6f000n, 4, 6 + ['wrong array schema', 'wrong scalar schema', 'wrong inline schema'].indexOf(mode)); success = true; }
+    if (mode.startsWith('wrong ')) { number(0x6f000n, 4, 6 + ['wrong array schema', 'wrong scalar schema', 'wrong inline schema', 'wrong nested schema'].indexOf(mode)); success = true; }
     if (mode === 'mutate') { text(string, 'new'); success = true; }
     if (mode === 'empty') { number(rows + BigInt(3 * bytes), 4, 0); success = true; }
     if (mode === 'large spare capacity') { ptr(rowsArray + BigInt(3 * bytes), 65536); success = true; }
@@ -162,6 +179,15 @@ for (const backend of [...Object.keys(monoLayouts), 'il2cpp']) for (const width 
     if (mode === 'count exceeds capacity') number(rows + BigInt(3 * bytes), 4, 3);
     if (mode === 'element budget') { number(rows + BigInt(3 * bytes), 4, 16385); ptr(rowsArray + BigInt(3 * bytes), 16385); }
     if (mode === 'null backing') ptr(rows + BigInt(2 * bytes), 0);
+    if (mode === 'backing element kind') writeManagedArrayType(fixture, {mono,width,family:backend,ptr,number}, rowsArray, 0x0e);
+    if (mode === 'backing nested kind' || mode === 'empty backing nested kind') {
+        writeManagedArrayType(fixture, {mono,width,family:backend,ptr,number}, rowsArray, [0x08]);
+        if (mode.startsWith('empty')) number(rows + BigInt(3 * bytes), 4, 0);
+    }
+    if (mode === 'backing inline width') {
+        writeManagedArrayType(fixture, {mono,width,family:backend,ptr,number}, 0x88000n, {kind:0x11,bytes:4});
+        success = true;
+    }
     if (mode === 'null list') ptr(statics + 0x10n, 0);
     if (mode === 'unreadable size') memory.delete(rows + BigInt(3 * bytes));
     if (mode === 'unreadable backing slot') memory.delete(rows + BigInt(2 * bytes));
@@ -197,13 +223,22 @@ for (const backend of [...Object.keys(monoLayouts), 'il2cpp']) for (const width 
         memory.delete(0x40000n); memory.delete(0x51000n); success = true;
     }
     if (mode === 'reattach') success = true;
-    if (mode === 'runtime class replacement' || mode === 'retry discovery' || mode.startsWith('replacement ')) {
+    if (mode === 'runtime class replacement' || mode === 'retry discovery' || mode.startsWith('replacement ') || mode.startsWith('declared ')) {
         const replacement = 0x36000n;
         for (let i = 0n; i < 0x200n; i++) memory.set(replacement + i, memory.get(listClass + i) ?? 0);
         fields(replacement, 0x52000n, [['_items', 0x40], ['_size', 0x48]]);
         ptr(0x39100n, replacement); ptr(rows, mono ? 0x39100n : replacement);
         ptr(rows + 0x40n, rowsArray); number(rows + 0x48n, 4, 0);
         success = mode === 'runtime class replacement';
+        if (mode.startsWith('declared ')) {
+            const elementType = writeVectorElementType({mono,width,family:backend,ptr,number,fixture}, 0x55000n, 0x56000n, 0x1d);
+            const childClass = Array.from({length:bytes}, (_,i)=>BigInt(memory.get(elementType+BigInt(i))) << BigInt(i*8)).reduce((a,b)=>a|b,0n);
+            const childType = mono ? childClass + BigInt(fieldsOffset + 4 * bytes) : childClass;
+            number(childType + BigInt(bytes + 2), 1, 0x08);
+            if (mode === 'declared nested scalar null') ptr(rows + 0x40n, 0);
+            if (mode === 'declared nested cycle') ptr(elementType, mono ? 0x56000n : elementType);
+        }
+
         if (mode === 'retry discovery') memory.delete(0x52000n + BigInt(wide ? 0x18 : 0xc));
         if (mode.startsWith('replacement ')) {
             const slot = mode === 'replacement items type' ? 0 : 1;
@@ -239,6 +274,12 @@ for (const backend of [...Object.keys(monoLayouts), 'il2cpp']) for (const width 
     }
     const directSuccess = success || ['null nested list', 'class cycle', 'depth overflow', 'object overflow', 'torn size', 'torn backing'].includes(mode);
     assert.equal(host.variables.get('result') === 'ok', directSuccess, `${label}: ${host.variables.get('result')}`);
+    if (mode.startsWith('declared ') || ['backing element kind','backing nested kind','empty backing nested kind'].includes(mode)) {
+        assert.match(host.variables.get('result'), mode.endsWith('cycle') ? /cycle/ : /incompatible/, label);
+        assert(!reads.some(r => r.address === rowsArray + BigInt(4 * bytes)), `${label}: invalid list type read payload`);
+    }
+    if (mode === 'backing inline width') assert.match(host.variables.get('recordsResult'), /width is incompatible/, label);
+    if (mode === 'torn list class' || mode === 'torn backing class') assert.match(host.variables.get('result'), /class changed/, label);
     if (mode === 'indexed string') assert.match(host.variables.get('result'), /^\[0\]: \[12\]: managed string/, label);
     if (mode === 'class cycle') assert.match(host.variables.get('treeResult'), /^children: \[0\]: /, label);
     if (mode === 'unreadable string') assert.match(host.variables.get('result'), /^\[0\]: \[0\]: managed string/, label);
@@ -256,6 +297,15 @@ for (const backend of [...Object.keys(monoLayouts), 'il2cpp']) for (const width 
         if (mode === 'replacement items type') writeVectorElementType({mono, width, family: backend, ptr, number, fixture}, 0x55200n, 0x56000n, 0x1d);
         else number(0x55200n + BigInt(bytes + 2), 1, 0x08);
         host.updateUntil(() => host.variables.get('result') === 'ok' && normalize(host.variables.get('rows')) === '[]', label);
+    }
+    if (mode.startsWith('declared ')) {
+        writeVectorElementType({mono,width,family:backend,ptr,number,fixture}, 0x55000n, 0x56000n, 0x1d);
+        host.updateUntil(() => host.variables.get('result') === 'ok' && normalize(host.variables.get('rows')) === '[]', `${label}: repaired declared type`);
+    }
+    if (['backing element kind','backing nested kind','empty backing nested kind','torn list class','torn backing class'].includes(mode)) {
+        armed = false; ptr(rows, mono ? vtable : listClass);
+        writeManagedArrayType(fixture, {mono,width,family:backend,ptr,number}, rowsArray, [0x0e]);
+        host.updateUntil(() => host.variables.get('result') === 'ok', `${label}: repaired backing type`);
     }
     if (mode === 'reattach') {
         host.setProcessOpen('game.exe', false); host.update(3);

@@ -98,6 +98,7 @@ pub(super) fn prune(
         matches!(
             capabilities.managed_decoder(ty).unwrap().kind,
             crate::managed_read::ManagedDecoderKind::Array { .. }
+                | crate::managed_read::ManagedDecoderKind::List { .. }
         )
     }) {
         remove.insert(crate::stdlib::MANAGED_ARRAY_TYPE_FIELD.to_owned());

@@ -2179,6 +2179,44 @@ agreement, attachment scheduling, native platform validation, and the final size
 requirements are also still unfinished. This does not mark the overall goal
 complete.
 
+## List nested storage and backing vectors (2026-09-20)
+
+List metadata now validates the complete vector nesting and leaf storage contract
+of its declared backing field, including empty Lists with a null backing pointer.
+Allocated backing arrays independently prove the same nesting, leaf kind, and
+width before payload reads. Rechecks reject replacement of either the List class
+or the backing array class during a read. The array metadata callback and cache
+are now retained for reachable Lists as well as raw managed arrays; unused
+collection declarations still do not retain them.
+
+A regression test exposed partial caching of nested array metadata: validating
+one level at a time could cache an outer match before a deeper mismatch failed.
+Both raw arrays and Lists now validate the complete vector depth and leaf in one
+callback before caching. Repairing failed metadata on the same runtime class can
+therefore succeed on retry. This covers storage contracts; nominal class and
+complete generic argument identity remain separate unfinished work.
+
+All 34 public array/collection artifacts validate and pass runtime fixtures in
+Debug and Release. Lists pass 530 cases per artifact, covering declared and actual
+backing mismatches, empty and null-backed Lists, nested metadata cycles, exact
+inline widths, cached schema mismatches, class changes during reads, and repair.
+Raw arrays pass 120 cases per artifact, including same-class nested metadata
+repair. The six private collection layout tests and compiler backend-retention
+checks pass. Generated documentation validates 561 pages.
+
+Thirty-four of 38 baseline fixtures retain module/section sizes, function/type
+counts, and function-body size multisets. The List fixtures grow by 2,903 bytes
+for IL2CPP and 2,956 for Mono to retain backing-array discovery, validation,
+caches, and errors. Nested-array fixtures shrink by 131 bytes each after removing
+partial per-level callback checks. Scratch, read capacity, and minimum memory
+pages are unchanged. Explicit Lunistice remains 58,187 bytes; automatic selection
+remains 182,552. The strict size gate and Lunistice base/DLC behavior scenarios
+pass. These measurements are intermediate, not final size acceptance.
+
+Map/Set backing-array agreement, full recursive type identity, attachment
+scheduling, native platform validation, and the final Wasm size requirements
+remain open.
+
 ## Source map for implementation
 
 Upstream links below are pinned to the reviewed tip; the PR table provides the historical changes.

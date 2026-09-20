@@ -9,6 +9,12 @@ export function writeVectorElementType({mono, width, family, ptr, number, fixtur
     number(vectorType + BigInt(bytes + 2), 1, 0x1d);
     ptr(vectorType, mono ? elementClass : elementType);
     number(elementType + BigInt(bytes + 2), 1, kind);
+    if (kind === 0x1d) {
+        const childClass = elementClass + 0x800n;
+        const childType = mono ? childClass + BigInt(byValueOffsets[family][width]) : childClass;
+        ptr(elementType, mono ? childClass : childType);
+        number(childType + BigInt(bytes + 2), 1, 0x0e);
+    }
     if (mono && kind === 0x11) {
         ptr(elementType, elementClass);
         number(elementClass + BigInt(width === 64 ? 0x1c : 0x10), 4, 2 * bytes + valueBytes);

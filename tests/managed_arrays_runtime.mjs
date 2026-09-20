@@ -8,7 +8,7 @@ const [wasm] = process.argv.slice(2);
 const profiles = JSON.parse(await readFile(new URL('./fixtures/mono-pe-profiles.json', import.meta.url)));
 let cases = 0;
 for (const mono of [true, false]) for (const width of [32, 64]) {
-    for (const mode of ['cached metadata', 'wrong element kind', 'wrong empty nested kind', 'wrong inline width', 'wrong depth', 'non-array class', 'unreadable class', 'type cycle', 'type depth overflow', 'compatible class replacement', 'torn class', 'seed', 'mutate', 'replace', 'empty', 'null array', 'null row', 'null element', 'null leaf', 'bounds', 'unreadable header', 'unreadable slot', 'unreadable child', 'failed sibling', 'cycle', 'count overflow', 'address overflow', 'shared element budget', 'inline element budget']) {
+    for (const mode of ['repair nested metadata', 'cached metadata', 'wrong element kind', 'wrong empty nested kind', 'wrong inline width', 'wrong depth', 'non-array class', 'unreadable class', 'type cycle', 'type depth overflow', 'compatible class replacement', 'torn class', 'seed', 'mutate', 'replace', 'empty', 'null array', 'null row', 'null element', 'null leaf', 'bounds', 'unreadable header', 'unreadable slot', 'unreadable child', 'failed sibling', 'cycle', 'count overflow', 'address overflow', 'shared element budget', 'inline element budget']) {
         const wide = width === 64, bytes = width / 8;
         const fixture = mono ? createMonoPeFixture(profiles.builds.find(p => p.width === width && p.version === 'V2'))
             : createIl2cppPeFixture({width, version:[2022, 3, 0, 37029]});
@@ -95,7 +95,12 @@ for (const mono of [true, false]) for (const width of [32, 64]) {
         host.update(2); reads.length = 0;
         const normalize = value => value.replace(/\s/g, '');
         const seedNested = '[Some([Some("seed",),None,Some("tail",),],),None,Some([],),]';
-        let expected = seedNested;
+        let expected = seedNested, repairType = 0n;
+        if (mode === 'repair nested metadata') {
+            vector(nested, []);
+            const wrong = writeManagedArrayType(fixture, {mono,width,ptr,number}, nested, [0x0b]);
+            repairType = wrong.element.element.type;
+        }
         if (mode === 'wrong element kind') writeManagedArrayType(fixture, {mono,width,ptr,number}, inner, 0x08);
         if (mode === 'wrong empty nested kind') {
             vector(nested, []); writeManagedArrayType(fixture, {mono,width,ptr,number}, nested, [0x08]);
@@ -177,6 +182,11 @@ for (const mono of [true, false]) for (const width of [32, 64]) {
             ptr(nested + BigInt(3 * bytes), 3);
             host.updateUntil(() => host.variables.get('result') === 'ok', `${label}: metadata repair`);
             assert.equal(normalize(host.variables.get('nested')), seedNested, label);
+        }
+        if (mode === 'repair nested metadata') {
+            assert.match(host.variables.get('result'), /incompatible/, label);
+            number(repairType + BigInt(bytes + 2), 1, 0x0e);
+            host.updateUntil(() => host.variables.get('result') === 'ok' && normalize(host.variables.get('nested')) === '[]', `${label}: same-class repair`);
         }
         if (mode === 'cached metadata') {
             assert(!reads.some(({address}) => address >= 0x30000000n && address < 0x30100000n && (!mono || address % 0x1000n !== 0x800n)), `${label}: cached layout reread type metadata`);
