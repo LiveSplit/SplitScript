@@ -2137,18 +2137,14 @@ private struct UnityFields {
             throw "Unity collection Link members must be integers"
         }
         self.validateMembers(inner, 8)?
-        if !types.mono {
-            index = 2
-            while index < outer.length() - 2 {
-                // IL2CPP vectors point to an element type. Mono vectors point
-                // to a class and need separate measured by-value metadata.
-                let dataOffset = types.data else throw "Unity profile lacks type data metadata"
-                let element = types.names.pointer(outer[index].typeAddress, dataOffset)?
-                let kind = types.kind(element)?
-                inner.push(UnityCollectionMember { offset: 0, typeAddress: element, kind,
-                    minimumWidth: types.minimumWidth(element, kind)?, exactWidth: kind != 0x11 && kind != 0x15 })
-                index += 1
-            }
+        index = 2
+        while index < outer.length() - 2 {
+            let element = types.arrayElementType(outer[index].typeAddress, self.fields)?
+            let kind = types.kind(element)?
+            inner.push(UnityCollectionMember { offset: 0, typeAddress: element, kind,
+                minimumWidth: types.minimumWidth(element, kind)?,
+                exactWidth: kind != 0x15 && (kind != 0x11 || types.mono) })
+            index += 1
         }
         return UnityKeyedLayout { runtimeClass: class, declaringClass: owner,
             parallel: true, fields: outer, stride, members: inner, width: self.names.width, mono: types.mono }
@@ -15024,6 +15020,20 @@ private struct UnityCollectionTypes {
         return class
     }
 
+    // MonoClass keeps fields, methods, this_arg, then byval_arg. The two
+    // pointers and the padded MonoType occupy four target pointer words in
+    // the supported old and modern layouts. Anchor at the profile's measured
+    // fields offset instead of assuming the preceding class header is stable.
+    private fn arrayElementType(typeAddress: address, classFields: u64) -> address! {
+        self.chargeWork()?
+        if self.kind(typeAddress)? != 0x1d { throw "Unity collection backing field is not a vector" }
+        let offset = self.data else throw "Unity profile lacks type data metadata"
+        let element = self.names.pointer(typeAddress, offset)?
+        if element == 0 { throw "Unity collection array element metadata is null" }
+        if self.mono { return self.names.member(element, classFields + 4 * self.names.width, 2 * self.names.width) }
+        return element
+    }
+
     private fn stride(class: address) -> u32! {
         self.chargeWork()?
         let offset = self.instanceSize else throw "Unity profile lacks instance size metadata"
@@ -15184,7 +15194,7 @@ private struct UnityKeyedLayout {
         if valueBytes == 0 || (dictionary && keyBytes == 0) {
             throw "Unity collection element storage must have a positive width"
         }
-        if self.parallel && !self.mono {
+        if self.parallel {
             self.members[self.members.length() - 1].validateStorage(valueBytes, valueKinds)?
             if dictionary { self.members[2].validateStorage(keyBytes, keyKinds)? }
         }

@@ -11,7 +11,6 @@ const fields = {
 };
 let cases = 0;
 for (const family of Object.keys(fields)) for (const width of [32, 64]) for (const parallel of [false, true]) {
-    if (parallel && family !== 'il2cpp') continue;
     const f = createKeyedCollectionFixture({family, width, dictionary: false, parallel});
     const {number, ptr, memory, bytes, object, outer, stride, hash, next, value} = f;
     const mono = family !== 'il2cpp', [fieldOffset, countOffset] = fields[family][width];
@@ -26,7 +25,7 @@ for (const family of Object.keys(fields)) for (const width of [32, 64]) for (con
         number(field + BigInt(width === 64 ? 0x18 : 0xc), 4, offset);
         ptr((mono ? 0x18000n : 0x16000n) + BigInt(offset), object);
     });
-    number(0x50400n + BigInt(bytes + 2), 1, 0x08); // System.Int32
+    number(f.valueType + BigInt(bytes + 2), 1, 0x08); // System.Int32
     number(object + BigInt(outer[parallel ? 3 : 2][1]), 4, 2);
     number(object + BigInt(outer[parallel ? 4 : 3][1]), 4, 2);
     ptr(object + BigInt(outer[1][1]), 0x80000n);

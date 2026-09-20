@@ -26,7 +26,7 @@ for (const parallel of [false, true]) for (const active of [false, true]) for (c
         text.forEach((byte, j) => memory.set(address + BigInt(j), byte));
         number(field + BigInt(wide ? 0x18 : 0xc), 4, offset);
     });
-    number((dictionary ? 0x50500n : 0x50400n) + BigInt(bytes + 2), 1, 0x12);
+    number((dictionary ? f.keyType : f.valueType) + BigInt(bytes + 2), 1, 0x12);
     const statics = mono ? 0x18000n : 0x16000n;
     ptr(statics + 0x10n, object); ptr(statics + 0x18n, 0x200000n);
     number(object + BigInt(outer.at(-2)[1]), 4, 2);

@@ -426,6 +426,12 @@ field offsets reject unsupported thread-static storage. Static reads always use
 the matched field's declaring class, and `UnityField.index` is its metadata index
 within that class on both backends.
 
+Map/Set readers validate available runtime element kinds and storage widths
+before reading their payloads, including old corlib collections with separate
+key/value arrays. Cached layouts are checked against each requested schema;
+using a cached class through an incompatible schema still fails. Full generic
+type identity validation is not yet implemented.
+
 Class-typed
 static and instance fields are live references: every state poll rereads the
 current singleton and following object pointers instead of caching a transient

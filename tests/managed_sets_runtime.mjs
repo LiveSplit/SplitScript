@@ -17,7 +17,6 @@ const fieldLayouts = {
 let cases = 0;
 for (const family of Object.keys(fieldLayouts)) for (const width of [32, 64])
 for (const parallel of [false, true]) for (const mode of modes) {
-    if (parallel && family !== 'il2cpp' && mode.startsWith('wrong ')) continue;
     const f = createKeyedCollectionFixture({family, width, parallel, dictionary: false});
     const {memory, number, ptr, object, bytes, outer, stride, hash, next, value} = f;
     const mono = family !== 'il2cpp', wide = width === 64;
@@ -34,7 +33,7 @@ for (const parallel of [false, true]) for (const mode of modes) {
         number(field + BigInt(wide ? 0x18 : 0xc), 4, offset);
     });
     // HashSet values are SZARRAY references, with nullable String elements.
-    number(0x50400n + BigInt(bytes + 2), 1, 0x1d);
+    number(f.valueType + BigInt(bytes + 2), 1, 0x1d);
     ptr((mono ? 0x18000n : 0x16000n) + 0x28n, object);
     const arrays = [0x80000n, 0x120000n, 0x180000n];
     const row = 0x220000n, tailRow = 0x221000n, text = 0x230000n, tail = 0x231000n;

@@ -19,20 +19,19 @@ for(const family of backend==='mono'?['V1Cattrs','V2','V3']:['il2cpp'])for(const
     if(!parallel&&['short values','null values'].includes(mode))continue;
     if(parallel&&['unreadable next','value overrun','short reference'].includes(mode))continue;
     if((parallel||!dictionary)&&mode==='key overrun')continue;
-    if((!dictionary||(parallel&&family!=='il2cpp'))&&mode==='key kind mismatch')continue;
-    if(parallel&&family!=='il2cpp'&&['value kind mismatch','scalar wrong width'].includes(mode))continue;
-    if(mode.startsWith('inline ')&&(parallel||family==='il2cpp'))continue;
+    if(!dictionary&&mode==='key kind mismatch')continue;
+    if(mode.startsWith('inline ')&&family==='il2cpp')continue;
     const f=createKeyedCollectionFixture({family,width,dictionary,parallel,reversed:mode==='reversed',renamed:mode==='renamed',inline:mode.startsWith('inline')});
     const {memory,number,ptr,object,vtable,root,outer,stride,hash,next,key,value,bytes}=f;
     const arrays=[0x80000n,0x120000n,0x180000n], limit=(1n<<BigInt(width))-1n;
     const valueClassSize=0x3a000n+BigInt(width===64?0x1c:0x10);
     if(mode==='inline wrong width')number(valueClassSize,4,2*bytes+8);
-    if(mode==='inline null class')ptr(0x50400n,0);
+    if(mode==='inline null class')ptr(f.valueType,0);
     if(mode==='inline unreadable class')memory.delete(valueClassSize);
     if(mode==='inline zero size')number(valueClassSize,4,2*bytes);
     if(mode==='inline excessive size')number(valueClassSize,4,2*bytes+1025);
-    if(mode==='inline unreadable type data')memory.delete(0x50400n);
-    if(mode==='inline class overflow')ptr(0x50400n,limit-1n);
+    if(mode==='inline unreadable type data')memory.delete(f.valueType);
+    if(mode==='inline class overflow')ptr(f.valueType,limit-1n);
     let touched=4,live=2,capacity=6;
     if(mode==='empty allocated'||mode==='empty null'||mode==='empty at address limit'){touched=0;live=0;capacity=0;}
     if(mode==='all deleted')live=0;
@@ -54,7 +53,7 @@ for(const family of backend==='mono'?['V1Cattrs','V2','V3']:['il2cpp'])for(const
     number(0x60010n,4,keyBytes);number(0x60014n,4,valueBytes);number(0x60018n,4,scanBudget);number(0x6001cn,4,elementBudget);number(0x60020n,8,byteBudget);number(0x60040n,1,0);
     number(0x60028n,4,mode==='key kind mismatch'?1<<0x1d:0xffffffff);
     number(0x6002cn,4,mode==='value kind mismatch'?1<<0x1d:0xffffffff);
-    if(mode==='scalar wrong width')number(0x50400n+BigInt(bytes+2),1,0x06);
+    if(mode==='scalar wrong width')number(f.valueType+BigInt(bytes+2),1,0x06);
     const countIndex=parallel?outer.length-2:2;
     const first=object+BigInt(outer[countIndex][1]),second=object+BigInt(outer[countIndex+1][1]);
     const setCounts=(t,l)=>{number(first,4,parallel||dictionary?t:l);number(second,4,parallel?l:dictionary?t-l:t);};
@@ -134,7 +133,7 @@ for(const family of backend==='mono'?['V1Cattrs','V2','V3']:['il2cpp'])for(const
     if(mode.startsWith('inline ')) {
         assert.equal(reads,0,`${label}: invalid value type read payload`);
         if(mode==='inline wrong width')assert.match(host.variables.get('result'),/width is incompatible/,label);
-        ptr(0x50400n,0x3a000n);number(valueClassSize,4,2*bytes+16);
+        ptr(f.valueType,0x3a000n);number(valueClassSize,4,2*bytes+16);
         host.updateUntil(()=>host.variables.get('result')==='ok',`${label}: recover metadata`);
     }
     maximumReads=Math.max(maximumReads,reads);cases++;

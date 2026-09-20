@@ -1,6 +1,6 @@
 # Unity support: ASR research and SplitScript implementation plan
 
-Status: core recursive managed values and snapshots, measured IL2CPP profiles, and Windows/Linux/macOS Mono automatic attachment are implemented. Explicit Windows/Linux/macOS Mono family selectors are also implemented. Remaining work includes runtime type/generic validation, shared metadata/error handling, native platform validation, and final size acceptance. See [implementation progress](#implementation-progress).
+Status: core recursive managed values and snapshots, measured IL2CPP profiles, and Windows/Linux/macOS Mono automatic attachment are implemented. Explicit Windows/Linux/macOS Mono family selectors are also implemented. Nested materialization error paths and parallel-array element storage checks are implemented. Remaining work includes full runtime type/generic validation, shared metadata traversal, native platform validation, and final size acceptance. See [implementation progress](#implementation-progress).
 
 ## Objective and baseline
 
@@ -1848,6 +1848,47 @@ behavior cases. Explicit Lunistice remains 58,178 bytes; automatic selection
 remains 182,416 bytes. This closes nested materialization error context, not the
 remaining runtime type/generic proofs, attachment metadata traversal, native
 platform validation, or final sub-30,000-byte acceptance requirement.
+
+## Mono parallel-array element storage (2026-09-20)
+
+Parallel-array Map/Set layouts now retain Mono element type metadata as well as
+IL2CPP metadata. Mono's vector type data names an element class. Its embedded
+by-value type follows `fields`, `methods`, and `this_arg`: the by-value offset is
+the existing profile's field-table offset plus four target pointer words. This
+is a source-derived relationship, not a new claim of per-binary measurement:
+it follows the old [Mono class definition](https://raw.githubusercontent.com/mono/mono/mono-2-6/mono/metadata/class-internals.h),
+Unity's [old class definition with custom attributes](https://raw.githubusercontent.com/Unity-Technologies/mono/unity-2017.4/mono/metadata/class-internals.h),
+and Unity's [modern class definition](https://raw.githubusercontent.com/Unity-Technologies/mono/unity-main/mono/metadata/class-private-definition.h).
+The [MonoType definition](https://raw.githubusercontent.com/Unity-Technologies/mono/unity-main/mono/metadata/metadata-internals.h)
+contains a pointer union and a 32-bit attribute/type word, padded to pointer
+alignment. Anchoring at the measured `fields` member accommodates the preceding
+class-header differences without adding another profile table.
+
+Discovery checks target-width address spans, null/unreadable/unsupported type
+metadata, and the shared root work budget. Primitive and reference types prove
+exact widths; non-generic Mono value types use the existing unboxed class-size
+proof. Every schema read validates these cached facts before payload access,
+including a different schema reading an already cached class. Failed discovery
+remains retryable. No public API or new layout-record fields are introduced.
+
+Private metadata fixtures now pass 3,264 layout cases and 3,136 slot cases across
+Debug/Release, including newly enabled Mono parallel type/width failures,
+malformed type metadata, and repair/retry. All 28 affected public collection
+artifacts pass their runtime fixtures. Coverage includes cached String/array and
+integer/float schema mismatches, short/long inline structures, nested Map/Set/List
+values, immutable snapshots, and shared metadata budgets.
+
+The 34 fixtures without Map/Set readers retain module/section sizes,
+function/type counts, and function-body size multisets. Map/Set readers gain one
+shared element-type resolver and one function type: IL2CPP Map +232 bytes,
+IL2CPP Set +233, Mono Map +235, Mono Set +234. Scratch, read capacity, static data,
+and memory pages are unchanged. Both Lunistice edition behavior cases pass;
+explicit Lunistice remains 58,178 bytes and automatic remains 182,416 bytes.
+
+This completes the parallel-array element storage checks supported by existing
+type tags and Mono value-class sizes. Full generic identity/reference-vs-value
+proof, IL2CPP plain value-type routing, and recursive Array/List element contracts
+remain unfinished, as do the final size and other goal acceptance requirements.
 
 ## Source map for implementation
 

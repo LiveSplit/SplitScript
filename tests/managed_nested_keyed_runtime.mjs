@@ -23,9 +23,9 @@ for (const parallel of [false, true]) for (const mode of ['seed', 'reorder', 'mu
     name.forEach((byte, i) => memory.set(0x59000n + BigInt(i), byte));
     number(0x58000n + BigInt(wide ? 0x18 : 0xc), 4, 0x10);
     ptr((mono ? 0x18000n : 0x16000n) + 0x10n, f.object);
-    number((dictionary ? 0x50500n : 0x50400n) + BigInt(bytes + 2), 1, 0x15);
-    if (dictionary) number(0x50400n + BigInt(bytes + 2), 1, 0x1d);
-    number(0x450400n + BigInt(bytes + 2), 1, 0x1d);
+    number((dictionary ? f.keyType : f.valueType) + BigInt(bytes + 2), 1, 0x15);
+    if (dictionary) number(f.valueType + BigInt(bytes + 2), 1, 0x1d);
+    number(inner.valueType + BigInt(bytes + 2), 1, 0x1d);
     const vector = (at, values) => {
         ptr(at + BigInt(2 * bytes), 0); ptr(at + BigInt(3 * bytes), values.length);
         values.forEach((item, i) => ptr(at + BigInt((4 + i) * bytes), item));

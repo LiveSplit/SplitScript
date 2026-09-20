@@ -36,8 +36,8 @@ for (const parallel of [false, true]) for (const mode of ['seed', 'mutate', 'dup
     };
     fields(0x14000n, 0x58000n, [['rows', 0x10]]);
     ptr((mono ? 0x18000n : 0x16000n) + 0x10n, object);
-    number((dictionary ? 0x50500n : 0x50400n) + BigInt(bytes + 2), 1, 0x15);
-    if (dictionary) number(0x50400n + BigInt(bytes + 2), 1, 0x15);
+    number((dictionary ? f.keyType : f.valueType) + BigInt(bytes + 2), 1, 0x15);
+    if (dictionary) number(f.valueType + BigInt(bytes + 2), 1, 0x15);
     // Separate closed runtime classes for List<String?> and List<List<String?>>.
     for (let i = 0; i < 2; i++) {
         const shift = BigInt(i * 0x1000), klass = 0x310000n + shift, definition = 0x320000n + shift;

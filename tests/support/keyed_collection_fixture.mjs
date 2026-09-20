@@ -28,7 +28,10 @@ export function createKeyedCollectionFixture({family='V2', width=64, dictionary=
         : wide ? [0x10,0x18,0x58,0x80,0x124] : [8,0xc,0x2c,0x40,0xac];
     const root=(0x30000n + base), owner=(0x31000n + base), definition=(0x32000n + base), entry=(0x33000n + base), entryDefinition=(0x34000n + base);
     const object=(0x70000n + base),vtable=(0x71000n + base);
-    const vectorType=(0x50000n + base),elementType=(0x50100n + base),intType=(0x50200n + base),hashType=(0x50300n + base),valueType=(0x50400n + base),keyType=(0x50500n + base);
+    const byValueOffset = mono ? BigInt(({V1Cattrs: {32: 0x88, 64: 0xd0}, V2: {32: 0x70, 64: 0xb8}, V3: {32: 0x70, 64: 0xb8}})[family][width]) : 0n;
+    const valueClass=0x3a000n+base,keyClass=0x3b000n+base;
+    const vectorType=(0x50000n + base),elementType=(0x50100n + base),intType=(0x50200n + base),hashType=(0x50300n + base);
+    const valueType=mono?valueClass+byValueOffset:0x50400n+base,keyType=mono?keyClass+byValueOffset:0x50500n+base;
     for(const klass of [root,owner,definition,entry,entryDefinition])for(let i=0n;i<0x200n;i++)memory.set(klass+i,0);
     const named=(klass,at,name,namespace)=>{
         ptr(klass+BigInt(nameOffset),at);text(at,name);
@@ -50,11 +53,11 @@ export function createKeyedCollectionFixture({family='V2', width=64, dictionary=
         : dictionary?['_buckets','_entries','_count','_freeCount']:['_buckets','_slots','_count','_lastIndex'];
     if(renamed&&!parallel)names.forEach((name,i)=>names[i]=dictionary?name.slice(1):`m${name}`);
     const outer=names.map((name,i)=>[name,header+i*bytes,i>=names.length-2?intType:vectorType]);
-    if(!mono&&parallel){
+    if(parallel){
         for(let i=2;i<outer.length-2;i++){
             const vector=base+0x50600n+BigInt((i-2)*256);
             number(vector+BigInt(bytes+2),1,0x1d);
-            ptr(vector,dictionary&&i===2?keyType:valueType);
+            ptr(vector,mono?(dictionary&&i===2?keyClass:valueClass):(dictionary&&i===2?keyType:valueType));
             outer[i][2]=vector;
         }
     }
@@ -82,5 +85,5 @@ export function createKeyedCollectionFixture({family='V2', width=64, dictionary=
     ptr(object,mono?vtable:root);ptr(vtable,root);
     number((0x60000n + base),8,object);number((0x60008n + base),1,dictionary?0:1);number((0x60009n + base),1,0);
     number((0x6000an + base),1,family==='V1Cattrs'?1:family==='V3'?3:2);
-    return {...fixture,number,ptr,object,vtable,root,owner,width,bytes,outer,stride,hash,next,key,value,keyBytes,valueBytes};
+    return {...fixture,number,ptr,object,vtable,root,owner,width,bytes,outer,stride,hash,next,key,value,keyBytes,valueBytes,keyType,valueType};
 }

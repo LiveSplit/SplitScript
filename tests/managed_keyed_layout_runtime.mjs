@@ -15,7 +15,7 @@ const modes = ['derived', 'direct', 'renamed', 'reversed members', 'signed hash'
     'wrong next type', 'unsupported member type', 'null field type', 'unreadable type', 'null element class',
     'null field array', 'unreadable field', 'huge field count', 'unreadable generic', 'null definition',
     'object overflow', 'fields overflow', 'instance size overflow', 'unreadable size', 'retry', 'null type data', 'plain element type', 'array element type',
-    'payload null type', 'payload unreadable type', 'payload unsupported type', 'payload type overflow',
+    'payload retry', 'payload null type', 'payload unreadable type', 'payload unsupported type', 'payload type overflow',
     'null generic data', 'missing kind', 'missing data', 'missing field type', 'missing instance size', 'missing cached class'];
 let cases = 0;
 const monoLayouts = {
@@ -24,7 +24,7 @@ const monoLayouts = {
     V3: {32: [0x2c, 0x30, 0x20, 0x60, 0x9c, 0xf, 0x8c], 64: [0x48, 0x50, 0x30, 0x98, 0x100, 0x1b, 0xf0]},
 };
 for (const family of mono ? Object.keys(monoLayouts) : ['il2cpp']) for (const width of [32, 64]) for (const dictionary of [true, false]) for (const parallel of [false, true]) for (const mode of modes) {
-    if (mode.startsWith('payload ') && (mono || !parallel)) continue;
+    if (mode.startsWith('payload ') && !parallel) continue;
     if (mono && ['plain element type', 'array element type', 'null generic data', 'missing cached class'].includes(mode)) continue;
     if (family === 'V1Cattrs' && ['unreadable generic', 'null definition'].includes(mode)) continue;
     const wide = width === 64, bytes = width / 8, header = 2 * bytes;
@@ -52,7 +52,7 @@ for (const family of mono ? Object.keys(monoLayouts) : ['il2cpp']) for (const wi
     const root = 0x30000n, owner = 0x31000n, definition = 0x32000n, entry = 0x33000n, entryDefinition = 0x34000n;
     const generic = 0x35000n, entryGeneric = 0x36000n, outerFields = 0x37000n, innerFields = 0x38000n;
     const object = 0x70000n, vtable = 0x71000n;
-    const vectorType = 0x50000n, elementType = 0x50100n, intType = 0x50200n, hashType = 0x50300n, stringType = 0x50400n;
+    const vectorType = 0x50000n, elementType = 0x50100n, intType = 0x50200n, hashType = 0x50300n, stringType = mono ? 0x3b000n + BigInt(({V1Cattrs:{32:0x88,64:0xd0},V2:{32:0x70,64:0xb8},V3:{32:0x70,64:0xb8}})[family][width]) : 0x50400n;
     for (const klass of [root, owner, definition, entry, entryDefinition]) {
         for (let i = 0n; i < 0x200n; i++) memory.set(klass + i, 0);
     }
@@ -76,13 +76,13 @@ for (const family of mono ? Object.keys(monoLayouts) : ['il2cpp']) for (const wi
         : dictionary ? ['_buckets', '_entries', '_count', '_freeCount'] : ['_buckets', '_slots', '_count', '_lastIndex'];
     if (mode === 'renamed' && !parallel) names.forEach((name, i) => names[i] = dictionary ? name.slice(1) : `m${name}`);
     const outer = names.map((name, i) => [name, header + i * bytes, i >= names.length - 2 ? intType : vectorType]);
-    if (!mono && parallel) {
+    if (parallel) {
         const payloadVector = 0x50500n;
         number(payloadVector + BigInt(typeKindOffset), 1, 0x1d);
-        ptr(payloadVector, stringType);
+        ptr(payloadVector, mono ? 0x3b000n : stringType);
         for (let i = 2; i < outer.length - 2; i++) outer[i][2] = payloadVector;
         if (mode === 'payload null type') ptr(payloadVector, 0);
-        if (mode === 'payload unreadable type') memory.delete(stringType + BigInt(typeKindOffset));
+        if (mode === 'payload unreadable type' || mode === 'payload retry') memory.delete(stringType + BigInt(typeKindOffset));
         if (mode === 'payload unsupported type') number(stringType + BigInt(typeKindOffset), 1, 0x10);
         if (mode === 'payload type overflow') ptr(payloadVector, (1n << BigInt(width)) - 1n);
     }
@@ -178,9 +178,13 @@ for (const family of mono ? Object.keys(monoLayouts) : ['il2cpp']) for (const wi
         const values = name => (host.variables.get(name).match(/0x[0-9a-f]+|[0-9]+/gi) ?? []).map(v => BigInt(v).toString());
         assert.deepEqual(values('fields'), outer.map(v => String(v[1])), label);
         const ordered = parallel ? ['HashCode', 'Next'] : dictionary ? ['hashCode', 'next', 'key', 'value'] : ['hashCode', 'next', 'value'];
-        const payloads = !mono && parallel ? (dictionary ? 2 : 1) : 0;
+        const payloads = parallel ? (dictionary ? 2 : 1) : 0;
         assert.deepEqual(values('members'), [...ordered.map(name => String(inner.find(v => v[0] === name)[1] - header)), ...Array(payloads).fill('0')], label);
         assert.deepEqual(values('types'), [...ordered.map(name => String(inner.find(v => v[0] === name)[2])), ...Array(payloads).fill(String(stringType))], label);
+    }
+    if (mode === 'payload retry') {
+        number(stringType + BigInt(typeKindOffset), 1, 0x0e);
+        host.updateUntil(() => host.variables.get('result') === 'ok', label);
     }
     if (mode === 'retry') {
         number(entry + BigInt(instanceSizeOffset), 4, stride + header);
