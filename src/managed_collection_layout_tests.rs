@@ -48,6 +48,18 @@ fn mono_static_field_paths_preserve_declaring_owners() {
     );
 }
 
+#[test]
+fn il2cpp_generic_storage_profiles() {
+    run_layout_fixtures(
+        "generic-storage",
+        "tests/il2cpp_generic_storage_runtime.mjs",
+        [(
+            "il2cpp",
+            include_str!("../tests/il2cpp_generic_storage.split"),
+        )],
+    );
+}
+
 fn run_layout_fixtures<const N: usize>(kind: &str, harness: &str, fixtures: [(&str, &str); N]) {
     for (backend, source) in fixtures {
         let mut parsed = parse(source).unwrap();

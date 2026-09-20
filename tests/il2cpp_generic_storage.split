@@ -1,0 +1,48 @@
+// Compiler-owned profile and generic-storage probe.
+state "game.exe" {}
+onAttach { await __splitscript_stdlib_collection_probe() }
+fn __splitscript_stdlib_collection_probe() {
+    let choice = process.read<u32>(0x60000) else 0
+    let profile = match choice {
+        0 => Il2CppProfile.unity2018_4_36f1X64(),
+        1 => Il2CppProfile.unity2018_4_36f1X86(),
+        2 => Il2CppProfile.unity2019_4_41f2X64(),
+        3 => Il2CppProfile.unity2019_4_41f2X86(),
+        4 => Il2CppProfile.unity2020_1_18f1X64(),
+        5 => Il2CppProfile.unity2020_1_18f1X86(),
+        6 => Il2CppProfile.unity2021_3_11f1X64(),
+        7 => Il2CppProfile.unity2021_3_11f1X86(),
+        8 => Il2CppProfile.unity2022_3_0f1X64(),
+        9 => Il2CppProfile.unity2022_3_0f1X86(),
+        10 => Il2CppProfile.unity2023_1_0f1X64(),
+        11 => Il2CppProfile.unity2023_1_0f1X86(),
+        12 => Il2CppProfile.unity2023_1_22f1X64(),
+        13 => Il2CppProfile.unity2023_1_22f1X86(),
+        14 => Il2CppProfile.unity6000_2_12f1X64(),
+        15 => Il2CppProfile.unity6000_2_12f1X86(),
+        16 => Il2CppProfile.unity6000_3_21f1X64(),
+        17 => Il2CppProfile.unity6000_3_21f1X86(),
+        18 => Il2CppProfile.unity6000_5_10f1X64(),
+        19 => Il2CppProfile.unity6000_5_10f1X86(),
+        20 => Il2CppProfile.unity6000_7_0a3X64(),
+        21 => Il2CppProfile.unity6000_7_0a3X86(),
+        _ => Il2CppProfile.unity2022_3_0f1X64(),
+    }
+    let names = UnityClassNames { width: if profile.pointerSize == PointerSize.Bit64 { 8 } else { 4 },
+        name: profile.className, namespace: profile.classNamespace, declaring: None }
+    while true {
+        let budget = process.read<u32>(0x60004) else 4
+        let charge = () => {
+            let allowed = budget != 0
+            if allowed { budget -= 1 }
+            allowed
+        }
+        let typeAddress = (process.read<u64>(0x60008) else 0) as address
+        match names.il2cppGenericSize(typeAddress, profile.typeData, profile.classInstanceSize,
+            profile.genericCachedClass, profile.classValueTypeBit, charge) {
+            Ok(size) => { setVariable("size", size); setVariable("result", "ok") },
+            Err(error) => setVariable("result", error),
+        }
+        await nextTick()
+    }
+}

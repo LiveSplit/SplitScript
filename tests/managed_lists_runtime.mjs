@@ -26,7 +26,7 @@ const monoLayouts = {
 };
 for (const backend of [...Object.keys(monoLayouts), 'il2cpp']) for (const width of [32, 64]) for (const mode of modes) {
     const mono = backend !== 'il2cpp';
-    if (!mono && (mode === 'wrong inline schema' || mode.startsWith('generic '))) continue;
+    if (!mono && mode === 'wrong inline schema') continue;
     const wide = width === 64, bytes = width / 8;
     const fixture = mono ? createMonoPeFixture(profiles.builds.find(p => p.width === width && p.version === backend))
         : createIl2cppPeFixture({width, version: [2022, 3, 0, 37029]});

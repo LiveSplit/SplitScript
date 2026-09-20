@@ -22,7 +22,6 @@ for(const family of backend==='mono'?['V1Cattrs','V2','V3']:['il2cpp'])for(const
     if((parallel||!dictionary)&&mode==='key overrun')continue;
     if(!dictionary&&mode==='key kind mismatch')continue;
     if(mode.startsWith('inline ')&&family==='il2cpp')continue;
-    if(mode.startsWith('generic ')&&family==='il2cpp')continue;
     const genericValue=['generic inline','generic value as reference','generic wrong width'].includes(mode);
     const f=createKeyedCollectionFixture({family,width,dictionary,parallel,reversed:mode==='reversed',renamed:mode==='renamed',inline:mode.startsWith('inline')||genericValue});
     const {memory,number,ptr,object,vtable,root,outer,stride,hash,next,key,value,bytes}=f;
@@ -37,15 +36,15 @@ for(const family of backend==='mono'?['V1Cattrs','V2','V3']:['il2cpp'])for(const
     if(mode==='inline class overflow')ptr(f.valueType,limit-1n);
     let generic;
     if(mode.startsWith('generic ')) {
-        generic=writeGenericType({mono:true,width,ptr,number,cachedClass:f.valueClass},f.valueType,genericValue,mode==='generic wrong width'?8:16);
+        generic=writeGenericType({mono:family!=='il2cpp',width,ptr,number,cachedClass:f.valueClass},f.valueType,genericValue,mode==='generic wrong width'?8:16);
         // An unrelated generic definition size cannot determine instantiated storage.
         ptr(generic.descriptor,0x3c000n);number(0x3c000n+BigInt(width===64?0x1c:0x10),4,2*bytes+999);
         if(mode==='generic null descriptor')ptr(f.valueType,0);
-        if(mode==='generic unreadable descriptor')memory.delete(generic.descriptor+BigInt(4*bytes));
-        if(mode==='generic null class')ptr(generic.descriptor+BigInt(4*bytes),0);
+        if(mode==='generic unreadable descriptor')memory.delete(generic.cached);
+        if(mode==='generic null class')ptr(generic.cached,0);
         if(mode==='generic unreadable flags')memory.delete(generic.flags);
         if(mode==='generic descriptor overflow')ptr(f.valueType,limit-1n);
-        if(mode==='generic class overflow')ptr(generic.descriptor+BigInt(4*bytes),limit-1n);
+        if(mode==='generic class overflow')ptr(generic.cached,limit-1n);
     }
     let touched=4,live=2,capacity=6;
     if(mode==='empty allocated'||mode==='empty null'||mode==='empty at address limit'){touched=0;live=0;capacity=0;}
@@ -69,7 +68,7 @@ for(const family of backend==='mono'?['V1Cattrs','V2','V3']:['il2cpp'])for(const
     number(0x60028n,4,mode==='key kind mismatch'?1<<0x1d:0xffffffff);
     number(0x6002cn,4,mode==='value kind mismatch'?1<<0x1d:0xffffffff);
     if(mode==='generic reference as value')number(0x6002cn,4,1<<0x11);
-    if(mode==='generic value as reference'){number(0x6002cn,4,1<<0x12);number(0x60014n,4,bytes);number(generic.flags-4n,4,3*bytes);}
+    if(mode==='generic value as reference'){number(0x6002cn,4,1<<0x12);number(0x60014n,4,bytes);number(generic.size,4,3*bytes);}
     if(mode==='scalar wrong width')number(f.valueType+BigInt(bytes+2),1,0x06);
     const countIndex=parallel?outer.length-2:2;
     const first=object+BigInt(outer[countIndex][1]),second=object+BigInt(outer[countIndex+1][1]);
@@ -151,7 +150,7 @@ for(const family of backend==='mono'?['V1Cattrs','V2','V3']:['il2cpp'])for(const
         assert.equal(reads,0,`${label}: invalid generic storage read payload`);
         if(mode.endsWith('as value')||mode.endsWith('as reference'))assert.match(host.variables.get('result'),/type is incompatible/,label);
         if(mode==='generic wrong width')assert.match(host.variables.get('result'),/width is incompatible/,label);
-        writeGenericType({mono:true,width,ptr,number,cachedClass:f.valueClass},f.valueType,genericValue);
+        writeGenericType({mono:family!=='il2cpp',width,ptr,number,cachedClass:f.valueClass},f.valueType,genericValue);
         number(0x6002cn,4,0xffffffff);number(0x60014n,4,f.valueBytes);
         host.updateUntil(()=>host.variables.get('result')==='ok',`${label}: generic repair`);
     }

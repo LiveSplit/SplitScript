@@ -1,0 +1,47 @@
+{
+  "provenance": "Source-derived bit locations, not additional ASR PDB measurements. Missing profiles have no proven classification yet.",
+  "sources": {
+    "2018.4.36f1": {
+      "class": "https://raw.githubusercontent.com/MlgmXyysd/libil2cpp/master/libil2cpp/Unity_2018.4/2018.4.36f1/il2cpp-class-internals.h",
+      "type": "https://raw.githubusercontent.com/MlgmXyysd/libil2cpp/master/libil2cpp/Unity_2018.4/2018.4.36f1/il2cpp-runtime-metadata.h",
+      "normalized_lf_sha256": {
+        "il2cpp-class-internals.h": "cf2f9f01daa74b576acb1c1fa306a0905604f8d61751ed32f75768d0cfcc7046",
+        "il2cpp-runtime-metadata.h": "d0ebf6312ffcacaee8e8e151e51984eb05773b2c896b777222076c15e763454d"
+      }
+    },
+    "2021.3.11f1": {
+      "class": "https://raw.githubusercontent.com/MlgmXyysd/libil2cpp/master/libil2cpp/Unity_2021.3/2021.3.11f1/il2cpp-class-internals.h",
+      "type": "https://raw.githubusercontent.com/MlgmXyysd/libil2cpp/master/libil2cpp/Unity_2021.3/2021.3.11f1/il2cpp-runtime-metadata.h",
+      "normalized_lf_sha256": {
+        "il2cpp-class-internals.h": "90ffc6bb302fceb633cfdaa43f16b1e5c0f50a725e3d5f0b54be08033ef212df",
+        "il2cpp-runtime-metadata.h": "6cfb8102559f68b48aed06d9ccf34a84e9ecd32c0baaa038524f321f8e6974e2"
+      }
+    },
+    "2022.3.0f1": {
+      "class": "https://raw.githubusercontent.com/MlgmXyysd/libil2cpp/master/libil2cpp/Unity_2022.3/2022.3.0f1/il2cpp-class-internals.h",
+      "type": "https://raw.githubusercontent.com/MlgmXyysd/libil2cpp/master/libil2cpp/Unity_2022.3/2022.3.0f1/il2cpp-runtime-metadata.h",
+      "normalized_lf_sha256": {
+        "il2cpp-class-internals.h": "44bc235111526372c49c99ca121ccbcd7f7f0e14cb3f0f342a51047ec1f0da14",
+        "il2cpp-runtime-metadata.h": "6cfb8102559f68b48aed06d9ccf34a84e9ecd32c0baaa038524f321f8e6974e2"
+      }
+    },
+    "2023.1.0f1": {
+      "class": "https://raw.githubusercontent.com/MlgmXyysd/libil2cpp/master/libil2cpp/Unity_2023.1/2023.1.0f1/il2cpp-class-internals.h",
+      "type": "https://raw.githubusercontent.com/MlgmXyysd/libil2cpp/master/libil2cpp/Unity_2023.1/2023.1.0f1/il2cpp-runtime-metadata.h",
+      "normalized_lf_sha256": {
+        "il2cpp-class-internals.h": "ba5fbdf794a3e4958af542310dbbc9f6ea8b221afca655b2ad69324534f80a04",
+        "il2cpp-runtime-metadata.h": "6cfb8102559f68b48aed06d9ccf34a84e9ecd32c0baaa038524f321f8e6974e2"
+      }
+    }
+  },
+  "profiles": {
+    "UNITY_2018_4_36F1_X86_64": 2353,
+    "UNITY_2018_4_36F1_X86": 1521,
+    "UNITY_2021_3_11F1_X86_64": 351,
+    "UNITY_2021_3_11F1_X86": 191,
+    "UNITY_2022_3_0F1_X86_64": 351,
+    "UNITY_2022_3_0F1_X86": 191,
+    "UNITY_2023_1_0F1_X86_64": 351,
+    "UNITY_2023_1_0F1_X86": 191
+  }
+}

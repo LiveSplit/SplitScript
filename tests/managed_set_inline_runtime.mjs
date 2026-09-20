@@ -12,8 +12,7 @@ const layouts = {
 let cases = 0;
 for (const family of Object.keys(layouts)) for (const width of [32, 64])
 for (const parallel of [false, true]) for (const mode of ['generic', 'generic short schema', 'seed', 'mutate', 'duplicate', 'unreadable', 'freeze', 'short schema', 'long schema']) {
-    if (mode.startsWith('generic') && family === 'il2cpp') continue;
-    if (mode.endsWith('schema') && family === 'il2cpp') continue;
+    if (mode.endsWith('schema') && !mode.startsWith('generic') && family === 'il2cpp') continue;
     const f = createKeyedCollectionFixture({family, width, parallel, dictionary: false, inline: true});
     const {number, ptr, memory, object, outer, bytes, stride, hash, next, value} = f;
     const mono = family !== 'il2cpp', wide = width === 64, [fields, count] = layouts[family][width];

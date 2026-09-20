@@ -1978,6 +1978,60 @@ Full generic argument/type identity, IL2CPP generic storage classification and
 plain value-type resolution, raw-array element contracts, metadata scheduling,
 native platform validation, and final size acceptance remain open.
 
+## IL2CPP generic storage classification (2026-09-20)
+
+IL2CPP List/Map/Set element storage now follows the generic descriptor's measured
+`cached_class` offset and reads a separately audited class value-type bit.
+References require pointer width; inline values require the instantiated class's
+unboxed size. The generic definition's size is never substituted. Address spans,
+null/unreadable metadata, and the existing shared work budget are checked before
+remote reads; failed discovery can be retried. Both cold and cached collection
+schemas validate the resulting storage category and width before payload reads.
+
+`Il2CppProfile.classValueTypeBit` is an optional bit offset from the runtime class,
+with bit zero the least significant bit of its first byte. Its bounds are checked
+only when the generic reader uses it. Source-derived facts live separately from
+ASR's PDB-derived offsets in `tests/fixtures/il2cpp-storage-profiles.json`, including
+source URLs and hashes of the headers normalized to LF. The importer merges these
+facts into profile constructors without changing the ASR checkout.
+
+Eight profiles are audited: x86 and x64 for 2018.4.36f1, 2021.3.11f1, 2022.3.0f1,
+and 2023.1.0f1. The 2018 header places `valuetype` at bit 1 of the byte eighteen
+bytes after `field_count`. The three later headers put it at bit 7 of the last
+byte of the embedded `byval_arg` type word, after four class-header pointers and
+the type's data pointer. The exact headers are linked in the supplemental file.
+The other fourteen profiles still have **no audited value-type bit**; generic
+element classification reports unavailable metadata before remote reads. This
+is unfinished coverage, not a claim that generic storage works on every profile.
+Custom profiles can supply the fact explicitly.
+
+The profile probe passes 118 cases per build profile, including both flag
+representations, reference reads without size metadata, unrelated flag bits,
+invalid/unreadable/overflowing metadata, work accounting, repair/retry, and
+explicit failure for unaudited profiles. Private collection adapters pass;
+IL2CPP slot tests add 88 cases per build profile. All 28 public collection
+artifacts pass runtime fixtures in Debug and Release. Public IL2CPP generic
+inline List/Map/Set cases now also reject shorter cached schemas; inline Map and
+Set each pass 136 cases per artifact and Lists pass 428. The compiler checks that
+each backend retains only its own generic resolver. Documentation validates 561
+pages and the importer reproduces all 22 profiles.
+
+Twenty-two baseline fixtures retain module/section sizes, function/type counts,
+and function-body size multisets. IL2CPP List grows 958 bytes to 59,081, Map 907
+to 70,064, and Set 885 to 69,886 for the resolver, dispatch, and error data. The
+new profile member also costs **9 bytes in explicit IL2CPP builds without
+collection readers**, and 94 bytes in automatic selection: these are profile
+construction/type bytes, with no generic resolver retained. This residual unused
+profile-data cost remains part of final size work; it does not satisfy the final
+zero-unused-feature-cost target. Scratch, read capacity, and memory pages are
+unchanged. Explicit Lunistice is 58,187 bytes; automatic selection is 182,510.
+Both edition behavior cases pass. The sub-30,000-byte requirement remains open.
+
+Remaining work includes auditing the fourteen missing profile facts, full generic
+argument/type identity, IL2CPP plain value-type resolution, recursive raw-array
+contracts, attachment metadata scheduling, native platform validation, and final
+size acceptance.
+
 ## Source map for implementation
 
 Upstream links below are pinned to the reviewed tip; the PR table provides the historical changes.

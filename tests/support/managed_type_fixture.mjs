@@ -21,11 +21,11 @@ export function writeGenericType({mono, width, ptr, number, cachedClass}, typeAd
     const bytes = width / 8;
     number(typeAddress + BigInt(bytes + 2), 1, 0x15);
     const klass = cachedClass ?? typeAddress + 0x10000000n, descriptor = klass + 0x400n;
-    const flags = klass + BigInt(width === 64 ? 0x20 : 0x14);
-    if (mono) {
-        ptr(typeAddress, descriptor); ptr(descriptor + BigInt(4 * bytes), klass);
-        number(flags, 1, value ? 4 : 0);
-        number(flags - 4n, 4, 2 * bytes + valueBytes);
-    }
-    return {klass, descriptor, flags};
+    const flags = klass + BigInt(mono ? (width === 64 ? 0x20 : 0x14) : (width === 64 ? 0x2b : 0x17));
+    const size = klass + BigInt(mono ? (width === 64 ? 0x1c : 0x10) : (width === 64 ? 0xf8 : 0x80));
+    const cached = descriptor + BigInt((mono ? 4 : 3) * bytes);
+    ptr(typeAddress, descriptor); ptr(cached, klass);
+    number(flags, 1, value ? (mono ? 4 : 128) : 0);
+    number(size, 4, 2 * bytes + valueBytes);
+    return {klass, descriptor, flags, size, cached};
 }

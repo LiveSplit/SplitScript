@@ -1938,7 +1938,7 @@ fn managed_error_paths_follow_observed_payloads() {
 }
 
 #[test]
-fn mono_generic_storage_resolver_follows_the_selected_backend() {
+fn generic_storage_resolver_follows_the_selected_backend() {
     for (selector, mono) in [
         ("Unity.mono(MonoVersion.V2)", true),
         ("Unity.il2cpp(Il2CppProfile.unity2022_3_0f1X64())", false),
@@ -1967,6 +1967,14 @@ fn mono_generic_storage_resolver_follows_the_selected_backend() {
                     .iter()
                     .any(|(_, name)| name.contains("MonoGenericSize")),
                 mono,
+                "{selector}: {collection}"
+            );
+            assert_eq!(
+                report
+                    .functions
+                    .iter()
+                    .any(|(_, name)| name.contains("Il2CppGenericSize")),
+                !mono,
                 "{selector}: {collection}"
             );
         }
