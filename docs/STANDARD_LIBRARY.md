@@ -464,6 +464,13 @@ again after the fields, so a changed object header fails the read. Successful
 ancestry proofs are cached for the attachment; failed proofs remain retryable.
 These checks share the root's work budget. They do not make remote reads atomic.
 
+Arrays, Lists, Maps, and Sets with declared class elements also check their
+element type metadata, including through nested arrays. The declared runtime
+element class must be the schema class or a subclass. Empty containers, including
+those with unallocated backing storage, receive the same check before reading
+elements. Only schemas that
+use class elements retain this metadata verification.
+
 If any nested field fails, the whole operation returns an error and no partial
 snapshot escapes. Previous snapshots keep their values when remote objects
 change or a later read fails. Recursive schemas are allowed, but an object

@@ -62,7 +62,7 @@ for (const mono of [true, false]) for (const width of [32, 64]) {
             for (let i = 0; i < value.length; i++) number(at + BigInt(bytes * 2 + 4 + i * 2), 2, value.charCodeAt(i));
         };
         const vector = (at, values, stride = bytes) => {
-            const element = at === nested ? [0x0e] : at === leaves ? 0x12 : at === numbers ? 0x08 : at === pointers ? 0x19 : at === pairs || at === 0x300000n || at === 0xa0000n ? {kind:0x11,bytes:8} : 0x0e;
+            const element = at === nested ? [0x0e] : at === leaves ? {kind:0x12,class:0x19000} : at === numbers ? 0x08 : at === pointers ? 0x19 : at === pairs || at === 0x300000n || at === 0xa0000n ? {kind:0x11,bytes:8} : 0x0e;
             writeManagedArrayType(fixture, {mono,width,ptr,number}, at, element);
             ptr(at + BigInt(2 * bytes), 0);
             ptr(at + BigInt(3 * bytes), values.length);

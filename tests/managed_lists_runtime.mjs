@@ -1,5 +1,5 @@
 import {writeManagedObjectHeader} from './support/managed_type_fixture.mjs';
-import {writeVectorElementType, writeGenericType, writeManagedArrayType} from './support/managed_type_fixture.mjs';
+import {writeVectorElementType, writeGenericType, writeManagedArrayType, writeManagedClassType} from './support/managed_type_fixture.mjs';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { SplitScriptHost } from './support/splitscript_host.mjs';
@@ -8,7 +8,7 @@ import { createIl2cppPeFixture } from './support/il2cpp_pe_fixture.mjs';
 
 const [wasm] = process.argv.slice(2);
 const profiles = JSON.parse(await readFile(new URL('./fixtures/mono-pe-profiles.json', import.meta.url)));
-const modes = ['declared nested scalar', 'declared nested scalar null', 'declared nested cycle', 'backing element kind', 'backing nested kind', 'empty backing nested kind', 'backing inline width', 'torn list class', 'torn backing class', 'wrong nested schema', 'generic record', 'generic short schema', 'wrong array schema', 'wrong scalar schema', 'wrong inline schema', 'seed', 'mutate', 'empty', 'large spare capacity', 'null empty backing',
+const modes = ['nominal mismatch', 'nominal unreadable', 'nominal cycle', 'nominal derived', 'declared nested scalar', 'declared nested scalar null', 'declared nested cycle', 'backing element kind', 'backing nested kind', 'empty backing nested kind', 'backing inline width', 'torn list class', 'torn backing class', 'wrong nested schema', 'generic record', 'generic short schema', 'wrong array schema', 'wrong scalar schema', 'wrong inline schema', 'seed', 'mutate', 'empty', 'large spare capacity', 'null empty backing',
     'negative count', 'count exceeds capacity', 'element budget', 'null backing', 'null list',
     'indexed string', 'unreadable size', 'unreadable backing slot', 'unreadable live slot', 'unreadable string',
     'null nested list', 'class cycle', 'shared element budget', 'capacity overflow',
@@ -58,7 +58,7 @@ for (const backend of [...Object.keys(monoLayouts), 'il2cpp']) for (const width 
                 ptr(field + BigInt(mono ? 0 : bytes), type);
                 number(type + BigInt(bytes + 2), 1, text === '_items' ? 0x1d : 0x08);
                 if (text === '_items') {
-                    const elementType = writeVectorElementType({mono, width, family: backend, ptr, number, fixture}, type, typeBase + 0x1000n, elementKind);
+                    const elementType = writeVectorElementType({mono, width, family: backend, ptr, number, fixture, referenceClass:0x14000}, type, typeBase + 0x1000n, elementKind);
                     if (elementKind === 0x11 && mode.startsWith('generic ')) writeGenericType({mono, width, ptr, number, cachedClass: typeBase + 0x1000n}, elementType, true, 8);
                 }
             }
@@ -85,7 +85,7 @@ for (const backend of [...Object.keys(monoLayouts), 'il2cpp']) for (const width 
     const vector = (at, values, capacity = values.length, stride = bytes) => {
         const element = at === rowsArray || at === 0x8a000n ? [0x0e]
             : at === vectors || at === nestedArray ? {kind:0x15}
-            : at === childrenArray || mode.startsWith('depth') && at >= 0x100000n ? 0x12
+            : at === childrenArray || mode.startsWith('depth') && at >= 0x100000n ? {kind:0x12,class:0x14000}
             : at === 0x86000n ? 0x08 : at === 0x87000n ? 0x19
             : at === 0x88000n ? {kind:mode.startsWith('generic ') ? 0x15 : 0x11,value:true,bytes:8} : 0x0e;
         writeManagedArrayType(fixture, {mono,width,family:backend,ptr,number}, at, element);
@@ -163,6 +163,29 @@ for (const backend of [...Object.keys(monoLayouts), 'il2cpp']) for (const width 
     assert.equal(before.vectors, '[Some(["seed","tail",],),None,]', label);
     assert.equal(before.nested, '[["seed","tail",],[],]', label);
     assert(before.tree.includes('children:[Some(ProfileProbe{children:[]'), label);
+    if (mode.startsWith('nominal ')) {
+        const other = 0xd10000n, fieldType = 0xd02000n;
+        fields(alternateListClass, 0xd00000n, [['_items',2 * bytes],['_size',3 * bytes]], 0x12, fieldType);
+        const elementType = writeVectorElementType({mono,width,family:backend,ptr,number,fixture,referenceClass:other},fieldType,other,0x12);
+        const parent = BigInt(mono ? (wide ? 0x30 : backend === 'V1' || backend === 'V1Cattrs' ? 0x24 : 0x20) : (wide ? 0x58 : 0x2c));
+        ptr(other + parent, mode.endsWith('derived') ? 0x14000n : mode.endsWith('cycle') ? other : 0);
+        if (mode.endsWith('unreadable')) memory.delete(elementType);
+        ptr(children, mono ? alternateListVtable : alternateListClass);
+        ptr(children + BigInt(2 * bytes), 0); number(children + BigInt(3 * bytes), 4, 0);
+        reads.length = 0; host.update();
+        if (mode.endsWith('derived')) assert.equal(host.variables.get('treeResult'),'ok',label);
+        else {
+            assert.notEqual(host.variables.get('treeResult'),'ok',label);
+            if (!mode.endsWith('unreadable')) assert.match(host.variables.get('treeResult'),/class/,label);
+            assert.equal(normalize(host.variables.get('tree')),before.tree,label);
+            writeManagedClassType(fixture,{mono,width,ptr,number},elementType,0x14000n);
+            host.updateUntil(() => host.variables.get('treeResult') === 'ok',`${label}: repaired uncached type`);
+        }
+        assert(normalize(host.variables.get('tree')).includes('children:[]'),label);
+        assert(!reads.some(r=>r.address===childrenArray+BigInt(4*bytes)),`${label}: null-backed list read a payload`);
+        cases++; continue;
+    }
+
     assert.equal(normalize(host.variables.get('numbers')), '[1,-2,3,]', label);
     assert.equal(normalize(host.variables.get('records')), '[Record{pair:[1,2,],},Record{pair:[3,4,],},]', label);
     assert.equal(normalize(host.variables.get('pointers')), `[0,${wide ? '18446744073709551615' : '4294967295'},]`, label);

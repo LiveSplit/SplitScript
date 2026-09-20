@@ -2343,6 +2343,52 @@ contracts, shared metadata traversal/scheduling, native platform validation, and
 final size acceptance remain open. Header checks do not provide an atomic memory
 snapshot.
 
+## Class element contracts in collections (2026-09-20)
+
+Arrays, Lists, Maps, and Sets now validate nominal class element metadata before
+reading elements. The check follows nullable schema layers and nested vectors to
+the class leaf, resolves ordinary or cached inflated classes through the selected
+backend, and requires the declared element class to equal or derive from the
+source class. Empty collections and null-backed empty Lists/entry collections
+receive the same validation. Collection materialization continues to check each
+actual child object's class through its snapshot reader.
+
+Successful type-address/expected-class proofs are cached per attachment. Metadata
+resolution, ancestry walks, and cache searches charge the current root's shared
+work budget. Failed proofs are not cached, and nominal validation runs before
+inserting a newly discovered collection layout. The same runtime class can be
+retried after failed metadata is repaired. Reattachment discards successful
+proofs as well as layout caches.
+
+Generated bindings select separate storage-only or nominal-checking callbacks
+from reachable decoder schemas. They share layout caches when both are used.
+The class resolver, proof cache, and additional callback arguments are absent
+from scalar/string collection readers. Map and Set binding generation now shares
+one source template. Unused source declarations do not select nominal callbacks.
+
+All 56 selected array/collection/snapshot artifacts validate and pass in Debug
+and Release. Arrays pass 136 cases and Lists 570 per artifact; class Map/Set
+fixtures pass 416 each, both for direct class elements and arrays of classes.
+New cases cover incompatible empty class elements, null-backed containers,
+derived classes, ordinary and inflated type metadata, cycles, unreadable
+metadata, repair, cache reuse, and cache reset on reattachment. The fixture
+metadata explicitly models the declared class identity and IL2CPP definition
+handles rather than only a reference-sized kind byte. All 681 compiler tests,
+the expanded 24-program storage-resolver retention test, six private layout
+tests, Clippy with warnings denied, and 561-page documentation validation pass.
+
+All 38 existing baseline fixtures retain module and section sizes, function/type
+counts, function-body-size multisets, helper sets, and memory accounting. None
+retains the new class-contract resolver. Explicit Lunistice remains 60,215 bytes
+and automatic selection 185,565. The strict reviewed gate and both Lunistice
+edition scenarios pass. Final size acceptance remains open.
+
+This validates declared class leaves, including through vectors. It does not
+yet validate the complete generic argument graph of nested collection types
+when their containing collection is empty. That work, live-reference contracts,
+shared metadata traversal/scheduling, native platform validation, and the final
+sub-30,000-byte explicit Lunistice target remain unfinished.
+
 ## Source map for implementation
 
 Upstream links below are pinned to the reviewed tip; the PR table provides the historical changes.

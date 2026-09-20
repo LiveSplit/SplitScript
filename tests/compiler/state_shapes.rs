@@ -1951,6 +1951,12 @@ fn collection_storage_resolvers_follow_the_selected_backend() {
             "List<String>",
             "Map<String, String>",
             "Set<String>",
+            "[Probe]",
+            "[[Probe?]]",
+            "List<Probe>",
+            "Map<Probe, String>",
+            "Map<String, [Probe?]>",
+            "Set<Probe>",
         ] {
             let has_array = collection.starts_with('[');
             let has_collection = collection.contains('<') || has_array;
@@ -1971,6 +1977,14 @@ fn collection_storage_resolvers_follow_the_selected_backend() {
             Validator::new_with_features(WasmFeatures::all())
                 .validate_all(&wasm)
                 .unwrap();
+            assert_eq!(
+                report
+                    .functions
+                    .iter()
+                    .any(|(_, name)| name.contains("ClassFromType")),
+                collection.contains("Probe"),
+                "{selector}: {collection}"
+            );
             assert_eq!(
                 report
                     .functions

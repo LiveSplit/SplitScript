@@ -85,7 +85,10 @@ pub(super) fn compile(
             ));
             reader.entered = Some(8);
             if reader.list {
-                let (_, _, callable) = list_binding(lowering);
+                let (_, _, callable) = binding(
+                    lowering,
+                    &reader.collection_binding(crate::stdlib::MANAGED_LIST_LAYOUT_FIELD, element),
+                );
                 locals.push((1, nullable(lowering.gc.val_type(Type::Callable(callable)))));
                 locals.push((
                     1,
@@ -98,7 +101,10 @@ pub(super) fn compile(
                 locals.push((3, ValType::I64));
             }
             {
-                let (_, _, callable) = binding(lowering, crate::stdlib::MANAGED_ARRAY_TYPE_FIELD);
+                let (_, _, callable) = binding(
+                    lowering,
+                    &reader.collection_binding(crate::stdlib::MANAGED_ARRAY_TYPE_FIELD, element),
+                );
                 locals.push((1, nullable(lowering.gc.val_type(Type::Callable(callable)))));
                 locals.push((
                     1,
@@ -406,7 +412,10 @@ impl Reader<'_, '_> {
 
     fn list_type(&self, f: &mut Function, element: TypeId, depth: u32, check_class: bool) {
         let l = self.lowering;
-        let (structure, field, callable) = list_binding(l);
+        let (structure, field, callable) = binding(
+            l,
+            &self.collection_binding(crate::stdlib::MANAGED_LIST_LAYOUT_FIELD, element),
+        );
         let callable_type = l.gc.index(Type::Callable(callable));
         let result = list_layout_result(l);
         f.instruction(&I::GlobalGet(
@@ -430,6 +439,9 @@ impl Reader<'_, '_> {
             self.list_class(f);
         } else {
             f.instruction(&I::I64Const(0));
+        }
+        if crate::managed_read::nominal_class(element, self.capabilities).is_some() {
+            self.expected_class(f, element);
         }
         f.instruction(&I::LocalGet(CONTEXT))
             .instruction(&I::LocalGet(11))
@@ -545,7 +557,10 @@ impl Reader<'_, '_> {
         } else {
             (11, 12, 13)
         };
-        let (structure, field, callable) = binding(l, crate::stdlib::MANAGED_ARRAY_TYPE_FIELD);
+        let (structure, field, callable) = binding(
+            l,
+            &self.collection_binding(crate::stdlib::MANAGED_ARRAY_TYPE_FIELD, element),
+        );
         let callable_type = l.gc.index(Type::Callable(callable));
         f.instruction(&I::GlobalGet(
             l.runtime_globals.provider_preparation_value.unwrap(),
@@ -563,8 +578,11 @@ impl Reader<'_, '_> {
         .instruction(&I::LocalGet(1))
         .instruction(&I::I32Const(depth as i32));
         storage_width(f, self, element);
-        f.instruction(&I::I32Const(storage_kinds(self, element) as i32))
-            .instruction(&I::LocalGet(CONTEXT))
+        f.instruction(&I::I32Const(storage_kinds(self, element) as i32));
+        if crate::managed_read::nominal_class(element, self.capabilities).is_some() {
+            self.expected_class(f, element);
+        }
+        f.instruction(&I::LocalGet(CONTEXT))
             .instruction(&I::LocalGet(callback_local))
             .instruction(&I::StructGet {
                 struct_type_index: callable_type,
@@ -582,6 +600,40 @@ impl Reader<'_, '_> {
                 .instruction(&I::I64Ne);
             self.fail_if(f, "managed array class changed during the read");
         }
+    }
+
+    fn collection_binding(&self, base: &str, element: TypeId) -> String {
+        crate::managed_read::collection_binding(
+            base,
+            crate::managed_read::nominal_class(element, self.capabilities).is_some(),
+        )
+    }
+
+    fn expected_class(&self, f: &mut Function, element: TypeId) {
+        let l = self.lowering;
+        let Some(class) = crate::managed_read::nominal_class(element, self.capabilities) else {
+            f.instruction(&I::I64Const(0));
+            return;
+        };
+        let structure = l
+            .structs
+            .iter()
+            .find(|s| s.name == crate::stdlib::PROVIDER_BINDINGS_TYPE)
+            .unwrap();
+        let name = crate::stdlib::managed_class_address_name(class.index());
+        let field = structure
+            .fields
+            .iter()
+            .position(|f| f.name == name)
+            .unwrap() as u32;
+        f.instruction(&I::GlobalGet(
+            l.runtime_globals.provider_preparation_value.unwrap(),
+        ))
+        .instruction(&I::RefAsNonNull)
+        .instruction(&I::StructGet {
+            struct_type_index: l.gc.index(Type::Struct(structure.id)),
+            field_index: field,
+        });
     }
 
     // Every entry before the leaf is a vector by construction. Checking the
@@ -834,12 +886,6 @@ fn list_layout_result(l: &EmissionContext<'_>) -> ResultTypeId {
             .id_for_standard(StdlibTypeId::UnityListLayout),
         l,
     )
-}
-
-fn list_binding(
-    l: &EmissionContext<'_>,
-) -> (crate::ast::StructId, u32, crate::ast::CallableTypeId) {
-    binding(l, crate::stdlib::MANAGED_LIST_LAYOUT_FIELD)
 }
 
 fn array_type_result(l: &EmissionContext<'_>) -> ResultTypeId {

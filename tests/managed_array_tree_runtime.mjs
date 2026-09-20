@@ -42,7 +42,7 @@ for (const mono of [true, false]) for (const width of [32, 64]) {
         fields(klass, 0x50000n, [['instance', 0x10], ['children', 0x10], ['value', 0x18]]);
         const root = 0x70000n, child = 0x71000n, rootArray = 0x80000n, childArray = 0x88000n;
         const vector = (at, values) => {
-            writeManagedArrayType(fixture, {mono,width,ptr,number}, at, 0x12);
+            writeManagedArrayType(fixture, {mono,width,ptr,number}, at, {kind:0x12,class:0x14000});
             ptr(at + BigInt(2 * bytes), 0); ptr(at + BigInt(3 * bytes), values.length);
             values.forEach((value, index) => ptr(at + BigInt((4 + index) * bytes), value));
         };

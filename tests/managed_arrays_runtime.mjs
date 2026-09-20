@@ -1,5 +1,5 @@
 import {writeManagedObjectHeader} from './support/managed_type_fixture.mjs';
-import {writeManagedArrayType} from './support/managed_type_fixture.mjs';
+import {writeManagedArrayType, writeManagedClassType} from './support/managed_type_fixture.mjs';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { SplitScriptHost } from './support/splitscript_host.mjs';
@@ -9,7 +9,7 @@ const [wasm] = process.argv.slice(2);
 const profiles = JSON.parse(await readFile(new URL('./fixtures/mono-pe-profiles.json', import.meta.url)));
 let cases = 0;
 for (const mono of [true, false]) for (const width of [32, 64]) {
-    for (const mode of ['repair nested metadata', 'cached metadata', 'wrong element kind', 'wrong empty nested kind', 'wrong inline width', 'wrong depth', 'non-array class', 'unreadable class', 'type cycle', 'type depth overflow', 'compatible class replacement', 'torn class', 'seed', 'mutate', 'replace', 'empty', 'null array', 'null row', 'null element', 'null leaf', 'bounds', 'unreadable header', 'unreadable slot', 'unreadable child', 'failed sibling', 'cycle', 'count overflow', 'address overflow', 'shared element budget', 'inline element budget']) {
+    for (const mode of ['nominal empty mismatch', 'nominal empty cycle', 'nominal empty unreadable', 'nominal empty derived', 'repair nested metadata', 'cached metadata', 'wrong element kind', 'wrong empty nested kind', 'wrong inline width', 'wrong depth', 'non-array class', 'unreadable class', 'type cycle', 'type depth overflow', 'compatible class replacement', 'torn class', 'seed', 'mutate', 'replace', 'empty', 'null array', 'null row', 'null element', 'null leaf', 'bounds', 'unreadable header', 'unreadable slot', 'unreadable child', 'failed sibling', 'cycle', 'count overflow', 'address overflow', 'shared element budget', 'inline element budget']) {
         const wide = width === 64, bytes = width / 8;
         const fixture = mono ? createMonoPeFixture(profiles.builds.find(p => p.width === width && p.version === 'V2'))
             : createIl2cppPeFixture({width, version:[2022, 3, 0, 37029]});
@@ -62,7 +62,7 @@ for (const mono of [true, false]) for (const width of [32, 64]) {
             for (let i = 0; i < value.length; i++) number(at + BigInt(bytes * 2 + 4 + i * 2), 2, value.charCodeAt(i));
         };
         const vector = (at, values, stride = bytes) => {
-            const element = at === nested ? [0x0e] : at === leaves ? 0x12 : at === numbers ? 0x08 : at === pointers ? 0x19 : at === pairs || at === 0x300000n || at === 0xa0000n ? {kind:0x11,bytes:8} : 0x0e;
+            const element = at === nested ? [0x0e] : at === leaves ? {kind:0x12,class:0x19000} : at === numbers ? 0x08 : at === pointers ? 0x19 : at === pairs || at === 0x300000n || at === 0xa0000n ? {kind:0x11,bytes:8} : 0x0e;
             writeManagedArrayType(fixture, {mono,width,ptr,number}, at, element);
             ptr(at + BigInt(2 * bytes), 0);
             ptr(at + BigInt(3 * bytes), values.length);
@@ -95,6 +95,39 @@ for (const mono of [true, false]) for (const width of [32, 64]) {
         host.addProcess('game.exe', fixture.process); host.start();
         host.updateUntil(() => host.variables.has('nested'), `${mono}/${width}: seed`);
         host.update(2); reads.length = 0;
+        if (mode.startsWith('nominal ')) {
+            const before = host.variables.get('leaves');
+            const other = 0xb00000n;
+            const parent = BigInt(mono ? (wide ? 0x30 : 0x20) : (wide ? 0x58 : 0x2c));
+            ptr(other + parent, mode.endsWith('derived') ? 0x19000n : mode.endsWith('cycle') ? other : 0);
+            const candidate = writeManagedArrayType(fixture, {mono,width,ptr,number}, leaves, {kind:0x12,class:Number(other)});
+            ptr(leaves + BigInt(3 * bytes), 0);
+            if (mode.endsWith('unreadable')) memory.delete(candidate.element.type);
+            reads.length = 0; host.update();
+            const label = `${mono}/${width}/${mode}`;
+            if (mode.endsWith('derived')) assert.equal(host.variables.get('result'), 'ok', label);
+            else {
+                assert.match(host.variables.get('result'), /leaves: .*managed|leaves: .*read/i, label);
+                assert.equal(host.variables.get('leaves'), before, label);
+                writeManagedClassType(fixture, {mono,width,ptr,number}, candidate.element.type, 0x19000n);
+                host.updateUntil(() => host.variables.get('result') === 'ok', `${label}: repaired uncached type`);
+            }
+            assert.equal(host.variables.get('leaves').replace(/\s/g, ''), '[]', label);
+            assert(!reads.some(r => r.address === leaves + BigInt(4 * bytes)), `${label}: empty class array read a payload`);
+            if (mode.endsWith('derived')) {
+                ptr(other + parent, 0); reads.length = 0; host.update();
+                assert.equal(host.variables.get('result'), 'ok', `${label}: cached proof`);
+                assert(!reads.some(r => r.address === other + parent), `${label}: repeated ancestry discovery`);
+                host.setProcessOpen('game.exe', false); host.update(3);
+                host.variables.delete('leaves'); host.variables.delete('result'); reads.length = 0;
+                host.setProcessOpen('game.exe', true);
+                host.updateUntil(() => reads.some(r => r.address === other + parent), `${label}: attachment cache reset`);
+                assert(!host.variables.has('leaves'), `${label}: stale proof published state`);
+                ptr(other + parent, 0x19000n);
+                host.updateUntil(() => host.variables.get('result') === 'ok', `${label}: repaired reattachment`);
+            }
+            cases++; continue;
+        }
         const normalize = value => value.replace(/\s/g, '');
         const seedNested = '[Some([Some("seed",),None,Some("tail",),],),None,Some([],),]';
         let expected = seedNested, repairType = 0n;

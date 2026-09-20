@@ -99,46 +99,75 @@ pub(super) fn prune(
         remove.insert(crate::stdlib::MANAGED_OBJECT_TYPE_FIELD.to_owned());
         remove.insert("__object_type_cache".to_owned());
     }
-    if !reachable.managed_decoders().any(|ty| {
-        matches!(
-            capabilities.managed_decoder(ty).unwrap().kind,
-            crate::managed_read::ManagedDecoderKind::Array { .. }
-                | crate::managed_read::ManagedDecoderKind::List { .. }
-        )
-    }) {
-        remove.insert(crate::stdlib::MANAGED_ARRAY_TYPE_FIELD.to_owned());
-        remove.insert("__array_layout_cache".to_owned());
+    use crate::managed_read::{ManagedDecoderKind as D, collection_binding, nominal_class};
+    let mut collection_bindings = HashSet::new();
+    for ty in reachable.managed_decoders() {
+        match capabilities.managed_decoder(ty).unwrap().kind {
+            D::Array { element } | D::List { element } => {
+                let nominal = nominal_class(element, capabilities).is_some();
+                collection_bindings.insert(collection_binding(
+                    crate::stdlib::MANAGED_ARRAY_TYPE_FIELD,
+                    nominal,
+                ));
+                if matches!(
+                    capabilities.managed_decoder(ty).unwrap().kind,
+                    D::List { .. }
+                ) {
+                    collection_bindings.insert(collection_binding(
+                        crate::stdlib::MANAGED_LIST_LAYOUT_FIELD,
+                        nominal,
+                    ));
+                }
+            }
+            D::Map { key, value } => {
+                collection_bindings.insert(collection_binding(
+                    crate::stdlib::MANAGED_MAP_READ_FIELD,
+                    nominal_class(key, capabilities).is_some()
+                        || nominal_class(value, capabilities).is_some(),
+                ));
+            }
+            D::Set { element } => {
+                collection_bindings.insert(collection_binding(
+                    crate::stdlib::MANAGED_SET_READ_FIELD,
+                    nominal_class(element, capabilities).is_some(),
+                ));
+            }
+            _ => {}
+        }
     }
-    if !reachable.managed_decoders().any(|ty| {
-        matches!(
-            capabilities.managed_decoder(ty).unwrap().kind,
-            crate::managed_read::ManagedDecoderKind::List { .. }
-        )
-    }) {
-        remove.insert(crate::stdlib::MANAGED_LIST_LAYOUT_FIELD.to_owned());
-        remove.insert("__list_layout_cache".to_owned());
+    for (base, cache) in [
+        (
+            crate::stdlib::MANAGED_ARRAY_TYPE_FIELD,
+            "__array_layout_cache",
+        ),
+        (
+            crate::stdlib::MANAGED_LIST_LAYOUT_FIELD,
+            "__list_layout_cache",
+        ),
+        (crate::stdlib::MANAGED_MAP_READ_FIELD, "__map_layout_cache"),
+        (crate::stdlib::MANAGED_SET_READ_FIELD, "__set_layout_cache"),
+    ] {
+        for nominal in [false, true] {
+            let binding = collection_binding(base, nominal);
+            if !collection_bindings.contains(&binding) {
+                remove.insert(binding);
+            }
+        }
+        if [false, true]
+            .iter()
+            .all(|nominal| !collection_bindings.contains(&collection_binding(base, *nominal)))
+        {
+            remove.insert(cache.to_owned());
+        }
     }
-    if !reachable.managed_decoders().any(|ty| {
-        matches!(
-            capabilities.managed_decoder(ty).unwrap().kind,
-            crate::managed_read::ManagedDecoderKind::Map { .. }
-        )
-    }) {
-        remove.insert(crate::stdlib::MANAGED_MAP_READ_FIELD.to_owned());
-        remove.insert("__map_layout_cache".to_owned());
-    }
-    if !reachable.managed_decoders().any(|ty| {
-        matches!(
-            capabilities.managed_decoder(ty).unwrap().kind,
-            crate::managed_read::ManagedDecoderKind::Set { .. }
-        )
-    }) {
-        remove.insert(crate::stdlib::MANAGED_SET_READ_FIELD.to_owned());
-        remove.insert("__set_layout_cache".to_owned());
-    }
-    if remove.contains(crate::stdlib::MANAGED_MAP_READ_FIELD)
-        && remove.contains(crate::stdlib::MANAGED_SET_READ_FIELD)
+    if !collection_bindings
+        .iter()
+        .any(|binding| binding.ends_with("_class"))
     {
+        remove.insert("__class_contract".to_owned());
+        remove.insert("__class_contract_cache".to_owned());
+    }
+    if remove.contains("__map_layout_cache") && remove.contains("__set_layout_cache") {
         remove.insert(crate::stdlib::MANAGED_KEYED_VERIFY_FIELD.to_owned());
         remove.insert("__keyed_array".to_owned());
         remove.insert("__keyed_array_cache".to_owned());

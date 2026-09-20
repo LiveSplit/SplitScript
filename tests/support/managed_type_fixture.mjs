@@ -3,8 +3,9 @@ const byValueOffsets = {
     V1: {32: 0x84, 64: 0xc8}, V1Cattrs: {32: 0x88, 64: 0xd0},
     V2: {32: 0x70, 64: 0xb8}, V3: {32: 0x70, 64: 0xb8},
 };
-export function writeVectorElementType({mono, width, family, ptr, number, fixture}, vectorType, elementClass, kind, valueBytes = 8) {
+export function writeVectorElementType({mono, width, family, ptr, number, fixture, referenceClass}, vectorType, elementClass, kind, valueBytes = 8) {
     const bytes = width / 8;
+    if (kind === 0x12 && referenceClass !== undefined) elementClass = BigInt(referenceClass);
     const elementType = mono ? elementClass + BigInt(byValueOffsets[family][width]) : elementClass;
     number(vectorType + BigInt(bytes + 2), 1, 0x1d);
     ptr(vectorType, mono ? elementClass : elementType);
@@ -15,6 +16,7 @@ export function writeVectorElementType({mono, width, family, ptr, number, fixtur
         ptr(elementType, mono ? childClass : childType);
         number(childType + BigInt(bytes + 2), 1, 0x0e);
     }
+    if (kind === 0x12) writeManagedClassType(fixture, {mono,width,ptr,number}, elementType, elementClass);
     if (mono && kind === 0x11) {
         ptr(elementType, elementClass);
         number(elementClass + BigInt(width === 64 ? 0x1c : 0x10), 4, 2 * bytes + valueBytes);
@@ -35,7 +37,7 @@ export function writeManagedArrayType(fixture, {mono, width, family = 'V2', ptr,
     const typeOf = shape => {
         const key = JSON.stringify(shape);
         if (state.types.has(key)) return state.types.get(key);
-        const klass = state.next; state.next += 0x1000n;
+        const klass = shape?.class === undefined ? state.next : BigInt(shape.class); state.next += 0x1000n;
         const type = klass + (mono ? BigInt(byValueOffsets[family][width]) : 4n * p);
         const kind = Array.isArray(shape) ? 0x1d : typeof shape === 'number' ? shape : shape.kind;
         const result = {klass, type, kind, vtable: klass + 0x800n};
@@ -44,6 +46,8 @@ export function writeManagedArrayType(fixture, {mono, width, family = 'V2', ptr,
         if (kind === 0x1d) {
             const child = typeOf(shape[0]);
             ptr(type, mono ? child.klass : child.type); result.element = child;
+        } else if (kind === 0x12) {
+            writeManagedClassType(fixture, {mono,width,ptr,number}, type, klass);
         } else if (kind === 0x11) {
             if (mono) {
                 ptr(type, klass); number(klass + (p === 8n ? 0x1cn : 0x10n), 4, Number(2n * p) + shape.bytes);
@@ -103,4 +107,33 @@ export function writeManagedObjectHeader(fixture, {mono, ptr}, object, klass = 0
     if (mono) ptr(vtable, klass);
     ptr(object, mono ? vtable : klass);
     return {klass, vtable, header: mono ? vtable : klass};
+}
+
+// Reference-class metadata must identify the declared runtime class, not just
+// carry a reference-sized kind byte. IL2CPP uses definition handles and needs
+// two independent table anchors to prove their stride.
+const classTypeAnchors = new WeakSet();
+export function writeManagedClassType(fixture, {mono, width, ptr, number}, type, klass) {
+    const p = BigInt(width / 8);
+    if (mono) {
+        ptr(type, klass);
+    } else {
+        if (!classTypeAnchors.has(fixture)) {
+            writeIl2cppPlainType(fixture, {ptr, number}, 0x2ffd00n, 0x2ffc00n, 8);
+            classTypeAnchors.add(fixture);
+        }
+        const read = (at, bytes) => Array.from({length:bytes}, (_, i) => BigInt(fixture.memory.get(at + BigInt(i)) ?? 0))
+            .reduce((n, byte, i) => n | (byte << BigInt(i * 8)), 0n);
+        const count = Number(read(0x12000n + (p === 8n ? 0x18n : 0xcn), 4));
+        let index;
+        for (let i = 7; i < 7 + count; i++) if (read(0x13000n + BigInt(i) * p, Number(p)) === klass) { index = i; break; }
+        if (index === undefined) {
+            writeIl2cppPlainType(fixture, {ptr, number}, type, klass, 0);
+        } else {
+            const definition = 0x200000n + BigInt(index) * 88n;
+            ptr(type, definition); ptr(klass + 4n * p, definition); ptr(klass + 13n * p, definition);
+        }
+        number(klass + 5n * p + 2n, 1, 0x12);
+    }
+    number(type + p + 2n, 1, 0x12);
 }

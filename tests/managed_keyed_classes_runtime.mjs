@@ -1,9 +1,10 @@
 import {writeManagedObjectHeader} from './support/managed_type_fixture.mjs';
-import {writeManagedArrayType} from './support/managed_type_fixture.mjs';
+import {writeManagedArrayType, writeManagedClassType, writeGenericType, writeVectorElementType} from './support/managed_type_fixture.mjs';
 import assert from 'node:assert/strict';
 import { SplitScriptHost } from './support/splitscript_host.mjs';
 import { createKeyedCollectionFixture, writeKeyedBackingArray } from './support/keyed_collection_fixture.mjs';
-const [wasm, kind] = process.argv.slice(2);
+const [wasm, kind, shape] = process.argv.slice(2);
+const nested = shape === "--array-elements";
 const dictionary = kind === 'map';
 const layouts = {
     V1Cattrs: {32: [0x78, 0x68], 64: [0xb0, 0x9c]},
@@ -13,7 +14,7 @@ const layouts = {
 };
 let cases = 0;
 for (const family of Object.keys(layouts)) for (const width of [32, 64])
-for (const parallel of [false, true]) for (const active of [false, true]) for (const mode of ['seed', 'mutate', 'conditional', 'duplicate', 'unreadable', 'cycle', 'freeze']) {
+for (const parallel of [false, true]) for (const active of [false, true]) for (const mode of ['nominal mismatch', 'nominal cycle', 'nominal unreadable', 'nominal derived', 'nominal generic mismatch', 'nominal generic exact', 'seed', 'mutate', 'conditional', 'duplicate', 'unreadable', 'cycle', 'freeze']) {
     const f = createKeyedCollectionFixture({family, width, parallel, dictionary});
     const {number, ptr, memory, object, outer, bytes, stride, hash, next, key, value} = f;
     const mono = family !== 'il2cpp', wide = width === 64, [fields, count] = layouts[family][width];
@@ -28,7 +29,8 @@ for (const parallel of [false, true]) for (const active of [false, true]) for (c
         text.forEach((byte, j) => memory.set(address + BigInt(j), byte));
         number(field + BigInt(wide ? 0x18 : 0xc), 4, offset);
     });
-    number((dictionary ? f.keyType : f.valueType) + BigInt(bytes + 2), 1, 0x12);
+    if (nested) writeVectorElementType({mono,width,family,ptr,number,fixture:f,referenceClass:0x14000n},dictionary?f.keyType:f.valueType,0x14000n,0x12);
+    else writeManagedClassType(f, {mono,width,ptr,number}, dictionary ? f.keyType : f.valueType, 0x14000n);
     const statics = mono ? 0x18000n : 0x16000n;
     ptr(statics + 0x10n, object); ptr(statics + 0x18n, 0x200000n);
     number(object + BigInt(outer.at(-2)[1]), 4, 2);
@@ -40,7 +42,7 @@ for (const parallel of [false, true]) for (const active of [false, true]) for (c
     });
     const slot = i => parallel ? arrays[1] + BigInt((4 + i) * bytes) : arrays[0] + BigInt(4 * bytes + i * stride + (dictionary ? key : value));
     const vector = (at, values) => {
-        writeManagedArrayType(f, {mono,width,family,ptr,number}, at, 0x12);
+        writeManagedArrayType(f, {mono,width,family,ptr,number}, at, {kind:0x12,class:0x14000});
         ptr(at + BigInt(2 * bytes), 0); ptr(at + BigInt(3 * bytes), values.length);
         values.forEach((item, i) => ptr(at + BigInt((4 + i) * bytes), item));
     };
@@ -52,7 +54,9 @@ for (const parallel of [false, true]) for (const active of [false, true]) for (c
     for (let i = 0; i < 2; i++) {
         const at = arrays[0] + BigInt(4 * bytes + i * stride);
         number(at + BigInt(hash), 4, parallel ? 0x80000001 : 1); number(at + BigInt(next), 4, -1);
-        ptr(slot(i), 0x200000n + BigInt(i * 0x1000));
+        const nodeAddress = 0x200000n + BigInt(i * 0x1000), arrayAddress = 0x260000n + BigInt(i * 0x1000);
+        if (nested) vector(arrayAddress, [nodeAddress]);
+        ptr(slot(i), nested ? arrayAddress : nodeAddress);
         if (dictionary) ptr(parallel ? arrays[2] + BigInt((4 + i) * bytes) : at + BigInt(value), 0x220000n);
     }
     // Distinct root allocations and strings compare through recursive children.
@@ -71,6 +75,35 @@ for (const parallel of [false, true]) for (const active of [false, true]) for (c
     assert.match(before, /first/); assert.match(before, /second/);
     assert.equal(host.variables.get('contains'), 'true', label);
     assert.equal(host.variables.get('equal'), 'true', label);
+    if (mode.startsWith('nominal ')) {
+        const candidate = createKeyedCollectionFixture({family,width,parallel,dictionary,base:0x400000n});
+        for (const [at,byte] of candidate.memory) if (at >= 0x400000n) memory.set(at,byte);
+        const memberType = dictionary ? candidate.keyType : candidate.valueType, other = 0x900000n;
+        const type = nested ? writeVectorElementType({mono,width,family,ptr,number,fixture:f,referenceClass:other},memberType,other,0x12) : memberType;
+        const parent = BigInt(mono ? (wide ? 0x30 : family === 'V1Cattrs' ? 0x24 : 0x20) : (wide ? 0x58 : 0x2c));
+        ptr(other + parent, mode.endsWith('derived') ? 0x14000n : mode.endsWith('cycle') ? other : 0);
+        if (mode.includes('generic')) writeGenericType({mono,width,ptr,number,cachedClass:mode.endsWith('exact')?0x14000n:other},type);
+        else writeManagedClassType(f,{mono,width,ptr,number},type,other);
+        if (mode.endsWith('unreadable')) memory.delete(type);
+        for (const field of candidate.outer.slice(-2)) number(candidate.object+BigInt(field[1]),4,0);
+        candidate.outer.slice(1,parallel?-2:2).forEach((field,i)=>{
+            const array=0x980000n+BigInt(i*0x10000);
+            ptr(candidate.object+BigInt(field[1]),parallel?array:0);
+            if(parallel){writeKeyedBackingArray(candidate,array,i,f);ptr(array+BigInt(2*bytes),0);ptr(array+BigInt(3*bytes),0);}
+        });
+        ptr(statics+0x10n,candidate.object);host.update();
+        if(mode.endsWith('derived')||mode.endsWith('exact'))assert.equal(host.variables.get('result'),'ok',label);
+        else {
+            assert.notEqual(host.variables.get('result'),'ok',label);
+            if (!mode.endsWith('unreadable')) assert.match(host.variables.get('result'),/class/,label);
+            assert.equal(host.variables.get('rows'),before,label);
+            writeManagedClassType(f,{mono,width,ptr,number},type,0x14000n);
+            host.updateUntil(()=>host.variables.get('result')==='ok',`${label}: repaired uncached type`);
+        }
+        assert.equal(host.variables.get('rows').replace(/\s/g,''),dictionary?'Map{}':'Set{}',label);
+        cases++;continue;
+    }
+
     if (mode === 'mutate') string(0x222000n, 'changed');
     if (mode === 'conditional') string(0x202800n, 'changed');
     if (mode === 'duplicate') string(0x223000n, 'first');
@@ -83,7 +116,7 @@ for (const parallel of [false, true]) for (const active of [false, true]) for (c
     host.update();
     assert.equal(host.variables.get('old'), before, label);
     assert.equal(host.variables.get('rows'), mode === 'mutate' ? before.replace('first', 'changed') : mode === 'conditional' && active ? before.replace('conditional', 'changed') : before, label);
-    assert.equal(host.variables.get('result') === 'ok', ['seed', 'mutate', 'conditional'].includes(mode), label);
+    assert.equal(host.variables.get('result') === 'ok', ['nominal mismatch', 'nominal cycle', 'nominal unreadable', 'nominal derived', 'nominal generic mismatch', 'nominal generic exact', 'seed', 'mutate', 'conditional'].includes(mode), label);
     assert.equal(host.variables.get('equal'), String(mode !== 'mutate' && !(mode === 'conditional' && active)), label);
     if (mode === 'duplicate') assert.match(host.variables.get('result'), /duplicate/, label);
     cases++;

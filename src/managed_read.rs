@@ -78,6 +78,29 @@ impl ManagedDecoderKind {
     }
 }
 
+/// Nominal class leaves require metadata identity checks even for empty vectors.
+pub(crate) fn nominal_class(
+    mut source: TypeId,
+    capabilities: &crate::capabilities::CapabilityAnalysis,
+) -> Option<ManagedClassId> {
+    loop {
+        match capabilities.managed_decoder(source)?.kind {
+            ManagedDecoderKind::Optional { value }
+            | ManagedDecoderKind::Array { element: value } => source = value,
+            ManagedDecoderKind::Class { class } => return Some(class),
+            _ => return None,
+        }
+    }
+}
+
+pub(crate) fn collection_binding(base: &str, nominal: bool) -> String {
+    if nominal {
+        format!("{base}_class")
+    } else {
+        base.to_owned()
+    }
+}
+
 #[derive(Debug, Clone)]
 pub(crate) struct ManagedReadTypes {
     nodes: HashMap<TypeId, ManagedDecoder>,

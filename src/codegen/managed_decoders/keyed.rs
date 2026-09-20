@@ -22,11 +22,14 @@ pub(super) fn compile(
 ) -> Function {
     let dictionary = key.is_some();
     let key = key.unwrap_or(value);
-    let read_binding = if dictionary {
+    let base_binding = if dictionary {
         crate::stdlib::MANAGED_MAP_READ_FIELD
     } else {
         crate::stdlib::MANAGED_SET_READ_FIELD
     };
+    let nominal = crate::managed_read::nominal_class(key, capabilities).is_some()
+        || crate::managed_read::nominal_class(value, capabilities).is_some();
+    let read_binding = crate::managed_read::collection_binding(base_binding, nominal);
     let noun = if dictionary { "dictionary" } else { "set" };
     let output = capabilities.managed_decoder(source).unwrap().output;
     let r = Reader {
@@ -72,7 +75,7 @@ pub(super) fn compile(
         (None, None, *backing)
     };
     let storage_index = l.gc.index(Type::ArrayStorage(storage));
-    let (_, _, read_callable) = binding(l, read_binding);
+    let (_, _, read_callable) = binding(l, &read_binding);
     let (_, _, verify_callable) = binding(l, crate::stdlib::MANAGED_KEYED_VERIFY_FIELD);
     let read_result = result_for(
         l.semantics
@@ -137,7 +140,7 @@ pub(super) fn compile(
         &mut f,
         &format!("managed {noun} encountered a null object, cycle, or object/depth limit"),
     );
-    callback_start(&mut f, l, read_binding, 5);
+    callback_start(&mut f, l, &read_binding, 5);
     f.instruction(&I::LocalGet(1));
     let (key_leaf, key_depth) = r.array_leaf(key);
     let (value_leaf, value_depth) = r.array_leaf(value);
@@ -151,6 +154,14 @@ pub(super) fn compile(
         .instruction(&I::I32Const(storage_kinds(&r, value_leaf) as i32))
         .instruction(&I::I32Const(if dictionary { key_depth as i32 } else { 0 }))
         .instruction(&I::I32Const(value_depth as i32));
+    if nominal {
+        if dictionary {
+            r.expected_class(&mut f, key);
+        } else {
+            f.instruction(&I::I64Const(0));
+        }
+        r.expected_class(&mut f, value);
+    }
     remaining(
         &mut f,
         l,

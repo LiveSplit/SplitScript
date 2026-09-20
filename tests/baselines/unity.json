@@ -1,6 +1,6 @@
 {
   "format_version": 1,
-  "compiler": "0.1.0 (6bac56fab300)",
+  "compiler": "0.1.0 (907eaba629bd)",
   "rustc": "rustc 1.98.1 (48a229cea 2026-09-01)",
   "node": "v24.14.0",
   "compiler_build": "optimized",
@@ -9,7 +9,7 @@
   "fixtures": {
     "elf-build-id": {
       "source_fingerprint": "ead9b1584fa2fad0",
-      "compile_micros": 178425,
+      "compile_micros": 173153,
       "module_bytes": 7718,
       "sections": {
         "10:code": 6299,
@@ -93,7 +93,7 @@
     },
     "elf-export": {
       "source_fingerprint": "5834cad14b38fb57",
-      "compile_micros": 89611,
+      "compile_micros": 87154,
       "module_bytes": 14867,
       "sections": {
         "10:code": 12894,
@@ -217,7 +217,7 @@
     },
     "il2cpp-array": {
       "source_fingerprint": "32b05803960248f8",
-      "compile_micros": 482216,
+      "compile_micros": 6332192,
       "module_bytes": 59336,
       "sections": {
         "10:code": 52456,
@@ -270,22 +270,22 @@
         "130:__splitscript_stdlib_UnityCollectionMemberValidateStorage": 101,
         "131:__splitscript_stdlib_selected_provider_preparation::init": 51,
         "132:__splitscript_stdlib_selected_provider_preparation::poll": 1071,
-        "133:__splitscript::future::expr16708::poll": 289,
-        "134:__splitscript::future::expr16718::poll": 269,
-        "135:__splitscript::future::expr16752::poll": 321,
-        "136:__splitscript::future::expr16791::poll": 321,
-        "137:__splitscript::future::expr16814::poll": 322,
-        "138:__splitscript::future::expr16844::poll": 321,
+        "133:__splitscript::future::expr17371::poll": 289,
+        "134:__splitscript::future::expr17381::poll": 269,
+        "135:__splitscript::future::expr17415::poll": 321,
+        "136:__splitscript::future::expr17454::poll": 321,
+        "137:__splitscript::future::expr17477::poll": 322,
+        "138:__splitscript::future::expr17507::poll": 321,
         "139:state::value::read": 44,
         "13:__splitscript::runtime::ScanProcessRange": 237,
         "140:_start": 27,
         "141:update": 295,
-        "142:__splitscript::closure::expr6555": 28,
-        "143:__splitscript::closure::expr6563": 68,
-        "144:__splitscript::closure::expr7003": 31,
-        "145:__splitscript::closure::expr7053": 21,
-        "146:__splitscript::closure::expr16104": 16,
-        "147:__splitscript::closure::expr16148": 444,
+        "142:__splitscript::closure::expr6607": 28,
+        "143:__splitscript::closure::expr6615": 68,
+        "144:__splitscript::closure::expr7055": 31,
+        "145:__splitscript::closure::expr7105": 21,
+        "146:__splitscript::closure::expr16363": 16,
+        "147:__splitscript::closure::expr16407": 444,
         "14:__splitscript::runtime::ReadRelative32": 30,
         "15:__splitscript::runtime::ScanRelative32TargetRange": 74,
         "16:__splitscript::runtime::StringFromMemory": 54,
@@ -306,8 +306,8 @@
         "31:__splitscript::debug::type#142": 175,
         "32:__splitscript::array#0::push": 139,
         "33:__splitscript::array#24::push": 139,
-        "34:__splitscript::array#104::push": 139,
-        "35:__splitscript::array#104::clear": 80,
+        "34:__splitscript::array#109::push": 139,
+        "35:__splitscript::array#109::clear": 80,
         "36:__splitscript::managed::class#0::field#0::read": 48,
         "37:__splitscript::managed::decode::TypeId(24)": 94,
         "38:__splitscript::managed::decode::TypeId(142)": 947,
@@ -483,11 +483,11 @@
           ],
           [
             34,
-            "__splitscript::array#104::push"
+            "__splitscript::array#109::push"
           ],
           [
             35,
-            "__splitscript::array#104::clear"
+            "__splitscript::array#109::clear"
           ],
           [
             36,
@@ -879,27 +879,27 @@
           ],
           [
             133,
-            "__splitscript::future::expr16708::poll"
+            "__splitscript::future::expr17371::poll"
           ],
           [
             134,
-            "__splitscript::future::expr16718::poll"
+            "__splitscript::future::expr17381::poll"
           ],
           [
             135,
-            "__splitscript::future::expr16752::poll"
+            "__splitscript::future::expr17415::poll"
           ],
           [
             136,
-            "__splitscript::future::expr16791::poll"
+            "__splitscript::future::expr17454::poll"
           ],
           [
             137,
-            "__splitscript::future::expr16814::poll"
+            "__splitscript::future::expr17477::poll"
           ],
           [
             138,
-            "__splitscript::future::expr16844::poll"
+            "__splitscript::future::expr17507::poll"
           ],
           [
             139,
@@ -915,27 +915,27 @@
           ],
           [
             142,
-            "__splitscript::closure::expr6555"
+            "__splitscript::closure::expr6607"
           ],
           [
             143,
-            "__splitscript::closure::expr6563"
+            "__splitscript::closure::expr6615"
           ],
           [
             144,
-            "__splitscript::closure::expr7003"
+            "__splitscript::closure::expr7055"
           ],
           [
             145,
-            "__splitscript::closure::expr7053"
+            "__splitscript::closure::expr7105"
           ],
           [
             146,
-            "__splitscript::closure::expr16104"
+            "__splitscript::closure::expr16363"
           ],
           [
             147,
-            "__splitscript::closure::expr16148"
+            "__splitscript::closure::expr16407"
           ]
         ],
         "runtime_helpers": [
@@ -971,7 +971,7 @@
     },
     "il2cpp-auto-profile": {
       "source_fingerprint": "37fd82bc7487fe96",
-      "compile_micros": 430897,
+      "compile_micros": 1520415,
       "module_bytes": 168347,
       "sections": {
         "10:code": 154227,
@@ -1138,26 +1138,26 @@
         "234:__splitscript_stdlib_MonoClassStaticSlot::poll": 415,
         "235:__splitscript_stdlib_selected_provider_preparation::init": 48,
         "236:__splitscript_stdlib_selected_provider_preparation::poll": 1096,
-        "237:__splitscript::future::expr16707::poll": 305,
-        "238:__splitscript::future::expr16717::poll": 283,
-        "239:__splitscript::future::expr16751::poll": 345,
+        "237:__splitscript::future::expr17370::poll": 305,
+        "238:__splitscript::future::expr17380::poll": 283,
+        "239:__splitscript::future::expr17414::poll": 345,
         "23:__splitscript::runtime::LoadedModule": 132,
-        "240:__splitscript::future::expr16790::poll": 345,
-        "241:__splitscript::future::expr16813::poll": 345,
-        "242:__splitscript::future::expr16843::poll": 345,
-        "243:__splitscript::future::expr21294::poll": 345,
-        "244:__splitscript::future::expr21357::poll": 345,
-        "245:__splitscript::future::expr21363::poll": 345,
-        "246:__splitscript::future::expr21621::poll": 345,
+        "240:__splitscript::future::expr17453::poll": 345,
+        "241:__splitscript::future::expr17476::poll": 345,
+        "242:__splitscript::future::expr17506::poll": 345,
+        "243:__splitscript::future::expr21972::poll": 345,
+        "244:__splitscript::future::expr22035::poll": 345,
+        "245:__splitscript::future::expr22041::poll": 345,
+        "246:__splitscript::future::expr22299::poll": 345,
         "247:state::value::read": 45,
         "248:whileAttached": 20,
         "249:_start": 27,
         "24:__splitscript::runtime::JoinStrings": 233,
         "250:update": 312,
-        "251:__splitscript::closure::expr7004": 33,
-        "252:__splitscript::closure::expr7054": 22,
-        "253:__splitscript::closure::expr12873": 34,
-        "254:__splitscript::closure::expr13011": 22,
+        "251:__splitscript::closure::expr7056": 33,
+        "252:__splitscript::closure::expr7106": 22,
+        "253:__splitscript::closure::expr12955": 34,
+        "254:__splitscript::closure::expr13093": 22,
         "25:__splitscript::runtime::IndentDisplay": 167,
         "26:__splitscript::runtime::WrapDebugEntry": 41,
         "27:__splitscript::runtime::WrapDebugVariant": 37,
@@ -2156,43 +2156,43 @@
           ],
           [
             237,
-            "__splitscript::future::expr16707::poll"
+            "__splitscript::future::expr17370::poll"
           ],
           [
             238,
-            "__splitscript::future::expr16717::poll"
+            "__splitscript::future::expr17380::poll"
           ],
           [
             239,
-            "__splitscript::future::expr16751::poll"
+            "__splitscript::future::expr17414::poll"
           ],
           [
             240,
-            "__splitscript::future::expr16790::poll"
+            "__splitscript::future::expr17453::poll"
           ],
           [
             241,
-            "__splitscript::future::expr16813::poll"
+            "__splitscript::future::expr17476::poll"
           ],
           [
             242,
-            "__splitscript::future::expr16843::poll"
+            "__splitscript::future::expr17506::poll"
           ],
           [
             243,
-            "__splitscript::future::expr21294::poll"
+            "__splitscript::future::expr21972::poll"
           ],
           [
             244,
-            "__splitscript::future::expr21357::poll"
+            "__splitscript::future::expr22035::poll"
           ],
           [
             245,
-            "__splitscript::future::expr21363::poll"
+            "__splitscript::future::expr22041::poll"
           ],
           [
             246,
-            "__splitscript::future::expr21621::poll"
+            "__splitscript::future::expr22299::poll"
           ],
           [
             247,
@@ -2212,19 +2212,19 @@
           ],
           [
             251,
-            "__splitscript::closure::expr7004"
+            "__splitscript::closure::expr7056"
           ],
           [
             252,
-            "__splitscript::closure::expr7054"
+            "__splitscript::closure::expr7106"
           ],
           [
             253,
-            "__splitscript::closure::expr12873"
+            "__splitscript::closure::expr12955"
           ],
           [
             254,
-            "__splitscript::closure::expr13011"
+            "__splitscript::closure::expr13093"
           ]
         ],
         "runtime_helpers": [
@@ -2258,7 +2258,7 @@
     },
     "il2cpp-inline-array": {
       "source_fingerprint": "1f316155b8185be4",
-      "compile_micros": 407461,
+      "compile_micros": 5941010,
       "module_bytes": 48091,
       "sections": {
         "10:code": 43271,
@@ -2277,18 +2277,18 @@
       "function_body_bytes": {
         "100:__splitscript_stdlib_selected_provider_preparation::init": 45,
         "101:__splitscript_stdlib_selected_provider_preparation::poll": 1021,
-        "102:__splitscript::future::expr16708::poll": 289,
-        "103:__splitscript::future::expr16718::poll": 269,
-        "104:__splitscript::future::expr16752::poll": 321,
-        "105:__splitscript::future::expr16791::poll": 321,
-        "106:__splitscript::future::expr16814::poll": 322,
-        "107:__splitscript::future::expr16844::poll": 321,
+        "102:__splitscript::future::expr17371::poll": 289,
+        "103:__splitscript::future::expr17381::poll": 269,
+        "104:__splitscript::future::expr17415::poll": 321,
+        "105:__splitscript::future::expr17454::poll": 321,
+        "106:__splitscript::future::expr17477::poll": 322,
+        "107:__splitscript::future::expr17507::poll": 321,
         "108:state::value::read": 44,
         "109:_start": 27,
         "10:__splitscript::runtime::StringEquality": 68,
         "110:update": 292,
-        "111:__splitscript::closure::expr7003": 31,
-        "112:__splitscript::closure::expr7053": 21,
+        "111:__splitscript::closure::expr7055": 31,
+        "112:__splitscript::closure::expr7105": 21,
         "11:__splitscript::runtime::StringRFind": 118,
         "12:__splitscript::runtime::StringSlice": 145,
         "13:__splitscript::runtime::ScanProcessRange": 237,
@@ -2761,27 +2761,27 @@
           ],
           [
             102,
-            "__splitscript::future::expr16708::poll"
+            "__splitscript::future::expr17371::poll"
           ],
           [
             103,
-            "__splitscript::future::expr16718::poll"
+            "__splitscript::future::expr17381::poll"
           ],
           [
             104,
-            "__splitscript::future::expr16752::poll"
+            "__splitscript::future::expr17415::poll"
           ],
           [
             105,
-            "__splitscript::future::expr16791::poll"
+            "__splitscript::future::expr17454::poll"
           ],
           [
             106,
-            "__splitscript::future::expr16814::poll"
+            "__splitscript::future::expr17477::poll"
           ],
           [
             107,
-            "__splitscript::future::expr16844::poll"
+            "__splitscript::future::expr17507::poll"
           ],
           [
             108,
@@ -2797,11 +2797,11 @@
           ],
           [
             111,
-            "__splitscript::closure::expr7003"
+            "__splitscript::closure::expr7055"
           ],
           [
             112,
-            "__splitscript::closure::expr7053"
+            "__splitscript::closure::expr7105"
           ]
         ],
         "runtime_helpers": [
@@ -2834,7 +2834,7 @@
     },
     "il2cpp-instances": {
       "source_fingerprint": "88b331674c01cf45",
-      "compile_micros": 395499,
+      "compile_micros": 5643264,
       "module_bytes": 39918,
       "sections": {
         "10:code": 36153,
@@ -2870,7 +2870,7 @@
         "28:__splitscript::runtime::WrapDebugVariant": 37,
         "29:__splitscript::equals::option#16": 36,
         "30:__splitscript::debug::type#144": 175,
-        "31:__splitscript::array#762::push": 119,
+        "31:__splitscript::array#788::push": 119,
         "32:__splitscript_stdlib_UnityProviderIl2Cpp::init": 21,
         "33:__splitscript_stdlib_UnityProviderIl2Cpp::poll": 227,
         "34:__splitscript_stdlib_UnityIl2Cpp::init": 29,
@@ -2920,17 +2920,17 @@
         "78:__splitscript_stdlib_Il2CppProfileUnity2021_3_11F1X64": 91,
         "79:__splitscript_stdlib_selected_provider_preparation::init": 37,
         "80:__splitscript_stdlib_selected_provider_preparation::poll": 732,
-        "81:__splitscript::future::expr23640::poll": 437,
-        "82:__splitscript::future::expr16706::poll": 289,
-        "83:__splitscript::future::expr16716::poll": 269,
-        "84:__splitscript::future::expr16750::poll": 321,
-        "85:__splitscript::future::expr16789::poll": 321,
-        "86:__splitscript::future::expr16812::poll": 322,
-        "87:__splitscript::future::expr16842::poll": 321,
+        "81:__splitscript::future::expr24365::poll": 437,
+        "82:__splitscript::future::expr17369::poll": 289,
+        "83:__splitscript::future::expr17379::poll": 269,
+        "84:__splitscript::future::expr17413::poll": 321,
+        "85:__splitscript::future::expr17452::poll": 321,
+        "86:__splitscript::future::expr17475::poll": 322,
+        "87:__splitscript::future::expr17505::poll": 321,
         "88:onAttach": 240,
         "89:_start": 28,
         "90:update": 257,
-        "91:__splitscript::closure::expr7055": 21
+        "91:__splitscript::closure::expr7107": 21
       },
       "emission": {
         "functions": [
@@ -3012,7 +3012,7 @@
           ],
           [
             31,
-            "__splitscript::array#762::push"
+            "__splitscript::array#788::push"
           ],
           [
             32,
@@ -3212,31 +3212,31 @@
           ],
           [
             81,
-            "__splitscript::future::expr23640::poll"
+            "__splitscript::future::expr24365::poll"
           ],
           [
             82,
-            "__splitscript::future::expr16706::poll"
+            "__splitscript::future::expr17369::poll"
           ],
           [
             83,
-            "__splitscript::future::expr16716::poll"
+            "__splitscript::future::expr17379::poll"
           ],
           [
             84,
-            "__splitscript::future::expr16750::poll"
+            "__splitscript::future::expr17413::poll"
           ],
           [
             85,
-            "__splitscript::future::expr16789::poll"
+            "__splitscript::future::expr17452::poll"
           ],
           [
             86,
-            "__splitscript::future::expr16812::poll"
+            "__splitscript::future::expr17475::poll"
           ],
           [
             87,
-            "__splitscript::future::expr16842::poll"
+            "__splitscript::future::expr17505::poll"
           ],
           [
             88,
@@ -3252,7 +3252,7 @@
           ],
           [
             91,
-            "__splitscript::closure::expr7055"
+            "__splitscript::closure::expr7107"
           ]
         ],
         "runtime_helpers": [
@@ -3283,7 +3283,7 @@
     },
     "il2cpp-list": {
       "source_fingerprint": "fdba54c66643392a",
-      "compile_micros": 422492,
+      "compile_micros": 5494252,
       "module_bytes": 65601,
       "sections": {
         "10:code": 57716,
@@ -3347,28 +3347,28 @@
         "140:__splitscript_stdlib_UnityCollectionMemberValidateStorage": 101,
         "141:__splitscript_stdlib_selected_provider_preparation::init": 53,
         "142:__splitscript_stdlib_selected_provider_preparation::poll": 1115,
-        "143:__splitscript::future::expr16708::poll": 289,
-        "144:__splitscript::future::expr16718::poll": 269,
-        "145:__splitscript::future::expr16752::poll": 321,
-        "146:__splitscript::future::expr16791::poll": 321,
-        "147:__splitscript::future::expr16814::poll": 322,
-        "148:__splitscript::future::expr16844::poll": 321,
+        "143:__splitscript::future::expr17371::poll": 289,
+        "144:__splitscript::future::expr17381::poll": 269,
+        "145:__splitscript::future::expr17415::poll": 321,
+        "146:__splitscript::future::expr17454::poll": 321,
+        "147:__splitscript::future::expr17477::poll": 322,
+        "148:__splitscript::future::expr17507::poll": 321,
         "149:state::value::read": 45,
         "14:__splitscript::runtime::ReadRelative32": 30,
         "150:_start": 27,
         "151:update": 297,
-        "152:__splitscript::closure::expr6555": 30,
-        "153:__splitscript::closure::expr6563": 72,
-        "154:__splitscript::closure::expr6660": 30,
-        "155:__splitscript::closure::expr6668": 72,
-        "156:__splitscript::closure::expr6680": 28,
-        "157:__splitscript::closure::expr7003": 33,
-        "158:__splitscript::closure::expr7053": 22,
-        "159:__splitscript::closure::expr16104": 16,
+        "152:__splitscript::closure::expr6607": 30,
+        "153:__splitscript::closure::expr6615": 72,
+        "154:__splitscript::closure::expr6712": 30,
+        "155:__splitscript::closure::expr6720": 72,
+        "156:__splitscript::closure::expr6732": 28,
+        "157:__splitscript::closure::expr7055": 33,
+        "158:__splitscript::closure::expr7105": 22,
+        "159:__splitscript::closure::expr16363": 16,
         "15:__splitscript::runtime::ScanRelative32TargetRange": 74,
-        "160:__splitscript::closure::expr16148": 444,
-        "161:__splitscript::closure::expr16186": 16,
-        "162:__splitscript::closure::expr16208": 488,
+        "160:__splitscript::closure::expr16407": 444,
+        "161:__splitscript::closure::expr16508": 16,
+        "162:__splitscript::closure::expr16530": 488,
         "16:__splitscript::runtime::StringFromMemory": 54,
         "17:__splitscript::runtime::Utf8StringFromMemory": 358,
         "18:__splitscript::runtime::ReadUtf8String": 43,
@@ -3389,13 +3389,13 @@
         "33:__splitscript::array#20::push": 139,
         "34:__splitscript::array#23::push": 139,
         "35:__splitscript::array#25::push": 139,
-        "36:__splitscript::array#105::push": 139,
-        "37:__splitscript::array#105::clear": 80,
-        "38:__splitscript::array#106::push": 139,
-        "39:__splitscript::array#106::clear": 80,
+        "36:__splitscript::array#110::push": 139,
+        "37:__splitscript::array#110::clear": 80,
+        "38:__splitscript::array#111::push": 139,
+        "39:__splitscript::array#111::clear": 80,
         "40:__splitscript::managed::class#0::field#0::read": 49,
         "41:__splitscript::managed::decode::TypeId(24)": 94,
-        "42:__splitscript::managed::decode::TypeId(376)": 2652,
+        "42:__splitscript::managed::decode::TypeId(381)": 2652,
         "43:__splitscript_stdlib_UnityProviderIl2Cpp::init": 22,
         "44:__splitscript_stdlib_UnityProviderIl2Cpp::poll": 230,
         "45:__splitscript_stdlib_UnityIl2Cpp::init": 30,
@@ -3572,19 +3572,19 @@
           ],
           [
             36,
-            "__splitscript::array#105::push"
+            "__splitscript::array#110::push"
           ],
           [
             37,
-            "__splitscript::array#105::clear"
+            "__splitscript::array#110::clear"
           ],
           [
             38,
-            "__splitscript::array#106::push"
+            "__splitscript::array#111::push"
           ],
           [
             39,
-            "__splitscript::array#106::clear"
+            "__splitscript::array#111::clear"
           ],
           [
             40,
@@ -3596,7 +3596,7 @@
           ],
           [
             42,
-            "__splitscript::managed::decode::TypeId(376)"
+            "__splitscript::managed::decode::TypeId(381)"
           ],
           [
             43,
@@ -4000,27 +4000,27 @@
           ],
           [
             143,
-            "__splitscript::future::expr16708::poll"
+            "__splitscript::future::expr17371::poll"
           ],
           [
             144,
-            "__splitscript::future::expr16718::poll"
+            "__splitscript::future::expr17381::poll"
           ],
           [
             145,
-            "__splitscript::future::expr16752::poll"
+            "__splitscript::future::expr17415::poll"
           ],
           [
             146,
-            "__splitscript::future::expr16791::poll"
+            "__splitscript::future::expr17454::poll"
           ],
           [
             147,
-            "__splitscript::future::expr16814::poll"
+            "__splitscript::future::expr17477::poll"
           ],
           [
             148,
-            "__splitscript::future::expr16844::poll"
+            "__splitscript::future::expr17507::poll"
           ],
           [
             149,
@@ -4036,47 +4036,47 @@
           ],
           [
             152,
-            "__splitscript::closure::expr6555"
+            "__splitscript::closure::expr6607"
           ],
           [
             153,
-            "__splitscript::closure::expr6563"
+            "__splitscript::closure::expr6615"
           ],
           [
             154,
-            "__splitscript::closure::expr6660"
+            "__splitscript::closure::expr6712"
           ],
           [
             155,
-            "__splitscript::closure::expr6668"
+            "__splitscript::closure::expr6720"
           ],
           [
             156,
-            "__splitscript::closure::expr6680"
+            "__splitscript::closure::expr6732"
           ],
           [
             157,
-            "__splitscript::closure::expr7003"
+            "__splitscript::closure::expr7055"
           ],
           [
             158,
-            "__splitscript::closure::expr7053"
+            "__splitscript::closure::expr7105"
           ],
           [
             159,
-            "__splitscript::closure::expr16104"
+            "__splitscript::closure::expr16363"
           ],
           [
             160,
-            "__splitscript::closure::expr16148"
+            "__splitscript::closure::expr16407"
           ],
           [
             161,
-            "__splitscript::closure::expr16186"
+            "__splitscript::closure::expr16508"
           ],
           [
             162,
-            "__splitscript::closure::expr16208"
+            "__splitscript::closure::expr16530"
           ]
         ],
         "runtime_helpers": [
@@ -4112,7 +4112,7 @@
     },
     "il2cpp-map": {
       "source_fingerprint": "6369c2fef54be9f6",
-      "compile_micros": 437427,
+      "compile_micros": 5412095,
       "module_bytes": 82422,
       "sections": {
         "10:code": 71805,
@@ -4208,36 +4208,36 @@
         "16:__splitscript::runtime::StringFromMemory": 54,
         "170:__splitscript_stdlib_selected_provider_preparation::init": 57,
         "171:__splitscript_stdlib_selected_provider_preparation::poll": 1261,
-        "172:__splitscript::future::expr16708::poll": 305,
-        "173:__splitscript::future::expr16718::poll": 283,
-        "174:__splitscript::future::expr16752::poll": 345,
-        "175:__splitscript::future::expr16791::poll": 345,
-        "176:__splitscript::future::expr16814::poll": 345,
-        "177:__splitscript::future::expr16844::poll": 345,
+        "172:__splitscript::future::expr17371::poll": 305,
+        "173:__splitscript::future::expr17381::poll": 283,
+        "174:__splitscript::future::expr17415::poll": 345,
+        "175:__splitscript::future::expr17454::poll": 345,
+        "176:__splitscript::future::expr17477::poll": 345,
+        "177:__splitscript::future::expr17507::poll": 345,
         "178:state::value::read": 45,
         "179:_start": 27,
         "17:__splitscript::runtime::Utf8StringFromMemory": 358,
         "180:update": 298,
-        "181:__splitscript::closure::expr6457": 30,
-        "182:__splitscript::closure::expr6465": 72,
-        "183:__splitscript::closure::expr6479": 28,
-        "184:__splitscript::closure::expr6488": 14,
-        "185:__splitscript::closure::expr6555": 30,
-        "186:__splitscript::closure::expr6563": 72,
-        "187:__splitscript::closure::expr6600": 30,
-        "188:__splitscript::closure::expr6608": 72,
-        "189:__splitscript::closure::expr7003": 33,
+        "181:__splitscript::closure::expr6478": 30,
+        "182:__splitscript::closure::expr6486": 72,
+        "183:__splitscript::closure::expr6500": 28,
+        "184:__splitscript::closure::expr6509": 14,
+        "185:__splitscript::closure::expr6607": 30,
+        "186:__splitscript::closure::expr6615": 72,
+        "187:__splitscript::closure::expr6652": 30,
+        "188:__splitscript::closure::expr6660": 72,
+        "189:__splitscript::closure::expr7055": 33,
         "18:__splitscript::runtime::ReadUtf8String": 43,
-        "190:__splitscript::closure::expr7053": 22,
-        "191:__splitscript::closure::expr16104": 16,
-        "192:__splitscript::closure::expr16148": 447,
-        "193:__splitscript::closure::expr16212": 16,
-        "194:__splitscript::closure::expr16259": 441,
-        "195:__splitscript::closure::expr16326": 43,
-        "196:__splitscript::closure::expr16332": 16,
-        "197:__splitscript::closure::expr16366": 43,
-        "198:__splitscript::closure::expr16370": 620,
-        "199:__splitscript::closure::expr16483": 9,
+        "190:__splitscript::closure::expr7105": 22,
+        "191:__splitscript::closure::expr16363": 16,
+        "192:__splitscript::closure::expr16407": 447,
+        "193:__splitscript::closure::expr16607": 16,
+        "194:__splitscript::closure::expr16654": 441,
+        "195:__splitscript::closure::expr16721": 43,
+        "196:__splitscript::closure::expr16727": 16,
+        "197:__splitscript::closure::expr16761": 43,
+        "198:__splitscript::closure::expr16765": 620,
+        "199:__splitscript::closure::expr17142": 9,
         "19:__splitscript::runtime::ManagedFieldAddress": 63,
         "20:__splitscript::runtime::ReadManagedMemory": 64,
         "21:__splitscript::runtime::EnterManagedObject": 139,
@@ -4258,13 +4258,13 @@
         "36:__splitscript::array#27::push": 139,
         "37:__splitscript::array#30::set": 29,
         "38:__splitscript::array#30::push": 139,
-        "39:__splitscript::array#99::push": 139,
-        "40:__splitscript::array#106::push": 139,
-        "41:__splitscript::array#106::clear": 80,
-        "42:__splitscript::array#107::push": 139,
-        "43:__splitscript::array#107::clear": 80,
-        "44:__splitscript::array#110::push": 139,
-        "45:__splitscript::array#110::clear": 80,
+        "39:__splitscript::array#100::push": 139,
+        "40:__splitscript::array#110::push": 139,
+        "41:__splitscript::array#110::clear": 80,
+        "42:__splitscript::array#112::push": 139,
+        "43:__splitscript::array#112::clear": 80,
+        "44:__splitscript::array#115::push": 139,
+        "45:__splitscript::array#115::clear": 80,
         "46:__splitscript::managed::class#0::field#0::read": 49,
         "47:__splitscript::managed::decode::TypeId(24)": 94,
         "48:__splitscript::managed::decode::TypeId(142)": 135,
@@ -4450,31 +4450,31 @@
           ],
           [
             39,
-            "__splitscript::array#99::push"
+            "__splitscript::array#100::push"
           ],
           [
             40,
-            "__splitscript::array#106::push"
-          ],
-          [
-            41,
-            "__splitscript::array#106::clear"
-          ],
-          [
-            42,
-            "__splitscript::array#107::push"
-          ],
-          [
-            43,
-            "__splitscript::array#107::clear"
-          ],
-          [
-            44,
             "__splitscript::array#110::push"
           ],
           [
-            45,
+            41,
             "__splitscript::array#110::clear"
+          ],
+          [
+            42,
+            "__splitscript::array#112::push"
+          ],
+          [
+            43,
+            "__splitscript::array#112::clear"
+          ],
+          [
+            44,
+            "__splitscript::array#115::push"
+          ],
+          [
+            45,
+            "__splitscript::array#115::clear"
           ],
           [
             46,
@@ -4982,27 +4982,27 @@
           ],
           [
             172,
-            "__splitscript::future::expr16708::poll"
+            "__splitscript::future::expr17371::poll"
           ],
           [
             173,
-            "__splitscript::future::expr16718::poll"
+            "__splitscript::future::expr17381::poll"
           ],
           [
             174,
-            "__splitscript::future::expr16752::poll"
+            "__splitscript::future::expr17415::poll"
           ],
           [
             175,
-            "__splitscript::future::expr16791::poll"
+            "__splitscript::future::expr17454::poll"
           ],
           [
             176,
-            "__splitscript::future::expr16814::poll"
+            "__splitscript::future::expr17477::poll"
           ],
           [
             177,
-            "__splitscript::future::expr16844::poll"
+            "__splitscript::future::expr17507::poll"
           ],
           [
             178,
@@ -5018,79 +5018,79 @@
           ],
           [
             181,
-            "__splitscript::closure::expr6457"
+            "__splitscript::closure::expr6478"
           ],
           [
             182,
-            "__splitscript::closure::expr6465"
+            "__splitscript::closure::expr6486"
           ],
           [
             183,
-            "__splitscript::closure::expr6479"
+            "__splitscript::closure::expr6500"
           ],
           [
             184,
-            "__splitscript::closure::expr6488"
+            "__splitscript::closure::expr6509"
           ],
           [
             185,
-            "__splitscript::closure::expr6555"
+            "__splitscript::closure::expr6607"
           ],
           [
             186,
-            "__splitscript::closure::expr6563"
+            "__splitscript::closure::expr6615"
           ],
           [
             187,
-            "__splitscript::closure::expr6600"
+            "__splitscript::closure::expr6652"
           ],
           [
             188,
-            "__splitscript::closure::expr6608"
+            "__splitscript::closure::expr6660"
           ],
           [
             189,
-            "__splitscript::closure::expr7003"
+            "__splitscript::closure::expr7055"
           ],
           [
             190,
-            "__splitscript::closure::expr7053"
+            "__splitscript::closure::expr7105"
           ],
           [
             191,
-            "__splitscript::closure::expr16104"
+            "__splitscript::closure::expr16363"
           ],
           [
             192,
-            "__splitscript::closure::expr16148"
+            "__splitscript::closure::expr16407"
           ],
           [
             193,
-            "__splitscript::closure::expr16212"
+            "__splitscript::closure::expr16607"
           ],
           [
             194,
-            "__splitscript::closure::expr16259"
+            "__splitscript::closure::expr16654"
           ],
           [
             195,
-            "__splitscript::closure::expr16326"
+            "__splitscript::closure::expr16721"
           ],
           [
             196,
-            "__splitscript::closure::expr16332"
+            "__splitscript::closure::expr16727"
           ],
           [
             197,
-            "__splitscript::closure::expr16366"
+            "__splitscript::closure::expr16761"
           ],
           [
             198,
-            "__splitscript::closure::expr16370"
+            "__splitscript::closure::expr16765"
           ],
           [
             199,
-            "__splitscript::closure::expr16483"
+            "__splitscript::closure::expr17142"
           ]
         ],
         "runtime_helpers": [
@@ -5127,7 +5127,7 @@
     },
     "il2cpp-nested-array": {
       "source_fingerprint": "ec81d7bea3801a18",
-      "compile_micros": 404861,
+      "compile_micros": 5339375,
       "module_bytes": 60692,
       "sections": {
         "10:code": 53690,
@@ -5183,23 +5183,23 @@
         "133:__splitscript_stdlib_UnityCollectionMemberValidateStorage": 101,
         "134:__splitscript_stdlib_selected_provider_preparation::init": 51,
         "135:__splitscript_stdlib_selected_provider_preparation::poll": 1071,
-        "136:__splitscript::future::expr16708::poll": 289,
-        "137:__splitscript::future::expr16718::poll": 269,
-        "138:__splitscript::future::expr16752::poll": 321,
-        "139:__splitscript::future::expr16791::poll": 321,
+        "136:__splitscript::future::expr17371::poll": 289,
+        "137:__splitscript::future::expr17381::poll": 269,
+        "138:__splitscript::future::expr17415::poll": 321,
+        "139:__splitscript::future::expr17454::poll": 321,
         "13:__splitscript::runtime::ScanProcessRange": 237,
-        "140:__splitscript::future::expr16814::poll": 322,
-        "141:__splitscript::future::expr16844::poll": 321,
+        "140:__splitscript::future::expr17477::poll": 322,
+        "141:__splitscript::future::expr17507::poll": 321,
         "142:state::value::read": 45,
         "143:_start": 27,
         "144:update": 297,
-        "145:__splitscript::closure::expr6555": 30,
-        "146:__splitscript::closure::expr6563": 72,
-        "147:__splitscript::closure::expr7003": 33,
-        "148:__splitscript::closure::expr7053": 22,
-        "149:__splitscript::closure::expr16104": 16,
+        "145:__splitscript::closure::expr6607": 30,
+        "146:__splitscript::closure::expr6615": 72,
+        "147:__splitscript::closure::expr7055": 33,
+        "148:__splitscript::closure::expr7105": 22,
+        "149:__splitscript::closure::expr16363": 16,
         "14:__splitscript::runtime::ReadRelative32": 30,
-        "150:__splitscript::closure::expr16148": 444,
+        "150:__splitscript::closure::expr16407": 444,
         "15:__splitscript::runtime::ScanRelative32TargetRange": 74,
         "16:__splitscript::runtime::StringFromMemory": 54,
         "17:__splitscript::runtime::Utf8StringFromMemory": 358,
@@ -5219,8 +5219,8 @@
         "31:__splitscript::debug::type#148": 175,
         "32:__splitscript::array#26::push": 139,
         "33:__splitscript::array#28::push": 139,
-        "34:__splitscript::array#108::push": 139,
-        "35:__splitscript::array#108::clear": 80,
+        "34:__splitscript::array#113::push": 139,
+        "35:__splitscript::array#113::clear": 80,
         "36:__splitscript::managed::class#0::field#0::read": 49,
         "37:__splitscript::managed::decode::TypeId(24)": 94,
         "38:__splitscript::managed::decode::TypeId(142)": 131,
@@ -5396,11 +5396,11 @@
           ],
           [
             34,
-            "__splitscript::array#108::push"
+            "__splitscript::array#113::push"
           ],
           [
             35,
-            "__splitscript::array#108::clear"
+            "__splitscript::array#113::clear"
           ],
           [
             36,
@@ -5804,27 +5804,27 @@
           ],
           [
             136,
-            "__splitscript::future::expr16708::poll"
+            "__splitscript::future::expr17371::poll"
           ],
           [
             137,
-            "__splitscript::future::expr16718::poll"
+            "__splitscript::future::expr17381::poll"
           ],
           [
             138,
-            "__splitscript::future::expr16752::poll"
+            "__splitscript::future::expr17415::poll"
           ],
           [
             139,
-            "__splitscript::future::expr16791::poll"
+            "__splitscript::future::expr17454::poll"
           ],
           [
             140,
-            "__splitscript::future::expr16814::poll"
+            "__splitscript::future::expr17477::poll"
           ],
           [
             141,
-            "__splitscript::future::expr16844::poll"
+            "__splitscript::future::expr17507::poll"
           ],
           [
             142,
@@ -5840,27 +5840,27 @@
           ],
           [
             145,
-            "__splitscript::closure::expr6555"
+            "__splitscript::closure::expr6607"
           ],
           [
             146,
-            "__splitscript::closure::expr6563"
+            "__splitscript::closure::expr6615"
           ],
           [
             147,
-            "__splitscript::closure::expr7003"
+            "__splitscript::closure::expr7055"
           ],
           [
             148,
-            "__splitscript::closure::expr7053"
+            "__splitscript::closure::expr7105"
           ],
           [
             149,
-            "__splitscript::closure::expr16104"
+            "__splitscript::closure::expr16363"
           ],
           [
             150,
-            "__splitscript::closure::expr16148"
+            "__splitscript::closure::expr16407"
           ]
         ],
         "runtime_helpers": [
@@ -5896,7 +5896,7 @@
     },
     "il2cpp-scalar": {
       "source_fingerprint": "934760e2d8311a59",
-      "compile_micros": 533347,
+      "compile_micros": 5314004,
       "module_bytes": 47784,
       "sections": {
         "10:code": 43032,
@@ -5913,15 +5913,15 @@
       "defined_functions": 101,
       "types": 180,
       "function_body_bytes": {
-        "100:__splitscript::future::expr16752::poll": 321,
-        "101:__splitscript::future::expr16791::poll": 321,
-        "102:__splitscript::future::expr16814::poll": 322,
-        "103:__splitscript::future::expr16844::poll": 321,
+        "100:__splitscript::future::expr17415::poll": 321,
+        "101:__splitscript::future::expr17454::poll": 321,
+        "102:__splitscript::future::expr17477::poll": 322,
+        "103:__splitscript::future::expr17507::poll": 321,
         "104:state::value::read": 44,
         "105:_start": 27,
         "106:update": 292,
-        "107:__splitscript::closure::expr7003": 31,
-        "108:__splitscript::closure::expr7053": 21,
+        "107:__splitscript::closure::expr7055": 31,
+        "108:__splitscript::closure::expr7105": 21,
         "10:__splitscript::runtime::StringEquality": 68,
         "11:__splitscript::runtime::StringRFind": 118,
         "12:__splitscript::runtime::StringSlice": 145,
@@ -6011,8 +6011,8 @@
         "95:__splitscript_stdlib_Il2CppProfileUnity2022_3_0F1X64": 91,
         "96:__splitscript_stdlib_selected_provider_preparation::init": 45,
         "97:__splitscript_stdlib_selected_provider_preparation::poll": 1019,
-        "98:__splitscript::future::expr16708::poll": 289,
-        "99:__splitscript::future::expr16718::poll": 269,
+        "98:__splitscript::future::expr17371::poll": 289,
+        "99:__splitscript::future::expr17381::poll": 269,
         "9:__splitscript::runtime::QuoteDebugString": 467
       },
       "emission": {
@@ -6379,27 +6379,27 @@
           ],
           [
             98,
-            "__splitscript::future::expr16708::poll"
+            "__splitscript::future::expr17371::poll"
           ],
           [
             99,
-            "__splitscript::future::expr16718::poll"
+            "__splitscript::future::expr17381::poll"
           ],
           [
             100,
-            "__splitscript::future::expr16752::poll"
+            "__splitscript::future::expr17415::poll"
           ],
           [
             101,
-            "__splitscript::future::expr16791::poll"
+            "__splitscript::future::expr17454::poll"
           ],
           [
             102,
-            "__splitscript::future::expr16814::poll"
+            "__splitscript::future::expr17477::poll"
           ],
           [
             103,
-            "__splitscript::future::expr16844::poll"
+            "__splitscript::future::expr17507::poll"
           ],
           [
             104,
@@ -6415,11 +6415,11 @@
           ],
           [
             107,
-            "__splitscript::closure::expr7003"
+            "__splitscript::closure::expr7055"
           ],
           [
             108,
-            "__splitscript::closure::expr7053"
+            "__splitscript::closure::expr7105"
           ]
         ],
         "runtime_helpers": [
@@ -6450,7 +6450,7 @@
     },
     "il2cpp-set": {
       "source_fingerprint": "a06963419700f4f1",
-      "compile_micros": 592583,
+      "compile_micros": 5139660,
       "module_bytes": 82351,
       "sections": {
         "10:code": 71750,
@@ -6548,37 +6548,37 @@
         "171:__splitscript_stdlib_UnityKeyedReadVerify": 566,
         "172:__splitscript_stdlib_selected_provider_preparation::init": 56,
         "173:__splitscript_stdlib_selected_provider_preparation::poll": 1260,
-        "174:__splitscript::future::expr16708::poll": 305,
-        "175:__splitscript::future::expr16718::poll": 283,
-        "176:__splitscript::future::expr16752::poll": 345,
-        "177:__splitscript::future::expr16791::poll": 345,
-        "178:__splitscript::future::expr16814::poll": 345,
-        "179:__splitscript::future::expr16844::poll": 345,
+        "174:__splitscript::future::expr17371::poll": 305,
+        "175:__splitscript::future::expr17381::poll": 283,
+        "176:__splitscript::future::expr17415::poll": 345,
+        "177:__splitscript::future::expr17454::poll": 345,
+        "178:__splitscript::future::expr17477::poll": 345,
+        "179:__splitscript::future::expr17507::poll": 345,
         "17:__splitscript::runtime::Utf8StringFromMemory": 358,
         "180:state::value::read": 45,
         "181:_start": 27,
         "182:update": 298,
-        "183:__splitscript::closure::expr6457": 30,
-        "184:__splitscript::closure::expr6465": 72,
-        "185:__splitscript::closure::expr6479": 28,
-        "186:__splitscript::closure::expr6497": 14,
-        "187:__splitscript::closure::expr6555": 30,
-        "188:__splitscript::closure::expr6563": 72,
-        "189:__splitscript::closure::expr6600": 30,
+        "183:__splitscript::closure::expr6478": 30,
+        "184:__splitscript::closure::expr6486": 72,
+        "185:__splitscript::closure::expr6500": 28,
+        "186:__splitscript::closure::expr6518": 14,
+        "187:__splitscript::closure::expr6607": 30,
+        "188:__splitscript::closure::expr6615": 72,
+        "189:__splitscript::closure::expr6652": 30,
         "18:__splitscript::runtime::ReadUtf8String": 43,
-        "190:__splitscript::closure::expr6608": 72,
-        "191:__splitscript::closure::expr7003": 33,
-        "192:__splitscript::closure::expr7053": 22,
-        "193:__splitscript::closure::expr16104": 16,
-        "194:__splitscript::closure::expr16148": 447,
-        "195:__splitscript::closure::expr16212": 16,
-        "196:__splitscript::closure::expr16259": 441,
-        "197:__splitscript::closure::expr16437": 43,
-        "198:__splitscript::closure::expr16443": 16,
-        "199:__splitscript::closure::expr16477": 43,
+        "190:__splitscript::closure::expr6660": 72,
+        "191:__splitscript::closure::expr7055": 33,
+        "192:__splitscript::closure::expr7105": 22,
+        "193:__splitscript::closure::expr16363": 16,
+        "194:__splitscript::closure::expr16407": 447,
+        "195:__splitscript::closure::expr16607": 16,
+        "196:__splitscript::closure::expr16654": 441,
+        "197:__splitscript::closure::expr16964": 43,
+        "198:__splitscript::closure::expr16970": 16,
+        "199:__splitscript::closure::expr17004": 43,
         "19:__splitscript::runtime::ManagedFieldAddress": 63,
-        "200:__splitscript::closure::expr16481": 620,
-        "201:__splitscript::closure::expr16483": 9,
+        "200:__splitscript::closure::expr17008": 620,
+        "201:__splitscript::closure::expr17142": 9,
         "20:__splitscript::runtime::ReadManagedMemory": 64,
         "21:__splitscript::runtime::EnterManagedObject": 139,
         "22:__splitscript::runtime::ChargeManagedWork": 39,
@@ -6600,13 +6600,13 @@
         "38:__splitscript::array#27::push": 139,
         "39:__splitscript::array#30::set": 29,
         "40:__splitscript::array#30::push": 139,
-        "41:__splitscript::array#99::push": 139,
-        "42:__splitscript::array#106::push": 139,
-        "43:__splitscript::array#106::clear": 80,
-        "44:__splitscript::array#107::push": 139,
-        "45:__splitscript::array#107::clear": 80,
-        "46:__splitscript::array#110::push": 139,
-        "47:__splitscript::array#110::clear": 80,
+        "41:__splitscript::array#100::push": 139,
+        "42:__splitscript::array#110::push": 139,
+        "43:__splitscript::array#110::clear": 80,
+        "44:__splitscript::array#112::push": 139,
+        "45:__splitscript::array#112::clear": 80,
+        "46:__splitscript::array#115::push": 139,
+        "47:__splitscript::array#115::clear": 80,
         "48:__splitscript::managed::class#0::field#0::read": 49,
         "49:__splitscript::managed::decode::TypeId(24)": 94,
         "50:__splitscript::managed::decode::TypeId(142)": 135,
@@ -6798,31 +6798,31 @@
           ],
           [
             41,
-            "__splitscript::array#99::push"
+            "__splitscript::array#100::push"
           ],
           [
             42,
-            "__splitscript::array#106::push"
-          ],
-          [
-            43,
-            "__splitscript::array#106::clear"
-          ],
-          [
-            44,
-            "__splitscript::array#107::push"
-          ],
-          [
-            45,
-            "__splitscript::array#107::clear"
-          ],
-          [
-            46,
             "__splitscript::array#110::push"
           ],
           [
-            47,
+            43,
             "__splitscript::array#110::clear"
+          ],
+          [
+            44,
+            "__splitscript::array#112::push"
+          ],
+          [
+            45,
+            "__splitscript::array#112::clear"
+          ],
+          [
+            46,
+            "__splitscript::array#115::push"
+          ],
+          [
+            47,
+            "__splitscript::array#115::clear"
           ],
           [
             48,
@@ -7330,27 +7330,27 @@
           ],
           [
             174,
-            "__splitscript::future::expr16708::poll"
+            "__splitscript::future::expr17371::poll"
           ],
           [
             175,
-            "__splitscript::future::expr16718::poll"
+            "__splitscript::future::expr17381::poll"
           ],
           [
             176,
-            "__splitscript::future::expr16752::poll"
+            "__splitscript::future::expr17415::poll"
           ],
           [
             177,
-            "__splitscript::future::expr16791::poll"
+            "__splitscript::future::expr17454::poll"
           ],
           [
             178,
-            "__splitscript::future::expr16814::poll"
+            "__splitscript::future::expr17477::poll"
           ],
           [
             179,
-            "__splitscript::future::expr16844::poll"
+            "__splitscript::future::expr17507::poll"
           ],
           [
             180,
@@ -7366,79 +7366,79 @@
           ],
           [
             183,
-            "__splitscript::closure::expr6457"
+            "__splitscript::closure::expr6478"
           ],
           [
             184,
-            "__splitscript::closure::expr6465"
+            "__splitscript::closure::expr6486"
           ],
           [
             185,
-            "__splitscript::closure::expr6479"
+            "__splitscript::closure::expr6500"
           ],
           [
             186,
-            "__splitscript::closure::expr6497"
+            "__splitscript::closure::expr6518"
           ],
           [
             187,
-            "__splitscript::closure::expr6555"
+            "__splitscript::closure::expr6607"
           ],
           [
             188,
-            "__splitscript::closure::expr6563"
+            "__splitscript::closure::expr6615"
           ],
           [
             189,
-            "__splitscript::closure::expr6600"
+            "__splitscript::closure::expr6652"
           ],
           [
             190,
-            "__splitscript::closure::expr6608"
+            "__splitscript::closure::expr6660"
           ],
           [
             191,
-            "__splitscript::closure::expr7003"
+            "__splitscript::closure::expr7055"
           ],
           [
             192,
-            "__splitscript::closure::expr7053"
+            "__splitscript::closure::expr7105"
           ],
           [
             193,
-            "__splitscript::closure::expr16104"
+            "__splitscript::closure::expr16363"
           ],
           [
             194,
-            "__splitscript::closure::expr16148"
+            "__splitscript::closure::expr16407"
           ],
           [
             195,
-            "__splitscript::closure::expr16212"
+            "__splitscript::closure::expr16607"
           ],
           [
             196,
-            "__splitscript::closure::expr16259"
+            "__splitscript::closure::expr16654"
           ],
           [
             197,
-            "__splitscript::closure::expr16437"
+            "__splitscript::closure::expr16964"
           ],
           [
             198,
-            "__splitscript::closure::expr16443"
+            "__splitscript::closure::expr16970"
           ],
           [
             199,
-            "__splitscript::closure::expr16477"
+            "__splitscript::closure::expr17004"
           ],
           [
             200,
-            "__splitscript::closure::expr16481"
+            "__splitscript::closure::expr17008"
           ],
           [
             201,
-            "__splitscript::closure::expr16483"
+            "__splitscript::closure::expr17142"
           ]
         ],
         "runtime_helpers": [
@@ -7475,7 +7475,7 @@
     },
     "il2cpp-string": {
       "source_fingerprint": "568809964bba959a",
-      "compile_micros": 477796,
+      "compile_micros": 4999646,
       "module_bytes": 48747,
       "sections": {
         "10:code": 43965,
@@ -7492,18 +7492,18 @@
       "defined_functions": 103,
       "types": 183,
       "function_body_bytes": {
-        "100:__splitscript::future::expr16708::poll": 289,
-        "101:__splitscript::future::expr16718::poll": 269,
-        "102:__splitscript::future::expr16752::poll": 321,
-        "103:__splitscript::future::expr16791::poll": 321,
-        "104:__splitscript::future::expr16814::poll": 322,
-        "105:__splitscript::future::expr16844::poll": 321,
+        "100:__splitscript::future::expr17371::poll": 289,
+        "101:__splitscript::future::expr17381::poll": 269,
+        "102:__splitscript::future::expr17415::poll": 321,
+        "103:__splitscript::future::expr17454::poll": 321,
+        "104:__splitscript::future::expr17477::poll": 322,
+        "105:__splitscript::future::expr17507::poll": 321,
         "106:state::value::read": 44,
         "107:_start": 27,
         "108:update": 292,
-        "109:__splitscript::closure::expr7003": 31,
+        "109:__splitscript::closure::expr7055": 31,
         "10:__splitscript::runtime::StringEquality": 68,
-        "110:__splitscript::closure::expr7053": 21,
+        "110:__splitscript::closure::expr7105": 21,
         "11:__splitscript::runtime::StringRFind": 118,
         "12:__splitscript::runtime::StringSlice": 145,
         "13:__splitscript::runtime::ScanProcessRange": 237,
@@ -7968,27 +7968,27 @@
           ],
           [
             100,
-            "__splitscript::future::expr16708::poll"
+            "__splitscript::future::expr17371::poll"
           ],
           [
             101,
-            "__splitscript::future::expr16718::poll"
+            "__splitscript::future::expr17381::poll"
           ],
           [
             102,
-            "__splitscript::future::expr16752::poll"
+            "__splitscript::future::expr17415::poll"
           ],
           [
             103,
-            "__splitscript::future::expr16791::poll"
+            "__splitscript::future::expr17454::poll"
           ],
           [
             104,
-            "__splitscript::future::expr16814::poll"
+            "__splitscript::future::expr17477::poll"
           ],
           [
             105,
-            "__splitscript::future::expr16844::poll"
+            "__splitscript::future::expr17507::poll"
           ],
           [
             106,
@@ -8004,11 +8004,11 @@
           ],
           [
             109,
-            "__splitscript::closure::expr7003"
+            "__splitscript::closure::expr7055"
           ],
           [
             110,
-            "__splitscript::closure::expr7053"
+            "__splitscript::closure::expr7105"
           ]
         ],
         "runtime_helpers": [
@@ -8041,7 +8041,7 @@
     },
     "il2cpp-unused-string": {
       "source_fingerprint": "38dc9194fccfb639",
-      "compile_micros": 600873,
+      "compile_micros": 5049745,
       "module_bytes": 47784,
       "sections": {
         "10:code": 43032,
@@ -8058,15 +8058,15 @@
       "defined_functions": 101,
       "types": 180,
       "function_body_bytes": {
-        "100:__splitscript::future::expr16758::poll": 321,
-        "101:__splitscript::future::expr16797::poll": 321,
-        "102:__splitscript::future::expr16820::poll": 322,
-        "103:__splitscript::future::expr16850::poll": 321,
+        "100:__splitscript::future::expr17421::poll": 321,
+        "101:__splitscript::future::expr17460::poll": 321,
+        "102:__splitscript::future::expr17483::poll": 322,
+        "103:__splitscript::future::expr17513::poll": 321,
         "104:state::value::read": 44,
         "105:_start": 27,
         "106:update": 292,
-        "107:__splitscript::closure::expr7003": 31,
-        "108:__splitscript::closure::expr7053": 21,
+        "107:__splitscript::closure::expr7055": 31,
+        "108:__splitscript::closure::expr7105": 21,
         "10:__splitscript::runtime::StringEquality": 68,
         "11:__splitscript::runtime::StringRFind": 118,
         "12:__splitscript::runtime::StringSlice": 145,
@@ -8156,8 +8156,8 @@
         "95:__splitscript_stdlib_Il2CppProfileUnity2022_3_0F1X64": 91,
         "96:__splitscript_stdlib_selected_provider_preparation::init": 45,
         "97:__splitscript_stdlib_selected_provider_preparation::poll": 1019,
-        "98:__splitscript::future::expr16714::poll": 289,
-        "99:__splitscript::future::expr16724::poll": 269,
+        "98:__splitscript::future::expr17377::poll": 289,
+        "99:__splitscript::future::expr17387::poll": 269,
         "9:__splitscript::runtime::QuoteDebugString": 467
       },
       "emission": {
@@ -8524,27 +8524,27 @@
           ],
           [
             98,
-            "__splitscript::future::expr16714::poll"
+            "__splitscript::future::expr17377::poll"
           ],
           [
             99,
-            "__splitscript::future::expr16724::poll"
+            "__splitscript::future::expr17387::poll"
           ],
           [
             100,
-            "__splitscript::future::expr16758::poll"
+            "__splitscript::future::expr17421::poll"
           ],
           [
             101,
-            "__splitscript::future::expr16797::poll"
+            "__splitscript::future::expr17460::poll"
           ],
           [
             102,
-            "__splitscript::future::expr16820::poll"
+            "__splitscript::future::expr17483::poll"
           ],
           [
             103,
-            "__splitscript::future::expr16850::poll"
+            "__splitscript::future::expr17513::poll"
           ],
           [
             104,
@@ -8560,11 +8560,11 @@
           ],
           [
             107,
-            "__splitscript::closure::expr7003"
+            "__splitscript::closure::expr7055"
           ],
           [
             108,
-            "__splitscript::closure::expr7053"
+            "__splitscript::closure::expr7105"
           ]
         ],
         "runtime_helpers": [
@@ -8595,7 +8595,7 @@
     },
     "il2cpp-x86-profile": {
       "source_fingerprint": "edc069673e15919a",
-      "compile_micros": 615538,
+      "compile_micros": 5025907,
       "module_bytes": 48059,
       "sections": {
         "10:code": 43280,
@@ -8612,18 +8612,18 @@
       "defined_functions": 103,
       "types": 182,
       "function_body_bytes": {
-        "100:__splitscript::future::expr16720::poll": 269,
-        "101:__splitscript::future::expr16754::poll": 321,
-        "102:__splitscript::future::expr16793::poll": 321,
-        "103:__splitscript::future::expr16816::poll": 322,
-        "104:__splitscript::future::expr16846::poll": 321,
+        "100:__splitscript::future::expr17383::poll": 269,
+        "101:__splitscript::future::expr17417::poll": 321,
+        "102:__splitscript::future::expr17456::poll": 321,
+        "103:__splitscript::future::expr17479::poll": 322,
+        "104:__splitscript::future::expr17509::poll": 321,
         "105:state::value::read": 44,
         "106:whileAttached": 20,
         "107:_start": 27,
         "108:update": 305,
-        "109:__splitscript::closure::expr7005": 31,
+        "109:__splitscript::closure::expr7057": 31,
         "10:__splitscript::runtime::QuoteDebugString": 467,
-        "110:__splitscript::closure::expr7055": 21,
+        "110:__splitscript::closure::expr7107": 21,
         "11:__splitscript::runtime::StringEquality": 68,
         "12:__splitscript::runtime::StringRFind": 118,
         "13:__splitscript::runtime::StringSlice": 145,
@@ -8713,7 +8713,7 @@
         "96:__splitscript_stdlib_Il2CppProfileUnity2022_3_0F1X86": 89,
         "97:__splitscript_stdlib_selected_provider_preparation::init": 45,
         "98:__splitscript_stdlib_selected_provider_preparation::poll": 1040,
-        "99:__splitscript::future::expr16710::poll": 289,
+        "99:__splitscript::future::expr17373::poll": 289,
         "9:__splitscript::runtime::FormatI64": 193
       },
       "emission": {
@@ -9084,27 +9084,27 @@
           ],
           [
             99,
-            "__splitscript::future::expr16710::poll"
+            "__splitscript::future::expr17373::poll"
           ],
           [
             100,
-            "__splitscript::future::expr16720::poll"
+            "__splitscript::future::expr17383::poll"
           ],
           [
             101,
-            "__splitscript::future::expr16754::poll"
+            "__splitscript::future::expr17417::poll"
           ],
           [
             102,
-            "__splitscript::future::expr16793::poll"
+            "__splitscript::future::expr17456::poll"
           ],
           [
             103,
-            "__splitscript::future::expr16816::poll"
+            "__splitscript::future::expr17479::poll"
           ],
           [
             104,
-            "__splitscript::future::expr16846::poll"
+            "__splitscript::future::expr17509::poll"
           ],
           [
             105,
@@ -9124,11 +9124,11 @@
           ],
           [
             109,
-            "__splitscript::closure::expr7005"
+            "__splitscript::closure::expr7057"
           ],
           [
             110,
-            "__splitscript::closure::expr7055"
+            "__splitscript::closure::expr7107"
           ]
         ],
         "runtime_helpers": [
@@ -9160,7 +9160,7 @@
     },
     "local-map": {
       "source_fingerprint": "f2f2aeaf86f8d4ff",
-      "compile_micros": 100672,
+      "compile_micros": 146519,
       "module_bytes": 4860,
       "sections": {
         "10:code": 4015,
@@ -9181,10 +9181,10 @@
         "12:__splitscript::runtime::IndentDisplay": 167,
         "13:__splitscript::runtime::WrapDebugEntry": 41,
         "14:__splitscript::runtime::WrapDebugVariant": 37,
-        "15:__splitscript::debug::type#359": 245,
-        "16:__splitscript::array#732::push": 119,
-        "17:__splitscript::array#732::removeAt": 98,
-        "18:__splitscript::array#732::clear": 60,
+        "15:__splitscript::debug::type#360": 245,
+        "16:__splitscript::array#736::push": 119,
+        "17:__splitscript::array#736::removeAt": 98,
+        "18:__splitscript::array#736::clear": 60,
         "19:__splitscript_stdlib_ArrayIteratorIterator<MapEntry<String, u32>>::init": 15,
         "20:__splitscript_stdlib_ArrayIteratorIterator<MapEntry<String, u32>>::next": 280,
         "21:__splitscript_stdlib_ArrayIterator<MapEntry<String, u32>>": 26,
@@ -9247,19 +9247,19 @@
           ],
           [
             15,
-            "__splitscript::debug::type#359"
+            "__splitscript::debug::type#360"
           ],
           [
             16,
-            "__splitscript::array#732::push"
+            "__splitscript::array#736::push"
           ],
           [
             17,
-            "__splitscript::array#732::removeAt"
+            "__splitscript::array#736::removeAt"
           ],
           [
             18,
-            "__splitscript::array#732::clear"
+            "__splitscript::array#736::clear"
           ],
           [
             19,
@@ -9350,7 +9350,7 @@
     },
     "local-set": {
       "source_fingerprint": "b288825dd79bff60",
-      "compile_micros": 126206,
+      "compile_micros": 142565,
       "module_bytes": 3181,
       "sections": {
         "10:code": 2481,
@@ -9367,15 +9367,15 @@
       "types": 30,
       "function_body_bytes": {
         "10:__splitscript::runtime::JoinStrings": 233,
-        "11:__splitscript::set#165::new": 14,
-        "12:__splitscript::set#165::length": 8,
-        "13:__splitscript::set#165::contains": 65,
-        "14:__splitscript::set#165::insert": 133,
-        "15:__splitscript::set#165::remove": 142,
-        "16:__splitscript::set#165::clear": 39,
-        "17:__splitscript::set#167::new": 14,
-        "18:__splitscript::set#167::contains": 64,
-        "19:__splitscript::set#167::insert": 133,
+        "11:__splitscript::set#166::new": 14,
+        "12:__splitscript::set#166::length": 8,
+        "13:__splitscript::set#166::contains": 65,
+        "14:__splitscript::set#166::insert": 133,
+        "15:__splitscript::set#166::remove": 142,
+        "16:__splitscript::set#166::clear": 39,
+        "17:__splitscript::set#168::new": 14,
+        "18:__splitscript::set#168::contains": 64,
+        "19:__splitscript::set#168::insert": 133,
         "20:__splitscript_stdlib_SetIsEmpty<String>": 11,
         "21:whileAttached": 883,
         "22:_start": 31,
@@ -9409,39 +9409,39 @@
           ],
           [
             11,
-            "__splitscript::set#165::new"
+            "__splitscript::set#166::new"
           ],
           [
             12,
-            "__splitscript::set#165::length"
+            "__splitscript::set#166::length"
           ],
           [
             13,
-            "__splitscript::set#165::contains"
+            "__splitscript::set#166::contains"
           ],
           [
             14,
-            "__splitscript::set#165::insert"
+            "__splitscript::set#166::insert"
           ],
           [
             15,
-            "__splitscript::set#165::remove"
+            "__splitscript::set#166::remove"
           ],
           [
             16,
-            "__splitscript::set#165::clear"
+            "__splitscript::set#166::clear"
           ],
           [
             17,
-            "__splitscript::set#167::new"
+            "__splitscript::set#168::new"
           ],
           [
             18,
-            "__splitscript::set#167::contains"
+            "__splitscript::set#168::contains"
           ],
           [
             19,
-            "__splitscript::set#167::insert"
+            "__splitscript::set#168::insert"
           ],
           [
             20,
@@ -9476,7 +9476,7 @@
     },
     "lunistice": {
       "source_fingerprint": "a7c1869ca420c9eb",
-      "compile_micros": 680610,
+      "compile_micros": 5079575,
       "module_bytes": 60215,
       "sections": {
         "10:code": 53458,
@@ -9521,12 +9521,12 @@
         "125:__splitscript_stdlib_Il2CppProfileUnity2022_3_0F1X64": 91,
         "126:__splitscript_stdlib_selected_provider_preparation::init": 188,
         "127:__splitscript_stdlib_selected_provider_preparation::poll": 4453,
-        "128:__splitscript::future::expr16978::poll": 289,
-        "129:__splitscript::future::expr16988::poll": 269,
-        "130:__splitscript::future::expr17022::poll": 321,
-        "131:__splitscript::future::expr17061::poll": 321,
-        "132:__splitscript::future::expr17084::poll": 322,
-        "133:__splitscript::future::expr17114::poll": 321,
+        "128:__splitscript::future::expr17641::poll": 289,
+        "129:__splitscript::future::expr17651::poll": 269,
+        "130:__splitscript::future::expr17685::poll": 321,
+        "131:__splitscript::future::expr17724::poll": 321,
+        "132:__splitscript::future::expr17747::poll": 322,
+        "133:__splitscript::future::expr17777::poll": 321,
         "134:state::gameManager::read": 84,
         "135:state::timer::read": 84,
         "136:onStart": 13,
@@ -9538,10 +9538,10 @@
         "142:gameTime": 66,
         "143:_start": 31,
         "144:update": 891,
-        "145:__splitscript::closure::expr7170": 31,
-        "146:__splitscript::closure::expr7220": 21,
-        "147:__splitscript::closure::expr16185": 16,
-        "148:__splitscript::closure::expr16267": 587,
+        "145:__splitscript::closure::expr7222": 31,
+        "146:__splitscript::closure::expr7272": 21,
+        "147:__splitscript::closure::expr16382": 16,
+        "148:__splitscript::closure::expr16464": 587,
         "16:__splitscript::runtime::PrintString": 89,
         "17:__splitscript::runtime::TimerSetVariable": 154,
         "18:__splitscript::runtime::FormatI64": 193,
@@ -9571,8 +9571,8 @@
         "42:__splitscript::equals::option#16": 36,
         "43:__splitscript::debug::type#152": 175,
         "44:__splitscript::array#22::push": 119,
-        "45:__splitscript::array#103::push": 119,
-        "46:__splitscript::array#103::clear": 60,
+        "45:__splitscript::array#107::push": 119,
+        "46:__splitscript::array#107::clear": 60,
         "47:__splitscript::managed::class#0::field#0::read": 135,
         "48:__splitscript::managed::class#1::field#6::read": 135,
         "49:__splitscript::managed::GameManager::snapshot": 968,
@@ -9747,11 +9747,11 @@
           ],
           [
             45,
-            "__splitscript::array#103::push"
+            "__splitscript::array#107::push"
           ],
           [
             46,
-            "__splitscript::array#103::clear"
+            "__splitscript::array#107::clear"
           ],
           [
             47,
@@ -10079,27 +10079,27 @@
           ],
           [
             128,
-            "__splitscript::future::expr16978::poll"
+            "__splitscript::future::expr17641::poll"
           ],
           [
             129,
-            "__splitscript::future::expr16988::poll"
+            "__splitscript::future::expr17651::poll"
           ],
           [
             130,
-            "__splitscript::future::expr17022::poll"
+            "__splitscript::future::expr17685::poll"
           ],
           [
             131,
-            "__splitscript::future::expr17061::poll"
+            "__splitscript::future::expr17724::poll"
           ],
           [
             132,
-            "__splitscript::future::expr17084::poll"
+            "__splitscript::future::expr17747::poll"
           ],
           [
             133,
-            "__splitscript::future::expr17114::poll"
+            "__splitscript::future::expr17777::poll"
           ],
           [
             134,
@@ -10147,19 +10147,19 @@
           ],
           [
             145,
-            "__splitscript::closure::expr7170"
+            "__splitscript::closure::expr7222"
           ],
           [
             146,
-            "__splitscript::closure::expr7220"
+            "__splitscript::closure::expr7272"
           ],
           [
             147,
-            "__splitscript::closure::expr16185"
+            "__splitscript::closure::expr16382"
           ],
           [
             148,
-            "__splitscript::closure::expr16267"
+            "__splitscript::closure::expr16464"
           ]
         ],
         "runtime_helpers": [
@@ -10197,7 +10197,7 @@
     },
     "lunistice-auto": {
       "source_fingerprint": "6bbb813bbb2a5d0f",
-      "compile_micros": 629549,
+      "compile_micros": 1415072,
       "module_bytes": 185565,
       "sections": {
         "10:code": 169143,
@@ -10402,17 +10402,17 @@
         "274:__splitscript_stdlib_MonoClassStaticSlot::poll": 418,
         "275:__splitscript_stdlib_selected_provider_preparation::init": 190,
         "276:__splitscript_stdlib_selected_provider_preparation::poll": 4784,
-        "277:__splitscript::future::expr16975::poll": 305,
-        "278:__splitscript::future::expr16985::poll": 283,
-        "279:__splitscript::future::expr17019::poll": 345,
+        "277:__splitscript::future::expr17638::poll": 305,
+        "278:__splitscript::future::expr17648::poll": 283,
+        "279:__splitscript::future::expr17682::poll": 345,
         "27:__splitscript::runtime::StringFromMemory": 54,
-        "280:__splitscript::future::expr17058::poll": 345,
-        "281:__splitscript::future::expr17081::poll": 345,
-        "282:__splitscript::future::expr17111::poll": 345,
-        "283:__splitscript::future::expr21562::poll": 345,
-        "284:__splitscript::future::expr21625::poll": 345,
-        "285:__splitscript::future::expr21631::poll": 345,
-        "286:__splitscript::future::expr21889::poll": 345,
+        "280:__splitscript::future::expr17721::poll": 345,
+        "281:__splitscript::future::expr17744::poll": 345,
+        "282:__splitscript::future::expr17774::poll": 345,
+        "283:__splitscript::future::expr22240::poll": 345,
+        "284:__splitscript::future::expr22303::poll": 345,
+        "285:__splitscript::future::expr22309::poll": 345,
+        "286:__splitscript::future::expr22567::poll": 345,
         "287:state::gameManager::read": 93,
         "288:state::timer::read": 93,
         "289:onStart": 13,
@@ -10425,13 +10425,13 @@
         "295:gameTime": 66,
         "296:_start": 31,
         "297:update": 902,
-        "298:__splitscript::closure::expr7169": 36,
-        "299:__splitscript::closure::expr7219": 23,
+        "298:__splitscript::closure::expr7221": 36,
+        "299:__splitscript::closure::expr7271": 23,
         "29:__splitscript::runtime::ReadUtf8String": 43,
-        "300:__splitscript::closure::expr13038": 36,
-        "301:__splitscript::closure::expr13176": 23,
-        "302:__splitscript::closure::expr16182": 17,
-        "303:__splitscript::closure::expr16264": 599,
+        "300:__splitscript::closure::expr13120": 36,
+        "301:__splitscript::closure::expr13258": 23,
+        "302:__splitscript::closure::expr16379": 17,
+        "303:__splitscript::closure::expr16461": 599,
         "30:__splitscript::runtime::ManagedFieldAddress": 63,
         "31:__splitscript::runtime::ReadManagedMemory": 64,
         "32:__splitscript::runtime::EnterManagedObject": 139,
@@ -10458,8 +10458,8 @@
         "53:__splitscript::array#43::push": 119,
         "54:__splitscript::array#51::push": 119,
         "55:__splitscript::array#54::push": 119,
-        "56:__splitscript::array#103::push": 119,
-        "57:__splitscript::array#103::clear": 60,
+        "56:__splitscript::array#107::push": 119,
+        "57:__splitscript::array#107::clear": 60,
         "58:__splitscript::managed::class#0::field#0::read": 141,
         "59:__splitscript::managed::class#1::field#6::read": 141,
         "60:__splitscript::managed::GameManager::snapshot": 997,
@@ -10667,11 +10667,11 @@
           ],
           [
             56,
-            "__splitscript::array#103::push"
+            "__splitscript::array#107::push"
           ],
           [
             57,
-            "__splitscript::array#103::clear"
+            "__splitscript::array#107::clear"
           ],
           [
             58,
@@ -11551,43 +11551,43 @@
           ],
           [
             277,
-            "__splitscript::future::expr16975::poll"
+            "__splitscript::future::expr17638::poll"
           ],
           [
             278,
-            "__splitscript::future::expr16985::poll"
+            "__splitscript::future::expr17648::poll"
           ],
           [
             279,
-            "__splitscript::future::expr17019::poll"
+            "__splitscript::future::expr17682::poll"
           ],
           [
             280,
-            "__splitscript::future::expr17058::poll"
+            "__splitscript::future::expr17721::poll"
           ],
           [
             281,
-            "__splitscript::future::expr17081::poll"
+            "__splitscript::future::expr17744::poll"
           ],
           [
             282,
-            "__splitscript::future::expr17111::poll"
+            "__splitscript::future::expr17774::poll"
           ],
           [
             283,
-            "__splitscript::future::expr21562::poll"
+            "__splitscript::future::expr22240::poll"
           ],
           [
             284,
-            "__splitscript::future::expr21625::poll"
+            "__splitscript::future::expr22303::poll"
           ],
           [
             285,
-            "__splitscript::future::expr21631::poll"
+            "__splitscript::future::expr22309::poll"
           ],
           [
             286,
-            "__splitscript::future::expr21889::poll"
+            "__splitscript::future::expr22567::poll"
           ],
           [
             287,
@@ -11635,27 +11635,27 @@
           ],
           [
             298,
-            "__splitscript::closure::expr7169"
+            "__splitscript::closure::expr7221"
           ],
           [
             299,
-            "__splitscript::closure::expr7219"
+            "__splitscript::closure::expr7271"
           ],
           [
             300,
-            "__splitscript::closure::expr13038"
+            "__splitscript::closure::expr13120"
           ],
           [
             301,
-            "__splitscript::closure::expr13176"
+            "__splitscript::closure::expr13258"
           ],
           [
             302,
-            "__splitscript::closure::expr16182"
+            "__splitscript::closure::expr16379"
           ],
           [
             303,
-            "__splitscript::closure::expr16264"
+            "__splitscript::closure::expr16461"
           ]
         ],
         "runtime_helpers": [
@@ -11695,7 +11695,7 @@
     },
     "mach-export": {
       "source_fingerprint": "6a46f83e542b1a52",
-      "compile_micros": 99933,
+      "compile_micros": 141245,
       "module_bytes": 13510,
       "sections": {
         "10:code": 11423,
@@ -11824,7 +11824,7 @@
     },
     "mach-uuid": {
       "source_fingerprint": "5106d448d3c16584",
-      "compile_micros": 87204,
+      "compile_micros": 137093,
       "module_bytes": 4308,
       "sections": {
         "10:code": 3228,
@@ -11898,7 +11898,7 @@
     },
     "mono-array": {
       "source_fingerprint": "364311585c26906f",
-      "compile_micros": 398924,
+      "compile_micros": 5107580,
       "module_bytes": 46381,
       "sections": {
         "10:code": 40568,
@@ -11918,12 +11918,12 @@
         "100:state::value::read": 44,
         "101:_start": 27,
         "102:update": 292,
-        "103:__splitscript::closure::expr12438": 49,
-        "104:__splitscript::closure::expr12444": 32,
-        "105:__splitscript::closure::expr12872": 33,
-        "106:__splitscript::closure::expr13010": 22,
-        "107:__splitscript::closure::expr16107": 16,
-        "108:__splitscript::closure::expr16151": 440,
+        "103:__splitscript::closure::expr12520": 49,
+        "104:__splitscript::closure::expr12526": 32,
+        "105:__splitscript::closure::expr12954": 33,
+        "106:__splitscript::closure::expr13092": 22,
+        "107:__splitscript::closure::expr16366": 16,
+        "108:__splitscript::closure::expr16410": 440,
         "10:__splitscript::runtime::StringEquality": 68,
         "11:__splitscript::runtime::StringRFind": 118,
         "12:__splitscript::runtime::StringSlice": 145,
@@ -11947,8 +11947,8 @@
         "30:__splitscript::debug::type#142": 175,
         "31:__splitscript::array#0::push": 139,
         "32:__splitscript::array#24::push": 139,
-        "33:__splitscript::array#104::push": 139,
-        "34:__splitscript::array#104::clear": 80,
+        "33:__splitscript::array#109::push": 139,
+        "34:__splitscript::array#109::clear": 80,
         "35:__splitscript::managed::class#0::field#0::read": 48,
         "36:__splitscript::managed::decode::TypeId(24)": 94,
         "37:__splitscript::managed::decode::TypeId(142)": 947,
@@ -12014,7 +12014,7 @@
         "96:__splitscript_stdlib_UnityCollectionMemberValidateStorage": 101,
         "97:__splitscript_stdlib_selected_provider_preparation::init": 51,
         "98:__splitscript_stdlib_selected_provider_preparation::poll": 1119,
-        "99:__splitscript::future::expr21625::poll": 321,
+        "99:__splitscript::future::expr22303::poll": 321,
         "9:__splitscript::runtime::QuoteDebugString": 467
       },
       "emission": {
@@ -12121,11 +12121,11 @@
           ],
           [
             33,
-            "__splitscript::array#104::push"
+            "__splitscript::array#109::push"
           ],
           [
             34,
-            "__splitscript::array#104::clear"
+            "__splitscript::array#109::clear"
           ],
           [
             35,
@@ -12385,7 +12385,7 @@
           ],
           [
             99,
-            "__splitscript::future::expr21625::poll"
+            "__splitscript::future::expr22303::poll"
           ],
           [
             100,
@@ -12401,27 +12401,27 @@
           ],
           [
             103,
-            "__splitscript::closure::expr12438"
+            "__splitscript::closure::expr12520"
           ],
           [
             104,
-            "__splitscript::closure::expr12444"
+            "__splitscript::closure::expr12526"
           ],
           [
             105,
-            "__splitscript::closure::expr12872"
+            "__splitscript::closure::expr12954"
           ],
           [
             106,
-            "__splitscript::closure::expr13010"
+            "__splitscript::closure::expr13092"
           ],
           [
             107,
-            "__splitscript::closure::expr16107"
+            "__splitscript::closure::expr16366"
           ],
           [
             108,
-            "__splitscript::closure::expr16151"
+            "__splitscript::closure::expr16410"
           ]
         ],
         "runtime_helpers": [
@@ -12457,7 +12457,7 @@
     },
     "mono-inherited-static": {
       "source_fingerprint": "d849259d66b37bb4",
-      "compile_micros": 398552,
+      "compile_micros": 5068675,
       "module_bytes": 39304,
       "sections": {
         "10:code": 34872,
@@ -12541,13 +12541,13 @@
         "74:__splitscript_stdlib_MonoClassStaticSlot::poll": 381,
         "75:__splitscript_stdlib_selected_provider_preparation::init": 57,
         "76:__splitscript_stdlib_selected_provider_preparation::poll": 1306,
-        "77:__splitscript::future::expr21634::poll": 321,
+        "77:__splitscript::future::expr22312::poll": 321,
         "78:state::state::read": 133,
         "79:whileAttached": 20,
         "80:_start": 27,
         "81:update": 305,
-        "82:__splitscript::closure::expr12876": 31,
-        "83:__splitscript::closure::expr13014": 21,
+        "82:__splitscript::closure::expr12958": 31,
+        "83:__splitscript::closure::expr13096": 21,
         "8:__splitscript::runtime::PrintString": 89,
         "9:__splitscript::runtime::FormatI64": 193
       },
@@ -12831,7 +12831,7 @@
           ],
           [
             77,
-            "__splitscript::future::expr21634::poll"
+            "__splitscript::future::expr22312::poll"
           ],
           [
             78,
@@ -12851,11 +12851,11 @@
           ],
           [
             82,
-            "__splitscript::closure::expr12876"
+            "__splitscript::closure::expr12958"
           ],
           [
             83,
-            "__splitscript::closure::expr13014"
+            "__splitscript::closure::expr13096"
           ]
         ],
         "runtime_helpers": [
@@ -12887,7 +12887,7 @@
     },
     "mono-inline-array": {
       "source_fingerprint": "df99a0b6b4ca1a73",
-      "compile_micros": 374055,
+      "compile_micros": 5080627,
       "module_bytes": 38924,
       "sections": {
         "10:code": 34474,
@@ -12974,12 +12974,12 @@
         "77:__splitscript_stdlib_MonoClassStaticSlot::poll": 381,
         "78:__splitscript_stdlib_selected_provider_preparation::init": 45,
         "79:__splitscript_stdlib_selected_provider_preparation::poll": 1070,
-        "80:__splitscript::future::expr21625::poll": 321,
+        "80:__splitscript::future::expr22303::poll": 321,
         "81:state::value::read": 44,
         "82:_start": 27,
         "83:update": 292,
-        "84:__splitscript::closure::expr12872": 31,
-        "85:__splitscript::closure::expr13010": 21,
+        "84:__splitscript::closure::expr12954": 31,
+        "85:__splitscript::closure::expr13092": 21,
         "8:__splitscript::runtime::PrintString": 89,
         "9:__splitscript::runtime::QuoteDebugString": 467
       },
@@ -13275,7 +13275,7 @@
           ],
           [
             80,
-            "__splitscript::future::expr21625::poll"
+            "__splitscript::future::expr22303::poll"
           ],
           [
             81,
@@ -13291,11 +13291,11 @@
           ],
           [
             84,
-            "__splitscript::closure::expr12872"
+            "__splitscript::closure::expr12954"
           ],
           [
             85,
-            "__splitscript::closure::expr13010"
+            "__splitscript::closure::expr13092"
           ]
         ],
         "runtime_helpers": [
@@ -13328,7 +13328,7 @@
     },
     "mono-instances": {
       "source_fingerprint": "f8114e5628a14dee",
-      "compile_micros": 382090,
+      "compile_micros": 5151563,
       "module_bytes": 31105,
       "sections": {
         "10:code": 27685,
@@ -13363,7 +13363,7 @@
         "27:__splitscript::runtime::WrapDebugEntry": 41,
         "28:__splitscript::runtime::WrapDebugVariant": 37,
         "29:__splitscript::debug::type#144": 175,
-        "30:__splitscript::array#763::push": 119,
+        "30:__splitscript::array#789::push": 119,
         "31:__splitscript_stdlib_UnityProviderMono::init": 21,
         "32:__splitscript_stdlib_UnityProviderMono::poll": 227,
         "33:__splitscript_stdlib_UnityMono::init": 21,
@@ -13399,12 +13399,12 @@
         "63:__splitscript_stdlib_MonoClassInstanceHeader::poll": 254,
         "64:__splitscript_stdlib_selected_provider_preparation::init": 43,
         "65:__splitscript_stdlib_selected_provider_preparation::poll": 951,
-        "66:__splitscript::future::expr23656::poll": 437,
-        "67:__splitscript::future::expr21631::poll": 321,
+        "66:__splitscript::future::expr24381::poll": 437,
+        "67:__splitscript::future::expr22309::poll": 321,
         "68:onAttach": 240,
         "69:_start": 28,
         "70:update": 257,
-        "71:__splitscript::closure::expr13012": 21
+        "71:__splitscript::closure::expr13094": 21
       },
       "emission": {
         "functions": [
@@ -13482,7 +13482,7 @@
           ],
           [
             30,
-            "__splitscript::array#763::push"
+            "__splitscript::array#789::push"
           ],
           [
             31,
@@ -13626,11 +13626,11 @@
           ],
           [
             66,
-            "__splitscript::future::expr23656::poll"
+            "__splitscript::future::expr24381::poll"
           ],
           [
             67,
-            "__splitscript::future::expr21631::poll"
+            "__splitscript::future::expr22309::poll"
           ],
           [
             68,
@@ -13646,7 +13646,7 @@
           ],
           [
             71,
-            "__splitscript::closure::expr13012"
+            "__splitscript::closure::expr13094"
           ]
         ],
         "runtime_helpers": [
@@ -13677,7 +13677,7 @@
     },
     "mono-linux-explicit": {
       "source_fingerprint": "69be4bc008e9c6ca",
-      "compile_micros": 550896,
+      "compile_micros": 5164389,
       "module_bytes": 44156,
       "sections": {
         "10:code": 39204,
@@ -13760,13 +13760,13 @@
         "73:__splitscript_stdlib_MonoClassStaticSlot::poll": 382,
         "74:__splitscript_stdlib_selected_provider_preparation::init": 49,
         "75:__splitscript_stdlib_selected_provider_preparation::poll": 1097,
-        "76:__splitscript::future::expr21300::poll": 322,
+        "76:__splitscript::future::expr21978::poll": 322,
         "77:state::value::read": 44,
         "78:whileAttached": 20,
         "79:_start": 27,
         "80:update": 305,
-        "81:__splitscript::closure::expr12874": 33,
-        "82:__splitscript::closure::expr13012": 22,
+        "81:__splitscript::closure::expr12956": 33,
+        "82:__splitscript::closure::expr13094": 22,
         "8:__splitscript::runtime::PrintString": 89,
         "9:__splitscript::runtime::FormatI64": 193
       },
@@ -14046,7 +14046,7 @@
           ],
           [
             76,
-            "__splitscript::future::expr21300::poll"
+            "__splitscript::future::expr21978::poll"
           ],
           [
             77,
@@ -14066,11 +14066,11 @@
           ],
           [
             81,
-            "__splitscript::closure::expr12874"
+            "__splitscript::closure::expr12956"
           ],
           [
             82,
-            "__splitscript::closure::expr13012"
+            "__splitscript::closure::expr13094"
           ]
         ],
         "runtime_helpers": [
@@ -14103,7 +14103,7 @@
     },
     "mono-list": {
       "source_fingerprint": "2d7619314ff3eebd",
-      "compile_micros": 1082163,
+      "compile_micros": 5070175,
       "module_bytes": 52586,
       "sections": {
         "10:code": 45808,
@@ -14129,23 +14129,23 @@
         "106:__splitscript_stdlib_UnityCollectionMemberValidateStorage": 101,
         "107:__splitscript_stdlib_selected_provider_preparation::init": 53,
         "108:__splitscript_stdlib_selected_provider_preparation::poll": 1162,
-        "109:__splitscript::future::expr21625::poll": 321,
+        "109:__splitscript::future::expr22303::poll": 321,
         "10:__splitscript::runtime::StringEquality": 68,
         "110:state::value::read": 45,
         "111:_start": 27,
         "112:update": 294,
-        "113:__splitscript::closure::expr12438": 50,
-        "114:__splitscript::closure::expr12444": 32,
-        "115:__splitscript::closure::expr12545": 50,
-        "116:__splitscript::closure::expr12551": 32,
-        "117:__splitscript::closure::expr12563": 28,
-        "118:__splitscript::closure::expr12872": 33,
-        "119:__splitscript::closure::expr13010": 22,
+        "113:__splitscript::closure::expr12520": 50,
+        "114:__splitscript::closure::expr12526": 32,
+        "115:__splitscript::closure::expr12627": 50,
+        "116:__splitscript::closure::expr12633": 32,
+        "117:__splitscript::closure::expr12645": 28,
+        "118:__splitscript::closure::expr12954": 33,
+        "119:__splitscript::closure::expr13092": 22,
         "11:__splitscript::runtime::StringRFind": 118,
-        "120:__splitscript::closure::expr16107": 16,
-        "121:__splitscript::closure::expr16151": 440,
-        "122:__splitscript::closure::expr16189": 16,
-        "123:__splitscript::closure::expr16211": 485,
+        "120:__splitscript::closure::expr16366": 16,
+        "121:__splitscript::closure::expr16410": 440,
+        "122:__splitscript::closure::expr16511": 16,
+        "123:__splitscript::closure::expr16533": 485,
         "12:__splitscript::runtime::StringSlice": 145,
         "13:__splitscript::runtime::ScanProcessRange": 237,
         "14:__splitscript::runtime::ReadRelative32": 30,
@@ -14169,13 +14169,13 @@
         "32:__splitscript::array#20::push": 139,
         "33:__splitscript::array#23::push": 139,
         "34:__splitscript::array#25::push": 139,
-        "35:__splitscript::array#105::push": 139,
-        "36:__splitscript::array#105::clear": 80,
-        "37:__splitscript::array#106::push": 139,
-        "38:__splitscript::array#106::clear": 80,
+        "35:__splitscript::array#110::push": 139,
+        "36:__splitscript::array#110::clear": 80,
+        "37:__splitscript::array#111::push": 139,
+        "38:__splitscript::array#111::clear": 80,
         "39:__splitscript::managed::class#0::field#0::read": 49,
         "40:__splitscript::managed::decode::TypeId(24)": 94,
-        "41:__splitscript::managed::decode::TypeId(376)": 2652,
+        "41:__splitscript::managed::decode::TypeId(381)": 2652,
         "42:__splitscript_stdlib_UnityProviderMono::init": 22,
         "43:__splitscript_stdlib_UnityProviderMono::poll": 230,
         "44:__splitscript_stdlib_UnityMono::init": 22,
@@ -14349,19 +14349,19 @@
           ],
           [
             35,
-            "__splitscript::array#105::push"
+            "__splitscript::array#110::push"
           ],
           [
             36,
-            "__splitscript::array#105::clear"
+            "__splitscript::array#110::clear"
           ],
           [
             37,
-            "__splitscript::array#106::push"
+            "__splitscript::array#111::push"
           ],
           [
             38,
-            "__splitscript::array#106::clear"
+            "__splitscript::array#111::clear"
           ],
           [
             39,
@@ -14373,7 +14373,7 @@
           ],
           [
             41,
-            "__splitscript::managed::decode::TypeId(376)"
+            "__splitscript::managed::decode::TypeId(381)"
           ],
           [
             42,
@@ -14645,7 +14645,7 @@
           ],
           [
             109,
-            "__splitscript::future::expr21625::poll"
+            "__splitscript::future::expr22303::poll"
           ],
           [
             110,
@@ -14661,47 +14661,47 @@
           ],
           [
             113,
-            "__splitscript::closure::expr12438"
+            "__splitscript::closure::expr12520"
           ],
           [
             114,
-            "__splitscript::closure::expr12444"
+            "__splitscript::closure::expr12526"
           ],
           [
             115,
-            "__splitscript::closure::expr12545"
+            "__splitscript::closure::expr12627"
           ],
           [
             116,
-            "__splitscript::closure::expr12551"
+            "__splitscript::closure::expr12633"
           ],
           [
             117,
-            "__splitscript::closure::expr12563"
+            "__splitscript::closure::expr12645"
           ],
           [
             118,
-            "__splitscript::closure::expr12872"
+            "__splitscript::closure::expr12954"
           ],
           [
             119,
-            "__splitscript::closure::expr13010"
+            "__splitscript::closure::expr13092"
           ],
           [
             120,
-            "__splitscript::closure::expr16107"
+            "__splitscript::closure::expr16366"
           ],
           [
             121,
-            "__splitscript::closure::expr16151"
+            "__splitscript::closure::expr16410"
           ],
           [
             122,
-            "__splitscript::closure::expr16189"
+            "__splitscript::closure::expr16511"
           ],
           [
             123,
-            "__splitscript::closure::expr16211"
+            "__splitscript::closure::expr16533"
           ]
         ],
         "runtime_helpers": [
@@ -14737,7 +14737,7 @@
     },
     "mono-mac-explicit": {
       "source_fingerprint": "c948452567507ec7",
-      "compile_micros": 1639168,
+      "compile_micros": 5112481,
       "module_bytes": 45233,
       "sections": {
         "10:code": 40002,
@@ -14823,13 +14823,13 @@
         "76:__splitscript_stdlib_MonoClassStaticSlot::poll": 381,
         "77:__splitscript_stdlib_selected_provider_preparation::init": 47,
         "78:__splitscript_stdlib_selected_provider_preparation::poll": 1095,
-        "79:__splitscript::future::expr21300::poll": 322,
+        "79:__splitscript::future::expr21978::poll": 322,
         "80:state::value::read": 44,
         "81:whileAttached": 20,
         "82:_start": 27,
         "83:update": 305,
-        "84:__splitscript::closure::expr12874": 31,
-        "85:__splitscript::closure::expr13012": 21,
+        "84:__splitscript::closure::expr12956": 31,
+        "85:__splitscript::closure::expr13094": 21,
         "8:__splitscript::runtime::PrintString": 89,
         "9:__splitscript::runtime::FormatI64": 193
       },
@@ -15121,7 +15121,7 @@
           ],
           [
             79,
-            "__splitscript::future::expr21300::poll"
+            "__splitscript::future::expr21978::poll"
           ],
           [
             80,
@@ -15141,11 +15141,11 @@
           ],
           [
             84,
-            "__splitscript::closure::expr12874"
+            "__splitscript::closure::expr12956"
           ],
           [
             85,
-            "__splitscript::closure::expr13012"
+            "__splitscript::closure::expr13094"
           ]
         ],
         "runtime_helpers": [
@@ -15178,7 +15178,7 @@
     },
     "mono-map": {
       "source_fingerprint": "62f56d824ad6e361",
-      "compile_micros": 1705765,
+      "compile_micros": 5028782,
       "module_bytes": 68463,
       "sections": {
         "10:code": 58954,
@@ -15236,32 +15236,32 @@
         "135:__splitscript_stdlib_UnityKeyedReadVerify": 564,
         "136:__splitscript_stdlib_selected_provider_preparation::init": 58,
         "137:__splitscript_stdlib_selected_provider_preparation::poll": 1313,
-        "138:__splitscript::future::expr21625::poll": 345,
+        "138:__splitscript::future::expr22303::poll": 345,
         "139:state::value::read": 45,
         "13:__splitscript::runtime::ScanProcessRange": 237,
         "140:_start": 27,
         "141:update": 298,
-        "142:__splitscript::closure::expr12329": 51,
-        "143:__splitscript::closure::expr12335": 32,
-        "144:__splitscript::closure::expr12349": 28,
-        "145:__splitscript::closure::expr12358": 14,
-        "146:__splitscript::closure::expr12438": 51,
-        "147:__splitscript::closure::expr12444": 32,
-        "148:__splitscript::closure::expr12484": 51,
-        "149:__splitscript::closure::expr12490": 32,
+        "142:__splitscript::closure::expr12381": 51,
+        "143:__splitscript::closure::expr12387": 32,
+        "144:__splitscript::closure::expr12401": 28,
+        "145:__splitscript::closure::expr12410": 14,
+        "146:__splitscript::closure::expr12520": 51,
+        "147:__splitscript::closure::expr12526": 32,
+        "148:__splitscript::closure::expr12566": 51,
+        "149:__splitscript::closure::expr12572": 32,
         "14:__splitscript::runtime::ReadRelative32": 30,
-        "150:__splitscript::closure::expr12872": 33,
-        "151:__splitscript::closure::expr13010": 22,
-        "152:__splitscript::closure::expr16107": 16,
-        "153:__splitscript::closure::expr16151": 445,
-        "154:__splitscript::closure::expr16215": 16,
-        "155:__splitscript::closure::expr16262": 441,
-        "156:__splitscript::closure::expr16329": 43,
-        "157:__splitscript::closure::expr16335": 16,
-        "158:__splitscript::closure::expr16369": 43,
-        "159:__splitscript::closure::expr16373": 620,
+        "150:__splitscript::closure::expr12954": 33,
+        "151:__splitscript::closure::expr13092": 22,
+        "152:__splitscript::closure::expr16366": 16,
+        "153:__splitscript::closure::expr16410": 445,
+        "154:__splitscript::closure::expr16610": 16,
+        "155:__splitscript::closure::expr16657": 441,
+        "156:__splitscript::closure::expr16724": 43,
+        "157:__splitscript::closure::expr16730": 16,
+        "158:__splitscript::closure::expr16764": 43,
+        "159:__splitscript::closure::expr16768": 620,
         "15:__splitscript::runtime::StringFromMemory": 54,
-        "160:__splitscript::closure::expr16486": 9,
+        "160:__splitscript::closure::expr17145": 9,
         "16:__splitscript::runtime::Utf8StringFromMemory": 358,
         "17:__splitscript::runtime::ReadUtf8String": 43,
         "18:__splitscript::runtime::ManagedFieldAddress": 63,
@@ -15284,13 +15284,13 @@
         "35:__splitscript::array#27::push": 139,
         "36:__splitscript::array#30::set": 29,
         "37:__splitscript::array#30::push": 139,
-        "38:__splitscript::array#99::push": 139,
-        "39:__splitscript::array#106::push": 139,
-        "40:__splitscript::array#106::clear": 80,
-        "41:__splitscript::array#107::push": 139,
-        "42:__splitscript::array#107::clear": 80,
-        "43:__splitscript::array#110::push": 139,
-        "44:__splitscript::array#110::clear": 80,
+        "38:__splitscript::array#100::push": 139,
+        "39:__splitscript::array#110::push": 139,
+        "40:__splitscript::array#110::clear": 80,
+        "41:__splitscript::array#112::push": 139,
+        "42:__splitscript::array#112::clear": 80,
+        "43:__splitscript::array#115::push": 139,
+        "44:__splitscript::array#115::clear": 80,
         "45:__splitscript::managed::class#0::field#0::read": 49,
         "46:__splitscript::managed::decode::TypeId(24)": 94,
         "47:__splitscript::managed::decode::TypeId(142)": 135,
@@ -15473,31 +15473,31 @@
           ],
           [
             38,
-            "__splitscript::array#99::push"
+            "__splitscript::array#100::push"
           ],
           [
             39,
-            "__splitscript::array#106::push"
-          ],
-          [
-            40,
-            "__splitscript::array#106::clear"
-          ],
-          [
-            41,
-            "__splitscript::array#107::push"
-          ],
-          [
-            42,
-            "__splitscript::array#107::clear"
-          ],
-          [
-            43,
             "__splitscript::array#110::push"
           ],
           [
-            44,
+            40,
             "__splitscript::array#110::clear"
+          ],
+          [
+            41,
+            "__splitscript::array#112::push"
+          ],
+          [
+            42,
+            "__splitscript::array#112::clear"
+          ],
+          [
+            43,
+            "__splitscript::array#115::push"
+          ],
+          [
+            44,
+            "__splitscript::array#115::clear"
           ],
           [
             45,
@@ -15873,7 +15873,7 @@
           ],
           [
             138,
-            "__splitscript::future::expr21625::poll"
+            "__splitscript::future::expr22303::poll"
           ],
           [
             139,
@@ -15889,79 +15889,79 @@
           ],
           [
             142,
-            "__splitscript::closure::expr12329"
+            "__splitscript::closure::expr12381"
           ],
           [
             143,
-            "__splitscript::closure::expr12335"
+            "__splitscript::closure::expr12387"
           ],
           [
             144,
-            "__splitscript::closure::expr12349"
+            "__splitscript::closure::expr12401"
           ],
           [
             145,
-            "__splitscript::closure::expr12358"
+            "__splitscript::closure::expr12410"
           ],
           [
             146,
-            "__splitscript::closure::expr12438"
+            "__splitscript::closure::expr12520"
           ],
           [
             147,
-            "__splitscript::closure::expr12444"
+            "__splitscript::closure::expr12526"
           ],
           [
             148,
-            "__splitscript::closure::expr12484"
+            "__splitscript::closure::expr12566"
           ],
           [
             149,
-            "__splitscript::closure::expr12490"
+            "__splitscript::closure::expr12572"
           ],
           [
             150,
-            "__splitscript::closure::expr12872"
+            "__splitscript::closure::expr12954"
           ],
           [
             151,
-            "__splitscript::closure::expr13010"
+            "__splitscript::closure::expr13092"
           ],
           [
             152,
-            "__splitscript::closure::expr16107"
+            "__splitscript::closure::expr16366"
           ],
           [
             153,
-            "__splitscript::closure::expr16151"
+            "__splitscript::closure::expr16410"
           ],
           [
             154,
-            "__splitscript::closure::expr16215"
+            "__splitscript::closure::expr16610"
           ],
           [
             155,
-            "__splitscript::closure::expr16262"
+            "__splitscript::closure::expr16657"
           ],
           [
             156,
-            "__splitscript::closure::expr16329"
+            "__splitscript::closure::expr16724"
           ],
           [
             157,
-            "__splitscript::closure::expr16335"
+            "__splitscript::closure::expr16730"
           ],
           [
             158,
-            "__splitscript::closure::expr16369"
+            "__splitscript::closure::expr16764"
           ],
           [
             159,
-            "__splitscript::closure::expr16373"
+            "__splitscript::closure::expr16768"
           ],
           [
             160,
-            "__splitscript::closure::expr16486"
+            "__splitscript::closure::expr17145"
           ]
         ],
         "runtime_helpers": [
@@ -15998,7 +15998,7 @@
     },
     "mono-nested-array": {
       "source_fingerprint": "ac4cf6167d643ecf",
-      "compile_micros": 1652270,
+      "compile_micros": 4966522,
       "module_bytes": 47736,
       "sections": {
         "10:code": 41802,
@@ -16017,17 +16017,17 @@
       "function_body_bytes": {
         "100:__splitscript_stdlib_selected_provider_preparation::init": 51,
         "101:__splitscript_stdlib_selected_provider_preparation::poll": 1119,
-        "102:__splitscript::future::expr21625::poll": 321,
+        "102:__splitscript::future::expr22303::poll": 321,
         "103:state::value::read": 45,
         "104:_start": 27,
         "105:update": 294,
-        "106:__splitscript::closure::expr12438": 50,
-        "107:__splitscript::closure::expr12444": 32,
-        "108:__splitscript::closure::expr12872": 33,
-        "109:__splitscript::closure::expr13010": 22,
+        "106:__splitscript::closure::expr12520": 50,
+        "107:__splitscript::closure::expr12526": 32,
+        "108:__splitscript::closure::expr12954": 33,
+        "109:__splitscript::closure::expr13092": 22,
         "10:__splitscript::runtime::StringEquality": 68,
-        "110:__splitscript::closure::expr16107": 16,
-        "111:__splitscript::closure::expr16151": 440,
+        "110:__splitscript::closure::expr16366": 16,
+        "111:__splitscript::closure::expr16410": 440,
         "11:__splitscript::runtime::StringRFind": 118,
         "12:__splitscript::runtime::StringSlice": 145,
         "13:__splitscript::runtime::ScanProcessRange": 237,
@@ -16050,8 +16050,8 @@
         "30:__splitscript::debug::type#148": 175,
         "31:__splitscript::array#26::push": 139,
         "32:__splitscript::array#28::push": 139,
-        "33:__splitscript::array#108::push": 139,
-        "34:__splitscript::array#108::clear": 80,
+        "33:__splitscript::array#113::push": 139,
+        "34:__splitscript::array#113::clear": 80,
         "35:__splitscript::managed::class#0::field#0::read": 49,
         "36:__splitscript::managed::decode::TypeId(24)": 94,
         "37:__splitscript::managed::decode::TypeId(142)": 131,
@@ -16224,11 +16224,11 @@
           ],
           [
             33,
-            "__splitscript::array#108::push"
+            "__splitscript::array#113::push"
           ],
           [
             34,
-            "__splitscript::array#108::clear"
+            "__splitscript::array#113::clear"
           ],
           [
             35,
@@ -16500,7 +16500,7 @@
           ],
           [
             102,
-            "__splitscript::future::expr21625::poll"
+            "__splitscript::future::expr22303::poll"
           ],
           [
             103,
@@ -16516,27 +16516,27 @@
           ],
           [
             106,
-            "__splitscript::closure::expr12438"
+            "__splitscript::closure::expr12520"
           ],
           [
             107,
-            "__splitscript::closure::expr12444"
+            "__splitscript::closure::expr12526"
           ],
           [
             108,
-            "__splitscript::closure::expr12872"
+            "__splitscript::closure::expr12954"
           ],
           [
             109,
-            "__splitscript::closure::expr13010"
+            "__splitscript::closure::expr13092"
           ],
           [
             110,
-            "__splitscript::closure::expr16107"
+            "__splitscript::closure::expr16366"
           ],
           [
             111,
-            "__splitscript::closure::expr16151"
+            "__splitscript::closure::expr16410"
           ]
         ],
         "runtime_helpers": [
@@ -16572,7 +16572,7 @@
     },
     "mono-old": {
       "source_fingerprint": "0f71900d22e0bafa",
-      "compile_micros": 1755469,
+      "compile_micros": 5067347,
       "module_bytes": 38894,
       "sections": {
         "10:code": 34485,
@@ -16656,13 +16656,13 @@
         "74:__splitscript_stdlib_MonoClassStaticSlot::poll": 381,
         "75:__splitscript_stdlib_selected_provider_preparation::init": 45,
         "76:__splitscript_stdlib_selected_provider_preparation::poll": 1089,
-        "77:__splitscript::future::expr21627::poll": 321,
+        "77:__splitscript::future::expr22305::poll": 321,
         "78:state::value::read": 44,
         "79:whileAttached": 20,
         "80:_start": 27,
         "81:update": 305,
-        "82:__splitscript::closure::expr12874": 31,
-        "83:__splitscript::closure::expr13012": 21,
+        "82:__splitscript::closure::expr12956": 31,
+        "83:__splitscript::closure::expr13094": 21,
         "8:__splitscript::runtime::PrintString": 89,
         "9:__splitscript::runtime::FormatI64": 193
       },
@@ -16946,7 +16946,7 @@
           ],
           [
             77,
-            "__splitscript::future::expr21627::poll"
+            "__splitscript::future::expr22305::poll"
           ],
           [
             78,
@@ -16966,11 +16966,11 @@
           ],
           [
             82,
-            "__splitscript::closure::expr12874"
+            "__splitscript::closure::expr12956"
           ],
           [
             83,
-            "__splitscript::closure::expr13012"
+            "__splitscript::closure::expr13094"
           ]
         ],
         "runtime_helpers": [
@@ -17002,7 +17002,7 @@
     },
     "mono-profiles-auto": {
       "source_fingerprint": "37fd82bc7487fe96",
-      "compile_micros": 1750837,
+      "compile_micros": 1353599,
       "module_bytes": 168347,
       "sections": {
         "10:code": 154227,
@@ -17169,26 +17169,26 @@
         "234:__splitscript_stdlib_MonoClassStaticSlot::poll": 415,
         "235:__splitscript_stdlib_selected_provider_preparation::init": 48,
         "236:__splitscript_stdlib_selected_provider_preparation::poll": 1096,
-        "237:__splitscript::future::expr16707::poll": 305,
-        "238:__splitscript::future::expr16717::poll": 283,
-        "239:__splitscript::future::expr16751::poll": 345,
+        "237:__splitscript::future::expr17370::poll": 305,
+        "238:__splitscript::future::expr17380::poll": 283,
+        "239:__splitscript::future::expr17414::poll": 345,
         "23:__splitscript::runtime::LoadedModule": 132,
-        "240:__splitscript::future::expr16790::poll": 345,
-        "241:__splitscript::future::expr16813::poll": 345,
-        "242:__splitscript::future::expr16843::poll": 345,
-        "243:__splitscript::future::expr21294::poll": 345,
-        "244:__splitscript::future::expr21357::poll": 345,
-        "245:__splitscript::future::expr21363::poll": 345,
-        "246:__splitscript::future::expr21621::poll": 345,
+        "240:__splitscript::future::expr17453::poll": 345,
+        "241:__splitscript::future::expr17476::poll": 345,
+        "242:__splitscript::future::expr17506::poll": 345,
+        "243:__splitscript::future::expr21972::poll": 345,
+        "244:__splitscript::future::expr22035::poll": 345,
+        "245:__splitscript::future::expr22041::poll": 345,
+        "246:__splitscript::future::expr22299::poll": 345,
         "247:state::value::read": 45,
         "248:whileAttached": 20,
         "249:_start": 27,
         "24:__splitscript::runtime::JoinStrings": 233,
         "250:update": 312,
-        "251:__splitscript::closure::expr7004": 33,
-        "252:__splitscript::closure::expr7054": 22,
-        "253:__splitscript::closure::expr12873": 34,
-        "254:__splitscript::closure::expr13011": 22,
+        "251:__splitscript::closure::expr7056": 33,
+        "252:__splitscript::closure::expr7106": 22,
+        "253:__splitscript::closure::expr12955": 34,
+        "254:__splitscript::closure::expr13093": 22,
         "25:__splitscript::runtime::IndentDisplay": 167,
         "26:__splitscript::runtime::WrapDebugEntry": 41,
         "27:__splitscript::runtime::WrapDebugVariant": 37,
@@ -18187,43 +18187,43 @@
           ],
           [
             237,
-            "__splitscript::future::expr16707::poll"
+            "__splitscript::future::expr17370::poll"
           ],
           [
             238,
-            "__splitscript::future::expr16717::poll"
+            "__splitscript::future::expr17380::poll"
           ],
           [
             239,
-            "__splitscript::future::expr16751::poll"
+            "__splitscript::future::expr17414::poll"
           ],
           [
             240,
-            "__splitscript::future::expr16790::poll"
+            "__splitscript::future::expr17453::poll"
           ],
           [
             241,
-            "__splitscript::future::expr16813::poll"
+            "__splitscript::future::expr17476::poll"
           ],
           [
             242,
-            "__splitscript::future::expr16843::poll"
+            "__splitscript::future::expr17506::poll"
           ],
           [
             243,
-            "__splitscript::future::expr21294::poll"
+            "__splitscript::future::expr21972::poll"
           ],
           [
             244,
-            "__splitscript::future::expr21357::poll"
+            "__splitscript::future::expr22035::poll"
           ],
           [
             245,
-            "__splitscript::future::expr21363::poll"
+            "__splitscript::future::expr22041::poll"
           ],
           [
             246,
-            "__splitscript::future::expr21621::poll"
+            "__splitscript::future::expr22299::poll"
           ],
           [
             247,
@@ -18243,19 +18243,19 @@
           ],
           [
             251,
-            "__splitscript::closure::expr7004"
+            "__splitscript::closure::expr7056"
           ],
           [
             252,
-            "__splitscript::closure::expr7054"
+            "__splitscript::closure::expr7106"
           ],
           [
             253,
-            "__splitscript::closure::expr12873"
+            "__splitscript::closure::expr12955"
           ],
           [
             254,
-            "__splitscript::closure::expr13011"
+            "__splitscript::closure::expr13093"
           ]
         ],
         "runtime_helpers": [
@@ -18289,7 +18289,7 @@
     },
     "mono-scalar": {
       "source_fingerprint": "e70ab4de5b26343a",
-      "compile_micros": 1662001,
+      "compile_micros": 4948178,
       "module_bytes": 38617,
       "sections": {
         "10:code": 34235,
@@ -18372,12 +18372,12 @@
         "73:__splitscript_stdlib_MonoClassStaticSlot::poll": 381,
         "74:__splitscript_stdlib_selected_provider_preparation::init": 45,
         "75:__splitscript_stdlib_selected_provider_preparation::poll": 1068,
-        "76:__splitscript::future::expr21625::poll": 321,
+        "76:__splitscript::future::expr22303::poll": 321,
         "77:state::value::read": 44,
         "78:_start": 27,
         "79:update": 292,
-        "80:__splitscript::closure::expr12872": 31,
-        "81:__splitscript::closure::expr13010": 21,
+        "80:__splitscript::closure::expr12954": 31,
+        "81:__splitscript::closure::expr13092": 21,
         "8:__splitscript::runtime::PrintString": 89,
         "9:__splitscript::runtime::QuoteDebugString": 467
       },
@@ -18657,7 +18657,7 @@
           ],
           [
             76,
-            "__splitscript::future::expr21625::poll"
+            "__splitscript::future::expr22303::poll"
           ],
           [
             77,
@@ -18673,11 +18673,11 @@
           ],
           [
             80,
-            "__splitscript::closure::expr12872"
+            "__splitscript::closure::expr12954"
           ],
           [
             81,
-            "__splitscript::closure::expr13010"
+            "__splitscript::closure::expr13092"
           ]
         ],
         "runtime_helpers": [
@@ -18708,7 +18708,7 @@
     },
     "mono-set": {
       "source_fingerprint": "6f04dff54c392572",
-      "compile_micros": 1448301,
+      "compile_micros": 4985324,
       "module_bytes": 68388,
       "sections": {
         "10:code": 58898,
@@ -18769,31 +18769,31 @@
         "138:__splitscript_stdlib_selected_provider_preparation::init": 57,
         "139:__splitscript_stdlib_selected_provider_preparation::poll": 1309,
         "13:__splitscript::runtime::ScanProcessRange": 237,
-        "140:__splitscript::future::expr21625::poll": 345,
+        "140:__splitscript::future::expr22303::poll": 345,
         "141:state::value::read": 45,
         "142:_start": 27,
         "143:update": 298,
-        "144:__splitscript::closure::expr12329": 51,
-        "145:__splitscript::closure::expr12335": 32,
-        "146:__splitscript::closure::expr12349": 28,
-        "147:__splitscript::closure::expr12367": 14,
-        "148:__splitscript::closure::expr12438": 51,
-        "149:__splitscript::closure::expr12444": 32,
+        "144:__splitscript::closure::expr12381": 51,
+        "145:__splitscript::closure::expr12387": 32,
+        "146:__splitscript::closure::expr12401": 28,
+        "147:__splitscript::closure::expr12419": 14,
+        "148:__splitscript::closure::expr12520": 51,
+        "149:__splitscript::closure::expr12526": 32,
         "14:__splitscript::runtime::ReadRelative32": 30,
-        "150:__splitscript::closure::expr12484": 51,
-        "151:__splitscript::closure::expr12490": 32,
-        "152:__splitscript::closure::expr12872": 33,
-        "153:__splitscript::closure::expr13010": 22,
-        "154:__splitscript::closure::expr16107": 16,
-        "155:__splitscript::closure::expr16151": 445,
-        "156:__splitscript::closure::expr16215": 16,
-        "157:__splitscript::closure::expr16262": 441,
-        "158:__splitscript::closure::expr16440": 43,
-        "159:__splitscript::closure::expr16446": 16,
+        "150:__splitscript::closure::expr12566": 51,
+        "151:__splitscript::closure::expr12572": 32,
+        "152:__splitscript::closure::expr12954": 33,
+        "153:__splitscript::closure::expr13092": 22,
+        "154:__splitscript::closure::expr16366": 16,
+        "155:__splitscript::closure::expr16410": 445,
+        "156:__splitscript::closure::expr16610": 16,
+        "157:__splitscript::closure::expr16657": 441,
+        "158:__splitscript::closure::expr16967": 43,
+        "159:__splitscript::closure::expr16973": 16,
         "15:__splitscript::runtime::StringFromMemory": 54,
-        "160:__splitscript::closure::expr16480": 43,
-        "161:__splitscript::closure::expr16484": 620,
-        "162:__splitscript::closure::expr16486": 9,
+        "160:__splitscript::closure::expr17007": 43,
+        "161:__splitscript::closure::expr17011": 620,
+        "162:__splitscript::closure::expr17145": 9,
         "16:__splitscript::runtime::Utf8StringFromMemory": 358,
         "17:__splitscript::runtime::ReadUtf8String": 43,
         "18:__splitscript::runtime::ManagedFieldAddress": 63,
@@ -18818,13 +18818,13 @@
         "37:__splitscript::array#27::push": 139,
         "38:__splitscript::array#30::set": 29,
         "39:__splitscript::array#30::push": 139,
-        "40:__splitscript::array#99::push": 139,
-        "41:__splitscript::array#106::push": 139,
-        "42:__splitscript::array#106::clear": 80,
-        "43:__splitscript::array#107::push": 139,
-        "44:__splitscript::array#107::clear": 80,
-        "45:__splitscript::array#110::push": 139,
-        "46:__splitscript::array#110::clear": 80,
+        "40:__splitscript::array#100::push": 139,
+        "41:__splitscript::array#110::push": 139,
+        "42:__splitscript::array#110::clear": 80,
+        "43:__splitscript::array#112::push": 139,
+        "44:__splitscript::array#112::clear": 80,
+        "45:__splitscript::array#115::push": 139,
+        "46:__splitscript::array#115::clear": 80,
         "47:__splitscript::managed::class#0::field#0::read": 49,
         "48:__splitscript::managed::decode::TypeId(24)": 94,
         "49:__splitscript::managed::decode::TypeId(142)": 135,
@@ -19013,31 +19013,31 @@
           ],
           [
             40,
-            "__splitscript::array#99::push"
+            "__splitscript::array#100::push"
           ],
           [
             41,
-            "__splitscript::array#106::push"
-          ],
-          [
-            42,
-            "__splitscript::array#106::clear"
-          ],
-          [
-            43,
-            "__splitscript::array#107::push"
-          ],
-          [
-            44,
-            "__splitscript::array#107::clear"
-          ],
-          [
-            45,
             "__splitscript::array#110::push"
           ],
           [
-            46,
+            42,
             "__splitscript::array#110::clear"
+          ],
+          [
+            43,
+            "__splitscript::array#112::push"
+          ],
+          [
+            44,
+            "__splitscript::array#112::clear"
+          ],
+          [
+            45,
+            "__splitscript::array#115::push"
+          ],
+          [
+            46,
+            "__splitscript::array#115::clear"
           ],
           [
             47,
@@ -19413,7 +19413,7 @@
           ],
           [
             140,
-            "__splitscript::future::expr21625::poll"
+            "__splitscript::future::expr22303::poll"
           ],
           [
             141,
@@ -19429,79 +19429,79 @@
           ],
           [
             144,
-            "__splitscript::closure::expr12329"
+            "__splitscript::closure::expr12381"
           ],
           [
             145,
-            "__splitscript::closure::expr12335"
+            "__splitscript::closure::expr12387"
           ],
           [
             146,
-            "__splitscript::closure::expr12349"
+            "__splitscript::closure::expr12401"
           ],
           [
             147,
-            "__splitscript::closure::expr12367"
+            "__splitscript::closure::expr12419"
           ],
           [
             148,
-            "__splitscript::closure::expr12438"
+            "__splitscript::closure::expr12520"
           ],
           [
             149,
-            "__splitscript::closure::expr12444"
+            "__splitscript::closure::expr12526"
           ],
           [
             150,
-            "__splitscript::closure::expr12484"
+            "__splitscript::closure::expr12566"
           ],
           [
             151,
-            "__splitscript::closure::expr12490"
+            "__splitscript::closure::expr12572"
           ],
           [
             152,
-            "__splitscript::closure::expr12872"
+            "__splitscript::closure::expr12954"
           ],
           [
             153,
-            "__splitscript::closure::expr13010"
+            "__splitscript::closure::expr13092"
           ],
           [
             154,
-            "__splitscript::closure::expr16107"
+            "__splitscript::closure::expr16366"
           ],
           [
             155,
-            "__splitscript::closure::expr16151"
+            "__splitscript::closure::expr16410"
           ],
           [
             156,
-            "__splitscript::closure::expr16215"
+            "__splitscript::closure::expr16610"
           ],
           [
             157,
-            "__splitscript::closure::expr16262"
+            "__splitscript::closure::expr16657"
           ],
           [
             158,
-            "__splitscript::closure::expr16440"
+            "__splitscript::closure::expr16967"
           ],
           [
             159,
-            "__splitscript::closure::expr16446"
+            "__splitscript::closure::expr16973"
           ],
           [
             160,
-            "__splitscript::closure::expr16480"
+            "__splitscript::closure::expr17007"
           ],
           [
             161,
-            "__splitscript::closure::expr16484"
+            "__splitscript::closure::expr17011"
           ],
           [
             162,
-            "__splitscript::closure::expr16486"
+            "__splitscript::closure::expr17145"
           ]
         ],
         "runtime_helpers": [
@@ -19538,7 +19538,7 @@
     },
     "mono-string": {
       "source_fingerprint": "573aadb9694d6a6d",
-      "compile_micros": 2074675,
+      "compile_micros": 5010824,
       "module_bytes": 39580,
       "sections": {
         "10:code": 35168,
@@ -19623,12 +19623,12 @@
         "75:__splitscript_stdlib_MonoClassStaticSlot::poll": 381,
         "76:__splitscript_stdlib_selected_provider_preparation::init": 45,
         "77:__splitscript_stdlib_selected_provider_preparation::poll": 1068,
-        "78:__splitscript::future::expr21625::poll": 321,
+        "78:__splitscript::future::expr22303::poll": 321,
         "79:state::value::read": 44,
         "80:_start": 27,
         "81:update": 292,
-        "82:__splitscript::closure::expr12872": 31,
-        "83:__splitscript::closure::expr13010": 21,
+        "82:__splitscript::closure::expr12954": 31,
+        "83:__splitscript::closure::expr13092": 21,
         "8:__splitscript::runtime::PrintString": 89,
         "9:__splitscript::runtime::QuoteDebugString": 467
       },
@@ -19916,7 +19916,7 @@
           ],
           [
             78,
-            "__splitscript::future::expr21625::poll"
+            "__splitscript::future::expr22303::poll"
           ],
           [
             79,
@@ -19932,11 +19932,11 @@
           ],
           [
             82,
-            "__splitscript::closure::expr12872"
+            "__splitscript::closure::expr12954"
           ],
           [
             83,
-            "__splitscript::closure::expr13010"
+            "__splitscript::closure::expr13092"
           ]
         ],
         "runtime_helpers": [
@@ -19969,7 +19969,7 @@
     },
     "mono-unused-string": {
       "source_fingerprint": "8840055e14f8d9da",
-      "compile_micros": 929570,
+      "compile_micros": 5198031,
       "module_bytes": 38617,
       "sections": {
         "10:code": 34235,
@@ -20052,12 +20052,12 @@
         "73:__splitscript_stdlib_MonoClassStaticSlot::poll": 381,
         "74:__splitscript_stdlib_selected_provider_preparation::init": 45,
         "75:__splitscript_stdlib_selected_provider_preparation::poll": 1068,
-        "76:__splitscript::future::expr21631::poll": 321,
+        "76:__splitscript::future::expr22309::poll": 321,
         "77:state::value::read": 44,
         "78:_start": 27,
         "79:update": 292,
-        "80:__splitscript::closure::expr12872": 31,
-        "81:__splitscript::closure::expr13010": 21,
+        "80:__splitscript::closure::expr12954": 31,
+        "81:__splitscript::closure::expr13092": 21,
         "8:__splitscript::runtime::PrintString": 89,
         "9:__splitscript::runtime::QuoteDebugString": 467
       },
@@ -20337,7 +20337,7 @@
           ],
           [
             76,
-            "__splitscript::future::expr21631::poll"
+            "__splitscript::future::expr22309::poll"
           ],
           [
             77,
@@ -20353,11 +20353,11 @@
           ],
           [
             80,
-            "__splitscript::closure::expr12872"
+            "__splitscript::closure::expr12954"
           ],
           [
             81,
-            "__splitscript::closure::expr13010"
+            "__splitscript::closure::expr13092"
           ]
         ],
         "runtime_helpers": [
@@ -20388,7 +20388,7 @@
     },
     "native": {
       "source_fingerprint": "9733d9cb885f7136",
-      "compile_micros": 180916,
+      "compile_micros": 151145,
       "module_bytes": 615,
       "sections": {
         "10:code": 194,
@@ -20428,7 +20428,7 @@
     },
     "pe-debug-id": {
       "source_fingerprint": "7c84c46d1b10e5e4",
-      "compile_micros": 186305,
+      "compile_micros": 147683,
       "module_bytes": 7135,
       "sections": {
         "10:code": 5805,
@@ -20517,7 +20517,7 @@
     },
     "unity-nested-metadata": {
       "source_fingerprint": "02d531da636f05c0",
-      "compile_micros": 1771409,
+      "compile_micros": 1357612,
       "module_bytes": 170441,
       "sections": {
         "10:code": 156220,
@@ -20686,26 +20686,26 @@
         "236:__splitscript_stdlib_MonoClassStaticSlot::poll": 415,
         "237:__splitscript_stdlib_selected_provider_preparation::init": 48,
         "238:__splitscript_stdlib_selected_provider_preparation::poll": 1123,
-        "239:__splitscript::future::expr16707::poll": 305,
+        "239:__splitscript::future::expr17370::poll": 305,
         "23:__splitscript::runtime::ReadManagedMemory": 64,
-        "240:__splitscript::future::expr16717::poll": 283,
-        "241:__splitscript::future::expr16751::poll": 345,
-        "242:__splitscript::future::expr16790::poll": 345,
-        "243:__splitscript::future::expr16813::poll": 345,
-        "244:__splitscript::future::expr16843::poll": 345,
-        "245:__splitscript::future::expr21294::poll": 345,
-        "246:__splitscript::future::expr21357::poll": 345,
-        "247:__splitscript::future::expr21363::poll": 345,
-        "248:__splitscript::future::expr21621::poll": 345,
+        "240:__splitscript::future::expr17380::poll": 283,
+        "241:__splitscript::future::expr17414::poll": 345,
+        "242:__splitscript::future::expr17453::poll": 345,
+        "243:__splitscript::future::expr17476::poll": 345,
+        "244:__splitscript::future::expr17506::poll": 345,
+        "245:__splitscript::future::expr21972::poll": 345,
+        "246:__splitscript::future::expr22035::poll": 345,
+        "247:__splitscript::future::expr22041::poll": 345,
+        "248:__splitscript::future::expr22299::poll": 345,
         "249:state::value::read": 45,
         "24:__splitscript::runtime::LoadedModule": 132,
         "250:whileAttached": 20,
         "251:_start": 27,
         "252:update": 312,
-        "253:__splitscript::closure::expr7004": 33,
-        "254:__splitscript::closure::expr7044": 22,
-        "255:__splitscript::closure::expr12873": 34,
-        "256:__splitscript::closure::expr13000": 22,
+        "253:__splitscript::closure::expr7056": 33,
+        "254:__splitscript::closure::expr7096": 22,
+        "255:__splitscript::closure::expr12955": 34,
+        "256:__splitscript::closure::expr13082": 22,
         "25:__splitscript::runtime::JoinStrings": 233,
         "26:__splitscript::runtime::IndentDisplay": 167,
         "27:__splitscript::runtime::WrapDebugEntry": 41,
@@ -21712,43 +21712,43 @@
           ],
           [
             239,
-            "__splitscript::future::expr16707::poll"
+            "__splitscript::future::expr17370::poll"
           ],
           [
             240,
-            "__splitscript::future::expr16717::poll"
+            "__splitscript::future::expr17380::poll"
           ],
           [
             241,
-            "__splitscript::future::expr16751::poll"
+            "__splitscript::future::expr17414::poll"
           ],
           [
             242,
-            "__splitscript::future::expr16790::poll"
+            "__splitscript::future::expr17453::poll"
           ],
           [
             243,
-            "__splitscript::future::expr16813::poll"
+            "__splitscript::future::expr17476::poll"
           ],
           [
             244,
-            "__splitscript::future::expr16843::poll"
+            "__splitscript::future::expr17506::poll"
           ],
           [
             245,
-            "__splitscript::future::expr21294::poll"
+            "__splitscript::future::expr21972::poll"
           ],
           [
             246,
-            "__splitscript::future::expr21357::poll"
+            "__splitscript::future::expr22035::poll"
           ],
           [
             247,
-            "__splitscript::future::expr21363::poll"
+            "__splitscript::future::expr22041::poll"
           ],
           [
             248,
-            "__splitscript::future::expr21621::poll"
+            "__splitscript::future::expr22299::poll"
           ],
           [
             249,
@@ -21768,19 +21768,19 @@
           ],
           [
             253,
-            "__splitscript::closure::expr7004"
+            "__splitscript::closure::expr7056"
           ],
           [
             254,
-            "__splitscript::closure::expr7044"
+            "__splitscript::closure::expr7096"
           ],
           [
             255,
-            "__splitscript::closure::expr12873"
+            "__splitscript::closure::expr12955"
           ],
           [
             256,
-            "__splitscript::closure::expr13000"
+            "__splitscript::closure::expr13082"
           ]
         ],
         "runtime_helpers": [

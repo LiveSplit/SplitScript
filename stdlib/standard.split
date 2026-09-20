@@ -1753,6 +1753,19 @@ private struct UnityRuntime {
         }
     }
 
+    private fn typeClass(class: address, charge: () -> bool) -> address! {
+        return match self.backend {
+            UnityRuntimeBackend.Il2cpp => {
+                let runtime = self.il2cpp else return Err("missing IL2CPP runtime")
+                runtime.typeClass(class, charge)
+            },
+            UnityRuntimeBackend.Mono => {
+                let runtime = self.mono else return Err("missing Mono runtime")
+                runtime.typeClass(class, charge)
+            },
+        }
+    }
+
     private fn parentClass(class: address, charge: () -> bool) -> address! {
         return match self.backend {
             UnityRuntimeBackend.Il2cpp => {
@@ -9008,6 +9021,17 @@ private struct UnityModule {
         return header
     }
 
+    private fn typeClass(type: address, charge: () -> bool) -> address! {
+        let names = UnityClassNames { width: self.pointerSize as u64,
+            name: self.profile.className, namespace: self.profile.classNamespace, declaring: None }
+        let types = UnityCollectionTypes { names, charge, mono: false,
+            plainClass: (type, data) => self.collectionTypeClass(type, data, charge),
+            genericSize: (type, data, size) => names.il2cppGenericSize(type, data, size, self.profile.genericCachedClass, self.profile.classValueTypeBit, charge),
+            kindOffset: self.profile.typeKind, fieldType: self.profile.fieldType,
+            data: self.profile.typeData, cached: self.profile.genericCachedClass, instanceSize: self.profile.classInstanceSize }
+        return types.classFromType(type)
+    }
+
     private fn arrayLayout(class: address, charge: () -> bool) -> UnityArrayLayout! {
         let names = UnityClassNames { width: self.pointerSize as u64,
             name: self.profile.className, namespace: self.profile.classNamespace, declaring: None }
@@ -13279,6 +13303,17 @@ private struct MonoModule {
         return class
     }
 
+    private fn typeClass(type: address, charge: () -> bool) -> address! {
+        let names = UnityClassNames { width: self.pointerBytes(),
+            name: self.layout.className, namespace: self.layout.classNamespace, declaring: None }
+        let types = UnityCollectionTypes { names, charge, mono: true,
+            plainClass: (type, data) => names.pointer(type, data else throw "Unity profile lacks type data metadata"),
+            genericSize: (type, data, size) => names.monoGenericSize(type, data, size, charge),
+            kindOffset: self.layout.typeKind, fieldType: self.layout.fieldType,
+            data: self.layout.typeData, cached: None, instanceSize: self.layout.classInstanceSize }
+        return types.classFromType(type)
+    }
+
     private fn arrayLayout(class: address, charge: () -> bool) -> UnityArrayLayout! {
         let names = UnityClassNames { width: self.pointerBytes(),
             name: self.layout.className, namespace: self.layout.classNamespace, declaring: None }
@@ -15436,6 +15471,25 @@ private struct UnityCollectionTypes {
         return typeAddress
     }
 
+    private fn classFromType(type: address) -> address! {
+        let kind = self.kind(type)?
+        if kind == 0x11 || kind == 0x12 {
+            self.chargeWork()?
+            return (self.plainClass)(type, self.data)
+        }
+        if kind != 0x15 { throw "Unity collection element metadata does not name a class" }
+        let data = self.data else throw "Unity profile lacks type data metadata"
+        self.chargeWork()?
+        let generic = self.names.pointer(type, data)?
+        if generic == 0 { throw "Unity collection generic descriptor is null" }
+        let cached = if self.mono { 4 * self.names.width }
+            else { self.cached else throw "Unity profile lacks cached generic class metadata" }
+        self.chargeWork()?
+        let class = self.names.pointer(generic, cached)?
+        if class == 0 { throw "Unity collection generic class is not initialized" }
+        return class
+    }
+
     // The array element's runtime class owns its entry fields. Ordinary IL2CPP
     // types resolve through the definition table; generic types use the cache.
     private fn arrayElementClass(typeAddress: address) -> address! {
@@ -15572,6 +15626,11 @@ private struct UnityArrayLayout {
     /// Successive vector element contracts, ending at the first non-vector.
     private elements: [UnityCollectionMember],
 
+    private fn elementType(depth: u32) -> address! {
+        if depth >= self.elements.length() { throw "Unity array element nesting is incompatible with its schema" }
+        return self.elements[depth].typeAddress
+    }
+
     private fn validate(depth: u32, bytes: u32, kinds: u32) -> address! {
         if depth >= self.elements.length() { throw "Unity array element nesting is incompatible with its schema" }
         let element = self.elements[depth]
@@ -15603,6 +15662,12 @@ private struct UnityCollectionMember {
     private minimumWidth: u32,
     /// Whether metadata proves an exact width rather than a lower bound.
     private exactWidth: bool,
+
+    private fn nestedType(depth: u32, elements: UnityArrayLayout?) -> address! {
+        if depth == 0 { return self.typeAddress }
+        let arrays = elements else throw "Unity collection element nesting is incompatible with its schema"
+        return arrays.elementType(depth - 1)
+    }
 
     private fn validateNested(depth: u32, bytes: u32, kinds: u32, width: u32, elements: UnityArrayLayout?) -> bool! {
         if depth == 0 { return self.validateStorage(bytes, kinds) }
@@ -15745,6 +15810,13 @@ private struct UnityKeyedLayout {
                 }
             }
         }
+        return true
+    }
+
+    private fn validateClasses(keyDepth: u32, valueDepth: u32, keyClass: address, valueClass: address,
+        verify: (address, address) -> bool!) -> bool! {
+        if keyClass != 0 { verify(self.members[2].nestedType(keyDepth, self.keyElements)?, keyClass)? }
+        if valueClass != 0 { verify(self.members[self.members.length() - 1].nestedType(valueDepth, self.valueElements)?, valueClass)? }
         return true
     }
 

@@ -305,6 +305,14 @@ fn managed_preparation_source(
             "    {MANAGED_KEYED_VERIFY_FIELD}: (UnityKeyedRead) -> bool!,\n"
         ));
     }
+    if !classes.is_empty() {
+        source.push_str(&format!(
+            "    {MANAGED_ARRAY_TYPE_FIELD}_class: (address, u32, u32, u32, address, ManagedReadContext) -> address!,\n\
+                 {MANAGED_LIST_LAYOUT_FIELD}_class: (address, u32, u32, u32, address, address, ManagedReadContext) -> UnityListLayout!,\n\
+                 {MANAGED_MAP_READ_FIELD}_class: (address, u32, u32, u32, u32, u32, u32, address, address, u32, u32, u64, ManagedReadContext) -> UnityKeyedRead!,\n\
+                 {MANAGED_SET_READ_FIELD}_class: (address, u32, u32, u32, u32, u32, u32, address, address, u32, u32, u64, ManagedReadContext) -> UnityKeyedRead!,\n"
+        ));
+    }
     for context in contexts {
         source.push_str(&format!(
             "    {}: {},\n",
@@ -453,34 +461,85 @@ fn managed_backend_binding_source(
                      }}\n"
     ));
     source.push_str(&format!(
-        "            let __array_layout_cache: [UnityArrayLayout] = []\n\
-                     let {MANAGED_ARRAY_TYPE_FIELD}: (address, u32, u32, u32, ManagedReadContext) -> address! = (object, depth, elementBytes, elementKinds, context) => {{\n\
+        "            let __class_contract_cache: [[address; 2]] = []\n\
+                     let __class_contract: (address, address, ManagedReadContext) -> bool! = (type, expected, context) => {{\n\
+                         let charge = () => Unity.chargeManagedWork(context)\n\
+                         if expected == 0 {{ throw \"managed collection declared class is unavailable\" }}\n\
+                         for cached in __class_contract_cache {{ if !charge() {{ throw \"managed read work limit exceeded\" }} if cached[0] == type && cached[1] == expected {{ return true }} }}\n\
+                         let current = {module}.typeClass(type, charge)?\n\
+                         let depth: u32 = 0\n\
+                         while current != expected {{\n\
+                             if current == 0 {{ throw \"managed collection element class is incompatible with its schema\" }}\n\
+                             if depth >= 128 {{ throw \"managed collection class hierarchy is cyclic or exceeds the depth limit\" }}\n\
+                             current = {module}.parentClass(current, charge)?\n\
+                             depth += 1\n\
+                         }}\n\
+                         if __class_contract_cache.length() >= 1024 {{ __class_contract_cache.clear() }}\n\
+                         __class_contract_cache.push([type, expected])\n\
+                         return true\n\
+                     }}\n"
+    ));
+    source.push_str("            let __array_layout_cache: [UnityArrayLayout] = []\n");
+    for nominal in [false, true] {
+        let binding = crate::managed_read::collection_binding(MANAGED_ARRAY_TYPE_FIELD, nominal);
+        let class_parameter = if nominal { "address, " } else { "" };
+        let class_argument = if nominal { "elementClass, " } else { "" };
+        let cached_check = if nominal {
+            "cached.validate(depth, elementBytes, elementKinds)?; __class_contract(cached.elementType(depth)?, elementClass, context)?; return class"
+        } else {
+            "return cached.validate(depth, elementBytes, elementKinds)"
+        };
+        let layout_check = if nominal {
+            "__class_contract(layout.elementType(depth)?, elementClass, context)?;"
+        } else {
+            ""
+        };
+        source.push_str(&format!(
+        "            let {binding}: (address, u32, u32, u32, {class_parameter}ManagedReadContext) -> address! = (object, depth, elementBytes, elementKinds, {class_argument}context) => {{\n\
                          let charge = () => Unity.chargeManagedWork(context)\n\
                          let class = {module}.objectClass(object, charge)?\n\
-                         for cached in __array_layout_cache {{ if !charge() {{ throw \"managed read work limit exceeded\" }} if cached.runtimeClass == class {{ return cached.validate(depth, elementBytes, elementKinds) }} }}\n\
+                         for cached in __array_layout_cache {{ if !charge() {{ throw \"managed read work limit exceeded\" }} if cached.runtimeClass == class {{ {cached_check} }} }}\n\
                          let layout = {module}.arrayLayout(class, charge)?\n\
                          if {module}.objectClass(object, charge)? != class {{ throw \"managed array class changed during discovery\" }}\n\
                          layout.validate(depth, elementBytes, elementKinds)?\n\
+                         {layout_check}\n\
                          if __array_layout_cache.length() >= 1024 {{ __array_layout_cache.clear() }}\n\
                          __array_layout_cache.push(layout)\n\
                          return class\n\
                      }}\n"
     ));
-    source.push_str(&format!(
-        "            let __list_layout_cache: [UnityListLayout] = []\n\
-                     let {MANAGED_LIST_LAYOUT_FIELD}: (address, u32, u32, u32, address, ManagedReadContext) -> UnityListLayout! = (object, depth, elementBytes, elementKinds, expectedClass, context) => {{\n\
+    }
+    source.push_str("            let __list_layout_cache: [UnityListLayout] = []\n");
+    for nominal in [false, true] {
+        let binding = crate::managed_read::collection_binding(MANAGED_LIST_LAYOUT_FIELD, nominal);
+        let class_parameter = if nominal { "address, " } else { "" };
+        let class_argument = if nominal { "elementClass, " } else { "" };
+        let cached_check = if nominal {
+            "__class_contract(cached.elements.elementType(depth)?, elementClass, context)?;"
+        } else {
+            ""
+        };
+        let layout_check = if nominal {
+            "__class_contract(layout.elements.elementType(depth)?, elementClass, context)?;"
+        } else {
+            ""
+        };
+        source.push_str(&format!(
+        "            let {binding}: (address, u32, u32, u32, address, {class_parameter}ManagedReadContext) -> UnityListLayout! = (object, depth, elementBytes, elementKinds, expectedClass, {class_argument}context) => {{\n\
                          if !Unity.chargeManagedWork(context) {{ throw \"managed read work limit exceeded\" }}\n\
                          let class = {module}.collectionClass(object)?\n\
                          if expectedClass != 0 && class != expectedClass {{ throw \"managed list class changed during the read\" }}\n\
-                         for cached in __list_layout_cache {{ if !Unity.chargeManagedWork(context) {{ throw \"managed read work limit exceeded\" }} if cached.runtimeClass == class {{ cached.elements.validate(depth, elementBytes, elementKinds)?; return cached }} }}\n\
+                         for cached in __list_layout_cache {{ if !Unity.chargeManagedWork(context) {{ throw \"managed read work limit exceeded\" }} if cached.runtimeClass == class {{ cached.elements.validate(depth, elementBytes, elementKinds)?; {cached_check} return cached }} }}\n\
                          let layout = {module}.listLayout(object, () => Unity.chargeManagedWork(context))?\n\
                          if layout.runtimeClass != class {{ throw \"managed list class changed during discovery\" }}\n\
                          layout.elements.validate(depth, elementBytes, elementKinds)?\n\
+                         {layout_check}\n\
                          if __list_layout_cache.length() >= 1024 {{ __list_layout_cache.clear() }}\n\
                          __list_layout_cache.push(layout)\n\
                          return layout\n\
                      }}\n"
     ));
+    }
     source.push_str(&format!(
         "            let __keyed_array_cache: [[address; 2]] = []\n\
                      let __keyed_array: (address, address, ManagedReadContext) -> address! = (object, declared, context) => {{\n\
@@ -494,44 +553,63 @@ fn managed_backend_binding_source(
                          return class\n\
                      }}\n"
     ));
-    source.push_str(&format!(
-        "            let __map_layout_cache: [UnityKeyedLayout] = []\n\
-                     let {MANAGED_MAP_READ_FIELD}: (address, u32, u32, u32, u32, u32, u32, u32, u32, u64, ManagedReadContext) -> UnityKeyedRead! = (object, keyLeafBytes, valueLeafBytes, keyLeafKinds, valueLeafKinds, keyDepth, valueDepth, scanBudget, elementBudget, byteBudget, context) => {{\n\
+    for (base, cache, method, noun) in [
+        (
+            MANAGED_MAP_READ_FIELD,
+            "__map_layout_cache",
+            "dictionaryLayout",
+            "dictionary",
+        ),
+        (
+            MANAGED_SET_READ_FIELD,
+            "__set_layout_cache",
+            "setLayout",
+            "set",
+        ),
+    ] {
+        source.push_str(&format!(
+            "            let {cache}: [UnityKeyedLayout] = []\n"
+        ));
+        for nominal in [false, true] {
+            let binding = crate::managed_read::collection_binding(base, nominal);
+            let class_parameter = if nominal { "address, address, " } else { "" };
+            let class_argument = if nominal {
+                "keyClass, valueClass, "
+            } else {
+                ""
+            };
+            let cached_check = if nominal {
+                "cached.validateClasses(keyDepth, valueDepth, keyClass, valueClass, (type, expected) => __class_contract(type, expected, context))?;"
+            } else {
+                ""
+            };
+            let layout_check = if nominal {
+                "layout.validateClasses(keyDepth, valueDepth, keyClass, valueClass, (type, expected) => __class_contract(type, expected, context))?;"
+            } else {
+                ""
+            };
+            source.push_str(&format!(
+        "            let {binding}: (address, u32, u32, u32, u32, u32, u32, {class_parameter}u32, u32, u64, ManagedReadContext) -> UnityKeyedRead! = (object, keyLeafBytes, valueLeafBytes, keyLeafKinds, valueLeafKinds, keyDepth, valueDepth, {class_argument}scanBudget, elementBudget, byteBudget, context) => {{\n\
                          if !Unity.chargeManagedWork(context) {{ throw \"managed read work limit exceeded\" }}\n\
                          let class = {module}.collectionClass(object)?\n\
                          let keyBytes = if keyDepth == 0 {{ keyLeafBytes }} else {{ {MANAGED_POINTER_SIZE_FIELD} }}\n\
                          let valueBytes = if valueDepth == 0 {{ valueLeafBytes }} else {{ {MANAGED_POINTER_SIZE_FIELD} }}\n\
                          let keyKinds = if keyDepth == 0 {{ keyLeafKinds }} else {{ 1 << 0x1d }}\n\
                          let valueKinds = if valueDepth == 0 {{ valueLeafKinds }} else {{ 1 << 0x1d }}\n\
-                         for cached in __map_layout_cache {{ if !Unity.chargeManagedWork(context) {{ throw \"managed read work limit exceeded\" }} if cached.runtimeClass == class {{ cached.validateTypes(keyDepth, keyLeafBytes, keyLeafKinds, valueDepth, valueLeafBytes, valueLeafKinds)?; return cached.readSlots(object, keyBytes, valueBytes, keyKinds, valueKinds, scanBudget, elementBudget, byteBudget, (array, declared) => __keyed_array(array, declared, context)) }} }}\n\
-                         let layout = {module}.dictionaryLayout(object, () => Unity.chargeManagedWork(context))?\n\
-                         if layout.runtimeClass != class {{ throw \"managed dictionary class changed during discovery\" }}\n\
+                         for cached in {cache} {{ if !Unity.chargeManagedWork(context) {{ throw \"managed read work limit exceeded\" }} if cached.runtimeClass == class {{ cached.validateTypes(keyDepth, keyLeafBytes, keyLeafKinds, valueDepth, valueLeafBytes, valueLeafKinds)?; {cached_check} return cached.readSlots(object, keyBytes, valueBytes, keyKinds, valueKinds, scanBudget, elementBudget, byteBudget, (array, declared) => __keyed_array(array, declared, context)) }} }}\n\
+                         let layout = {module}.{method}(object, () => Unity.chargeManagedWork(context))?\n\
+                         if layout.runtimeClass != class {{ throw \"managed {noun} class changed during discovery\" }}\n\
                          layout.validateTypes(keyDepth, keyLeafBytes, keyLeafKinds, valueDepth, valueLeafBytes, valueLeafKinds)?\n\
-                         if __map_layout_cache.length() >= 1024 {{ __map_layout_cache.clear() }}\n\
-                         __map_layout_cache.push(layout)\n\
+                         {layout_check}\n\
+                         if {cache}.length() >= 1024 {{ {cache}.clear() }}\n\
+                         {cache}.push(layout)\n\
                          return layout.readSlots(object, keyBytes, valueBytes, keyKinds, valueKinds, scanBudget, elementBudget, byteBudget, (array, declared) => __keyed_array(array, declared, context))\n\
                      }}\n\
 "
     ));
-    source.push_str(&format!(
-        "            let __set_layout_cache: [UnityKeyedLayout] = []\n\
-                     let {MANAGED_SET_READ_FIELD}: (address, u32, u32, u32, u32, u32, u32, u32, u32, u64, ManagedReadContext) -> UnityKeyedRead! = (object, keyLeafBytes, valueLeafBytes, keyLeafKinds, valueLeafKinds, keyDepth, valueDepth, scanBudget, elementBudget, byteBudget, context) => {{\n\
-                         if !Unity.chargeManagedWork(context) {{ throw \"managed read work limit exceeded\" }}\n\
-                         let class = {module}.collectionClass(object)?\n\
-                         let keyBytes = if keyDepth == 0 {{ keyLeafBytes }} else {{ {MANAGED_POINTER_SIZE_FIELD} }}\n\
-                         let valueBytes = if valueDepth == 0 {{ valueLeafBytes }} else {{ {MANAGED_POINTER_SIZE_FIELD} }}\n\
-                         let keyKinds = if keyDepth == 0 {{ keyLeafKinds }} else {{ 1 << 0x1d }}\n\
-                         let valueKinds = if valueDepth == 0 {{ valueLeafKinds }} else {{ 1 << 0x1d }}\n\
-                         for cached in __set_layout_cache {{ if !Unity.chargeManagedWork(context) {{ throw \"managed read work limit exceeded\" }} if cached.runtimeClass == class {{ cached.validateTypes(keyDepth, keyLeafBytes, keyLeafKinds, valueDepth, valueLeafBytes, valueLeafKinds)?; return cached.readSlots(object, keyBytes, valueBytes, keyKinds, valueKinds, scanBudget, elementBudget, byteBudget, (array, declared) => __keyed_array(array, declared, context)) }} }}\n\
-                         let layout = {module}.setLayout(object, () => Unity.chargeManagedWork(context))?\n\
-                         if layout.runtimeClass != class {{ throw \"managed set class changed during discovery\" }}\n\
-                         layout.validateTypes(keyDepth, keyLeafBytes, keyLeafKinds, valueDepth, valueLeafBytes, valueLeafKinds)?\n\
-                         if __set_layout_cache.length() >= 1024 {{ __set_layout_cache.clear() }}\n\
-                         __set_layout_cache.push(layout)\n\
-                         return layout.readSlots(object, keyBytes, valueBytes, keyKinds, valueKinds, scanBudget, elementBudget, byteBudget, (array, declared) => __keyed_array(array, declared, context))\n\
-                     }}\n\
-                     let {MANAGED_KEYED_VERIFY_FIELD}: (UnityKeyedRead) -> bool! = read => read.verify()\n"
-    ));
+        }
+    }
+    source.push_str(&format!("            let {MANAGED_KEYED_VERIFY_FIELD}: (UnityKeyedRead) -> bool! = read => read.verify()\n"));
     let mut images = std::collections::HashMap::new();
     for class in classes {
         let image_index = if let Some(index) = images.get(class.image) {
@@ -606,6 +684,14 @@ fn managed_backend_binding_source(
     source.push_str(&format!(
         "                {MANAGED_MAP_READ_FIELD}, {MANAGED_SET_READ_FIELD}, {MANAGED_KEYED_VERIFY_FIELD},\n"
     ));
+    for base in [
+        MANAGED_ARRAY_TYPE_FIELD,
+        MANAGED_LIST_LAYOUT_FIELD,
+        MANAGED_MAP_READ_FIELD,
+        MANAGED_SET_READ_FIELD,
+    ] {
+        source.push_str(&format!("                {base}_class,\n"));
+    }
     for class in classes {
         source.push_str(&format!(
             "                {},\n",
