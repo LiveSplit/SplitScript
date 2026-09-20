@@ -10167,7 +10167,7 @@ struct Il2CppProfile {
             fieldType: Some(0x8),
             fieldValue: 0x18,
             fieldStride: 0x20,
-            classValueTypeBit: None,
+            classValueTypeBit: Some(0x971),
         }
     }
 
@@ -10205,7 +10205,7 @@ struct Il2CppProfile {
             fieldType: Some(0x4),
             fieldValue: 0xc,
             fieldStride: 0x14,
-            classValueTypeBit: None,
+            classValueTypeBit: Some(0x5d1),
         }
     }
 
@@ -10243,7 +10243,7 @@ struct Il2CppProfile {
             fieldType: Some(0x8),
             fieldValue: 0x18,
             fieldStride: 0x20,
-            classValueTypeBit: None,
+            classValueTypeBit: Some(0x971),
         }
     }
 
@@ -10281,7 +10281,7 @@ struct Il2CppProfile {
             fieldType: Some(0x4),
             fieldValue: 0xc,
             fieldStride: 0x14,
-            classValueTypeBit: None,
+            classValueTypeBit: Some(0x5d1),
         }
     }
 
@@ -10547,7 +10547,7 @@ struct Il2CppProfile {
             fieldType: Some(0x8),
             fieldValue: 0x18,
             fieldStride: 0x20,
-            classValueTypeBit: None,
+            classValueTypeBit: Some(0x15f),
         }
     }
 
@@ -10585,7 +10585,7 @@ struct Il2CppProfile {
             fieldType: Some(0x4),
             fieldValue: 0xc,
             fieldStride: 0x14,
-            classValueTypeBit: None,
+            classValueTypeBit: Some(0xbf),
         }
     }
 
@@ -10623,7 +10623,7 @@ struct Il2CppProfile {
             fieldType: Some(0x8),
             fieldValue: 0x18,
             fieldStride: 0x20,
-            classValueTypeBit: None,
+            classValueTypeBit: Some(0x15f),
         }
     }
 
@@ -10661,7 +10661,7 @@ struct Il2CppProfile {
             fieldType: Some(0x4),
             fieldValue: 0xc,
             fieldStride: 0x14,
-            classValueTypeBit: None,
+            classValueTypeBit: Some(0xbf),
         }
     }
 
@@ -10699,7 +10699,7 @@ struct Il2CppProfile {
             fieldType: Some(0x8),
             fieldValue: 0x18,
             fieldStride: 0x20,
-            classValueTypeBit: None,
+            classValueTypeBit: Some(0x15f),
         }
     }
 
@@ -10737,7 +10737,7 @@ struct Il2CppProfile {
             fieldType: Some(0x4),
             fieldValue: 0xc,
             fieldStride: 0x14,
-            classValueTypeBit: None,
+            classValueTypeBit: Some(0xbf),
         }
     }
 
@@ -10775,7 +10775,7 @@ struct Il2CppProfile {
             fieldType: Some(0x8),
             fieldValue: 0x18,
             fieldStride: 0x20,
-            classValueTypeBit: None,
+            classValueTypeBit: Some(0x15f),
         }
     }
 
@@ -10813,7 +10813,7 @@ struct Il2CppProfile {
             fieldType: Some(0x4),
             fieldValue: 0xc,
             fieldStride: 0x14,
-            classValueTypeBit: None,
+            classValueTypeBit: Some(0xbf),
         }
     }
 
@@ -10851,7 +10851,7 @@ struct Il2CppProfile {
             fieldType: Some(0x8),
             fieldValue: 0x18,
             fieldStride: 0x20,
-            classValueTypeBit: None,
+            classValueTypeBit: Some(0x15f),
         }
     }
 
@@ -10889,7 +10889,7 @@ struct Il2CppProfile {
             fieldType: Some(0x4),
             fieldValue: 0xc,
             fieldStride: 0x14,
-            classValueTypeBit: None,
+            classValueTypeBit: Some(0xbf),
         }
     }
     // END GENERATED IL2CPP PROFILES

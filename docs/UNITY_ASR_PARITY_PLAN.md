@@ -2032,6 +2032,48 @@ argument/type identity, IL2CPP plain value-type resolution, recursive raw-array
 contracts, attachment metadata scheduling, native platform validation, and final
 size acceptance.
 
+## Complete IL2CPP value-type flag corpus (2026-09-20)
+
+All 22 named IL2CPP profiles now carry a proven value-type bit. The fourteen
+missing facts from the preceding slice are measured from the exact players'
+`GameAssembly.pdb` files in the [public fixture corpus](https://github.com/LiveSplit/auto-splitting-test-fixtures).
+Twenty available PDBs were checked against the SHA-256 values in the pinned
+fixture manifest. These also independently confirm the six previously
+source-audited profiles available in the corpus. The two 2021.3.11f1 profiles
+retain their exact-version header evidence; their binaries are absent from that
+manifest. No nearby-version substitution is used for these new facts.
+
+The small standalone `scripts/unity-pdb` utility reads structure members and
+CodeView bitfields, accepts identical repeated definitions, and rejects conflicting
+ones. `scripts/import-il2cpp-storage.py` verifies the pinned manifest and every PDB
+hash, then checks 220 existing ASR class/type/generic facts before deriving the
+value-type bits. The supplemental fixture records binary URLs, hashes, original
+bit locations, instance-size offsets, and cached-class offsets. Both importers
+reproduce the checked-in data. These measurement tools are not runtime dependencies.
+
+The PDBs confirm both older class flag bytes and newer embedded `byval_arg` flags.
+They also confirm Unity 6000.7's distinct cached-class pointer offsets: 0x10 on
+x64 and 0x8 on x86. The existing reader consumes these measured offsets directly.
+The profile probe now runs 330 cases in each build profile, covering all 22
+profiles, exact inline sizes, reference reads without size metadata, work limits,
+malformed metadata, and repair/retry. Custom profiles with missing or out-of-range
+flag facts still fail before any metadata read.
+
+The Release gate leaves 34 fixtures unchanged in module/section sizes,
+function/type counts, and function-body size multisets. The four automatic
+selection fixtures grow by 42 bytes: each of the fourteen formerly unknown
+profile flags now constructs a measured value instead of None. No function or
+type is added, and all allocation accounting is unchanged. Explicit Lunistice
+remains 58,187 bytes; automatic selection is 182,552 bytes. The 56 attachment
+cases, both Lunistice edition scenarios, and 561-page documentation validation
+pass. The profile-data overhead recorded in the preceding slice and the final
+sub-30,000-byte requirement remain unresolved.
+
+This closes the missing value-type flag coverage. Full generic argument/type
+identity, IL2CPP plain value-type resolution, recursive raw-array contracts,
+attachment metadata scheduling, native platform validation, and final size
+acceptance remain unfinished.
+
 ## Source map for implementation
 
 Upstream links below are pinned to the reviewed tip; the PR table provides the historical changes.

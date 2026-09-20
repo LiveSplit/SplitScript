@@ -1,5 +1,5 @@
 {
-  "provenance": "Source-derived bit locations, not additional ASR PDB measurements. Missing profiles have no proven classification yet.",
+  "provenance": "Value-type bits measured from hash-verified GameAssembly PDBs; 2021.3.11f1 remains source-derived. ASR offsets are cross-checked, not changed.",
   "sources": {
     "2018.4.36f1": {
       "class": "https://raw.githubusercontent.com/MlgmXyysd/libil2cpp/master/libil2cpp/Unity_2018.4/2018.4.36f1/il2cpp-class-internals.h",
@@ -42,6 +42,320 @@
     "UNITY_2022_3_0F1_X86_64": 351,
     "UNITY_2022_3_0F1_X86": 191,
     "UNITY_2023_1_0F1_X86_64": 351,
-    "UNITY_2023_1_0F1_X86": 191
+    "UNITY_2023_1_0F1_X86": 191,
+    "UNITY_2019_4_41F2_X86_64": 2417,
+    "UNITY_2019_4_41F2_X86": 1489,
+    "UNITY_2020_1_18F1_X86_64": 2417,
+    "UNITY_2020_1_18F1_X86": 1489,
+    "UNITY_2023_1_22F1_X86_64": 351,
+    "UNITY_2023_1_22F1_X86": 191,
+    "UNITY_6000_2_12F1_X86_64": 351,
+    "UNITY_6000_2_12F1_X86": 191,
+    "UNITY_6000_3_21F1_X86_64": 351,
+    "UNITY_6000_3_21F1_X86": 191,
+    "UNITY_6000_5_10F1_X86_64": 351,
+    "UNITY_6000_5_10F1_X86": 191,
+    "UNITY_6000_7_0A3_X86_64": 351,
+    "UNITY_6000_7_0A3_X86": 191
+  },
+  "fixture_manifest": {
+    "url": "https://raw.githubusercontent.com/ero-qt/auto-splitting-test-fixtures/e2d5e075b253d4a9c9c2c1b535ca2d3d671ceea7/manifest.json",
+    "sha256": "aa93142689fc59a7575cf8ccd91345ef0b0cd1e2fcdd33f73497a3ac78f478bd"
+  },
+  "measurements": {
+    "UNITY_2018_4_36F1_X86_64": {
+      "asset": "https://github.com/LiveSplit/auto-splitting-test-fixtures/releases/download/unity-2018.4.36f1/unity-2018.4.36f1-win-x64-il2cpp.zip",
+      "archive_sha256": "9f1601d11a0d4cd4ce0e1368f2c25c81b538d41be417d9c8b7ef329d7d51bf38",
+      "pdb_path": "fixture_BackUpThisFolder_ButDontShipItWithYourGame/GameAssembly.pdb",
+      "pdb_sha256": "178753d966006ca071a49f0440a61e6c893df254cdc2417679b3c3c958376c9a",
+      "value_type_flag": {
+        "owner": "Il2CppClass",
+        "bit": 1,
+        "bits": 1,
+        "offset": 294
+      },
+      "class_instance_size": 236,
+      "generic_cached_class": 24
+    },
+    "UNITY_2018_4_36F1_X86": {
+      "asset": "https://github.com/LiveSplit/auto-splitting-test-fixtures/releases/download/unity-2018.4.36f1/unity-2018.4.36f1-win-x86-il2cpp.zip",
+      "archive_sha256": "b26f4e48d659e2417356fde760edaf47547dbf1231a3e8db8ee42f832cc2160a",
+      "pdb_path": "fixture_BackUpThisFolder_ButDontShipItWithYourGame/GameAssembly.pdb",
+      "pdb_sha256": "d57b9ce0e5635da89691f95990967f9c9b47e7003625ff1ef2275572e6bc2406",
+      "value_type_flag": {
+        "owner": "Il2CppClass",
+        "bit": 1,
+        "bits": 1,
+        "offset": 190
+      },
+      "class_instance_size": 132,
+      "generic_cached_class": 12
+    },
+    "UNITY_2019_4_41F2_X86_64": {
+      "asset": "https://github.com/LiveSplit/auto-splitting-test-fixtures/releases/download/unity-2019.4.41f2/unity-2019.4.41f2-win-x64-il2cpp.zip",
+      "archive_sha256": "bb129946e7e4118ce306ad132931c0989170a48be3ca37d2ab48adeb825b27e6",
+      "pdb_path": "fixture_BackUpThisFolder_ButDontShipItWithYourGame/GameAssembly.pdb",
+      "pdb_sha256": "2317310e1fa76519b414ca0dc70100459c678709fa28a7c9dde492cfb80438a9",
+      "value_type_flag": {
+        "owner": "Il2CppClass",
+        "bit": 1,
+        "bits": 1,
+        "offset": 302
+      },
+      "class_instance_size": 244,
+      "generic_cached_class": 24
+    },
+    "UNITY_2019_4_41F2_X86": {
+      "asset": "https://github.com/LiveSplit/auto-splitting-test-fixtures/releases/download/unity-2019.4.41f2/unity-2019.4.41f2-win-x86-il2cpp.zip",
+      "archive_sha256": "e5b96db0839c625ef4e88c96f61b251cd873684dd6bfa04c37b9717a477461ab",
+      "pdb_path": "fixture_BackUpThisFolder_ButDontShipItWithYourGame/GameAssembly.pdb",
+      "pdb_sha256": "90841847946174de99ccb2c67ab80d71dc6571d9d6374838073f97e1e81cc4c9",
+      "value_type_flag": {
+        "owner": "Il2CppClass",
+        "bit": 1,
+        "bits": 1,
+        "offset": 186
+      },
+      "class_instance_size": 128,
+      "generic_cached_class": 12
+    },
+    "UNITY_2020_1_18F1_X86_64": {
+      "asset": "https://github.com/LiveSplit/auto-splitting-test-fixtures/releases/download/unity-2020.1.18f1/unity-2020.1.18f1-win-x64-il2cpp.zip",
+      "archive_sha256": "94fed889884b845aa3a96a0f9d2a48a2346bd205a1e397872e94d165acb281be",
+      "pdb_path": "fixture_BackUpThisFolder_ButDontShipItWithYourGame/GameAssembly.pdb",
+      "pdb_sha256": "a86c39fe93e0ffa075bbcc2a4a2489bc6ac64ad2e42382fc231c101cdb977a9d",
+      "value_type_flag": {
+        "owner": "Il2CppClass",
+        "bit": 1,
+        "bits": 1,
+        "offset": 302
+      },
+      "class_instance_size": 244,
+      "generic_cached_class": 24
+    },
+    "UNITY_2020_1_18F1_X86": {
+      "asset": "https://github.com/LiveSplit/auto-splitting-test-fixtures/releases/download/unity-2020.1.18f1/unity-2020.1.18f1-win-x86-il2cpp.zip",
+      "archive_sha256": "ea5adf5620f06f342dc8d406f2fdb4c65d35e0d8a9b62f3c9d8def6142996b06",
+      "pdb_path": "fixture_BackUpThisFolder_ButDontShipItWithYourGame/GameAssembly.pdb",
+      "pdb_sha256": "62679210eed4d25ec0bd50b31907ba89e52b2bebc5b433c9fac362917eb522d2",
+      "value_type_flag": {
+        "owner": "Il2CppClass",
+        "bit": 1,
+        "bits": 1,
+        "offset": 186
+      },
+      "class_instance_size": 128,
+      "generic_cached_class": 12
+    },
+    "UNITY_2022_3_0F1_X86_64": {
+      "asset": "https://github.com/LiveSplit/auto-splitting-test-fixtures/releases/download/unity-2022.3.0f1/unity-2022.3.0f1-win-x64-il2cpp.zip",
+      "archive_sha256": "f5ca71eb03956cbae0d7fa66fcfce68026b5188e4d9306dd149a1167a75dc936",
+      "pdb_path": "fixture_BackUpThisFolder_ButDontShipItWithYourGame/GameAssembly.pdb",
+      "pdb_sha256": "29311a47d4a7724da11c79eee79a2d279065f423a600f2f7382d9ddc32394e83",
+      "value_type_flag": {
+        "owner": "Il2CppType",
+        "class_offset": 32,
+        "bit": 31,
+        "bits": 1,
+        "offset": 8
+      },
+      "class_instance_size": 248,
+      "generic_cached_class": 24
+    },
+    "UNITY_2022_3_0F1_X86": {
+      "asset": "https://github.com/LiveSplit/auto-splitting-test-fixtures/releases/download/unity-2022.3.0f1/unity-2022.3.0f1-win-x86-il2cpp.zip",
+      "archive_sha256": "2053b95f66b5fa9f1fba51f2ca874f53023b66985f4a386b126ee522b28921d7",
+      "pdb_path": "fixture_BackUpThisFolder_ButDontShipItWithYourGame/GameAssembly.pdb",
+      "pdb_sha256": "e53dc30ce6da4c01398b59a2f8d2c57863f3b4f8dec8401b0f855cf15cdbe8a2",
+      "value_type_flag": {
+        "owner": "Il2CppType",
+        "class_offset": 16,
+        "bit": 31,
+        "bits": 1,
+        "offset": 4
+      },
+      "class_instance_size": 128,
+      "generic_cached_class": 12
+    },
+    "UNITY_2023_1_0F1_X86_64": {
+      "asset": "https://github.com/LiveSplit/auto-splitting-test-fixtures/releases/download/unity-2023.1.0f1/unity-2023.1.0f1-win-x64-il2cpp.zip",
+      "archive_sha256": "350b8aee64bfedd67c91fc46d85bb22cfc6ddd4b2868fadff9a2021a9b069a9a",
+      "pdb_path": "fixture_BackUpThisFolder_ButDontShipItWithYourGame/GameAssembly.pdb",
+      "pdb_sha256": "841f399956b9c6ffb4e60f28e7fa9fb3287fd146738c7bd63fa293a25b26ef46",
+      "value_type_flag": {
+        "owner": "Il2CppType",
+        "class_offset": 32,
+        "bit": 31,
+        "bits": 1,
+        "offset": 8
+      },
+      "class_instance_size": 248,
+      "generic_cached_class": 24
+    },
+    "UNITY_2023_1_0F1_X86": {
+      "asset": "https://github.com/LiveSplit/auto-splitting-test-fixtures/releases/download/unity-2023.1.0f1/unity-2023.1.0f1-win-x86-il2cpp.zip",
+      "archive_sha256": "7b4e0018e2d71c62f30d6ddf7e0bf843fdccf7147e10fcfc10b73e639538682d",
+      "pdb_path": "fixture_BackUpThisFolder_ButDontShipItWithYourGame/GameAssembly.pdb",
+      "pdb_sha256": "6b401e36671eda0c3137b6d453520c6a673c55ad7876978827f08cf1cb078751",
+      "value_type_flag": {
+        "owner": "Il2CppType",
+        "class_offset": 16,
+        "bit": 31,
+        "bits": 1,
+        "offset": 4
+      },
+      "class_instance_size": 128,
+      "generic_cached_class": 12
+    },
+    "UNITY_2023_1_22F1_X86_64": {
+      "asset": "https://github.com/LiveSplit/auto-splitting-test-fixtures/releases/download/unity-2023.1.22f1/unity-2023.1.22f1-win-x64-il2cpp.zip",
+      "archive_sha256": "d3f57f0cc000119e23e0a7b9de2145f7d154690c109353663cc69b2f4cbf9343",
+      "pdb_path": "fixture_BackUpThisFolder_ButDontShipItWithYourGame/GameAssembly.pdb",
+      "pdb_sha256": "da03535126b67be3e6c4a54e0329723d9956eb24a3e5239331d7f60b8fb9227b",
+      "value_type_flag": {
+        "owner": "Il2CppType",
+        "class_offset": 32,
+        "bit": 31,
+        "bits": 1,
+        "offset": 8
+      },
+      "class_instance_size": 248,
+      "generic_cached_class": 24
+    },
+    "UNITY_2023_1_22F1_X86": {
+      "asset": "https://github.com/LiveSplit/auto-splitting-test-fixtures/releases/download/unity-2023.1.22f1/unity-2023.1.22f1-win-x86-il2cpp.zip",
+      "archive_sha256": "8521c5ce715793646a078fb781375c2a1b7293e85ed24f0efda2030d331ce1e9",
+      "pdb_path": "fixture_BackUpThisFolder_ButDontShipItWithYourGame/GameAssembly.pdb",
+      "pdb_sha256": "b997d6b3e79f268979fc78bc5a2a208b2d094bfa3fefb88f495fd1258ce9c354",
+      "value_type_flag": {
+        "owner": "Il2CppType",
+        "class_offset": 16,
+        "bit": 31,
+        "bits": 1,
+        "offset": 4
+      },
+      "class_instance_size": 128,
+      "generic_cached_class": 12
+    },
+    "UNITY_6000_2_12F1_X86_64": {
+      "asset": "https://github.com/LiveSplit/auto-splitting-test-fixtures/releases/download/unity-6000.2.12f1/unity-6000.2.12f1-win-x64-il2cpp.zip",
+      "archive_sha256": "76b9f6a0deb569c6c0a6c72f4b664e387afd2d4b2a6325a128e7b963f7de1881",
+      "pdb_path": "fixture_BackUpThisFolder_ButDontShipItWithYourGame/GameAssembly.pdb",
+      "pdb_sha256": "6939856daf12c4ddf52fbacd902a7b23610383446f6b88421994ba36f5d56bde",
+      "value_type_flag": {
+        "owner": "Il2CppType",
+        "class_offset": 32,
+        "bit": 31,
+        "bits": 1,
+        "offset": 8
+      },
+      "class_instance_size": 248,
+      "generic_cached_class": 24
+    },
+    "UNITY_6000_2_12F1_X86": {
+      "asset": "https://github.com/LiveSplit/auto-splitting-test-fixtures/releases/download/unity-6000.2.12f1/unity-6000.2.12f1-win-x86-il2cpp.zip",
+      "archive_sha256": "c2483bb8e1071d98336cd3923d51bb09e2c35ead5b8ee1631d1830098e1e1c4e",
+      "pdb_path": "fixture_BackUpThisFolder_ButDontShipItWithYourGame/GameAssembly.pdb",
+      "pdb_sha256": "3e6447d759849506135991d58c425b9cffa7d0b84dfdf9835a0bd87cf01e44ae",
+      "value_type_flag": {
+        "owner": "Il2CppType",
+        "class_offset": 16,
+        "bit": 31,
+        "bits": 1,
+        "offset": 4
+      },
+      "class_instance_size": 128,
+      "generic_cached_class": 12
+    },
+    "UNITY_6000_3_21F1_X86_64": {
+      "asset": "https://github.com/LiveSplit/auto-splitting-test-fixtures/releases/download/unity-6000.3.21f1/unity-6000.3.21f1-win-x64-il2cpp.zip",
+      "archive_sha256": "a11c0c479817be736c876b4b59153752e59006aa6a2f87a3f44c8a93993c28b6",
+      "pdb_path": "fixture_BackUpThisFolder_ButDontShipItWithYourGame/GameAssembly.pdb",
+      "pdb_sha256": "eeb8515752f0a096c8ac10549f7a6c91455dea3981b90773361386069b36d5df",
+      "value_type_flag": {
+        "owner": "Il2CppType",
+        "class_offset": 32,
+        "bit": 31,
+        "bits": 1,
+        "offset": 8
+      },
+      "class_instance_size": 248,
+      "generic_cached_class": 24
+    },
+    "UNITY_6000_3_21F1_X86": {
+      "asset": "https://github.com/LiveSplit/auto-splitting-test-fixtures/releases/download/unity-6000.3.21f1/unity-6000.3.21f1-win-x86-il2cpp.zip",
+      "archive_sha256": "6c9866cc9c848e0a2739cb3d2a3a91e3a31fb70e55dcbbae0341e37616cf3f2b",
+      "pdb_path": "fixture_BackUpThisFolder_ButDontShipItWithYourGame/GameAssembly.pdb",
+      "pdb_sha256": "bbbda4acdf922bf3c92c6aa43d1ce6954a6e03c30247549a06eb504015233550",
+      "value_type_flag": {
+        "owner": "Il2CppType",
+        "class_offset": 16,
+        "bit": 31,
+        "bits": 1,
+        "offset": 4
+      },
+      "class_instance_size": 128,
+      "generic_cached_class": 12
+    },
+    "UNITY_6000_5_10F1_X86_64": {
+      "asset": "https://github.com/LiveSplit/auto-splitting-test-fixtures/releases/download/unity-6000.5.10f1/unity-6000.5.10f1-win-x64-il2cpp.zip",
+      "archive_sha256": "7431c8a935846cbaa85aee24e7468f002ce2a3ddffd5b04b8148a8d6e15d1309",
+      "pdb_path": "fixture_BackUpThisFolder_ButDontShipItWithYourGame/GameAssembly.pdb",
+      "pdb_sha256": "686c720136415a7536d7df2733da8c29ea7b051d54050cffc34a20b57136f756",
+      "value_type_flag": {
+        "owner": "Il2CppType",
+        "class_offset": 32,
+        "bit": 31,
+        "bits": 1,
+        "offset": 8
+      },
+      "class_instance_size": 248,
+      "generic_cached_class": 24
+    },
+    "UNITY_6000_5_10F1_X86": {
+      "asset": "https://github.com/LiveSplit/auto-splitting-test-fixtures/releases/download/unity-6000.5.10f1/unity-6000.5.10f1-win-x86-il2cpp.zip",
+      "archive_sha256": "46b99b767eee3d325807d8c95cb7ccf34ef104a82345b91c46286766efb690b3",
+      "pdb_path": "fixture_BackUpThisFolder_ButDontShipItWithYourGame/GameAssembly.pdb",
+      "pdb_sha256": "9a830e70c92c3845c1eb137ab6b442f99c6b95a3489a93b001c3fa52c9dad02d",
+      "value_type_flag": {
+        "owner": "Il2CppType",
+        "class_offset": 16,
+        "bit": 31,
+        "bits": 1,
+        "offset": 4
+      },
+      "class_instance_size": 128,
+      "generic_cached_class": 12
+    },
+    "UNITY_6000_7_0A3_X86_64": {
+      "asset": "https://github.com/LiveSplit/auto-splitting-test-fixtures/releases/download/unity-6000.7.0a3/unity-6000.7.0a3-win-x64-il2cpp.zip",
+      "archive_sha256": "618002b77d746045a3033fc3e80db242b4b0f4c70bc7ab88917ac0ba4cada277",
+      "pdb_path": "fixture_BackUpThisFolder_ButDontShipItWithYourGame/GameAssembly.pdb",
+      "pdb_sha256": "dc0a6dc7f4d1d3f607379d821fc076d2524df5e50daa5e88fd242be99cb9298a",
+      "value_type_flag": {
+        "owner": "Il2CppType",
+        "class_offset": 32,
+        "bit": 31,
+        "bits": 1,
+        "offset": 8
+      },
+      "class_instance_size": 240,
+      "generic_cached_class": 16
+    },
+    "UNITY_6000_7_0A3_X86": {
+      "asset": "https://github.com/LiveSplit/auto-splitting-test-fixtures/releases/download/unity-6000.7.0a3/unity-6000.7.0a3-win-x86-il2cpp.zip",
+      "archive_sha256": "fb47632c0d422a1c8893e8c72b15ceb745a88cef34a00869d6e396744791ded8",
+      "pdb_path": "fixture_BackUpThisFolder_ButDontShipItWithYourGame/GameAssembly.pdb",
+      "pdb_sha256": "15b155e438673f8a50774ec0c4fb43dac4558a7abe43aae966240a717ffb37c2",
+      "value_type_flag": {
+        "owner": "Il2CppType",
+        "class_offset": 16,
+        "bit": 31,
+        "bits": 1,
+        "offset": 4
+      },
+      "class_instance_size": 128,
+      "generic_cached_class": 8
+    }
   }
 }

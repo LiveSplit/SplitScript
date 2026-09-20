@@ -37,9 +37,14 @@ fn __splitscript_stdlib_collection_probe() {
             if allowed { budget -= 1 }
             allowed
         }
+        let valueTypeBit: u64? = match process.read<u8>(0x60010) else 0 {
+            1 => None,
+            2 => Some(524288),
+            _ => profile.classValueTypeBit,
+        }
         let typeAddress = (process.read<u64>(0x60008) else 0) as address
         match names.il2cppGenericSize(typeAddress, profile.typeData, profile.classInstanceSize,
-            profile.genericCachedClass, profile.classValueTypeBit, charge) {
+            profile.genericCachedClass, valueTypeBit, charge) {
             Ok(size) => { setVariable("size", size); setVariable("result", "ok") },
             Err(error) => setVariable("result", error),
         }
