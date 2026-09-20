@@ -1,4 +1,4 @@
-import {writeVectorElementType} from './support/managed_type_fixture.mjs';
+import {writeVectorElementType, writeGenericType} from './support/managed_type_fixture.mjs';
 import assert from 'node:assert/strict';
 import { SplitScriptHost } from './support/splitscript_host.mjs';
 import { createKeyedCollectionFixture } from './support/keyed_collection_fixture.mjs';
@@ -38,8 +38,8 @@ for (const parallel of [false, true]) for (const mode of ['seed', 'mutate', 'dup
     };
     fields(0x14000n, 0x58000n, [['rows', 0x10]]);
     ptr((mono ? 0x18000n : 0x16000n) + 0x10n, object);
-    number((dictionary ? f.keyType : f.valueType) + BigInt(bytes + 2), 1, 0x15);
-    if (dictionary) number(f.valueType + BigInt(bytes + 2), 1, 0x15);
+    writeGenericType({mono, width, ptr, number, cachedClass: dictionary ? f.keyClass : f.valueClass}, dictionary ? f.keyType : f.valueType);
+    if (dictionary) writeGenericType({mono, width, ptr, number, cachedClass: f.valueClass}, f.valueType);
     // Separate closed runtime classes for List<String?> and List<List<String?>>.
     for (let i = 0; i < 2; i++) {
         const shift = BigInt(i * 0x1000), klass = 0x310000n + shift, definition = 0x320000n + shift;

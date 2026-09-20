@@ -1929,6 +1929,55 @@ generic argument/type identity, generic reference-vs-value classification,
 IL2CPP plain value-type resolution, and recursively validating raw array element
 metadata remain separate unfinished requirements.
 
+## Mono generic reference/value storage (2026-09-20)
+
+Mono collection elements with `GENERICINST` metadata now resolve the generic
+descriptor's cached inflated class. The descriptor's cached-class pointer is at
+four target pointer words; the class's value-type flag is bit 2 of the byte
+immediately following the measured `instance_size` member. These relationships
+are source-derived from Unity's [MonoGenericClass definition](https://raw.githubusercontent.com/Unity-Technologies/mono/unity-main/mono/metadata/class-internals.h)
+and [MonoClass definition](https://raw.githubusercontent.com/Unity-Technologies/mono/unity-main/mono/metadata/class-private-definition.h),
+and the corresponding [older layout](https://raw.githubusercontent.com/mono/mono/mono-2-6/mono/metadata/class-internals.h).
+They are not new per-binary measurements.
+
+The shared member resolver normalizes proven generic storage to reference or
+value storage. References require pointer width; values require the cached
+instantiated class's unboxed width. A generic definition's size is never used.
+This rejects reference/value confusion even when the requested widths happen
+to match. Pointer and flag reads check the target address span, charge the root
+work budget, and fail on unavailable metadata. Discovery remains retryable.
+List/Map/Set readers reuse the resulting facts on every schema read.
+
+The generic-size operation is supplied by the selected backend. Explicit IL2CPP
+builds retain no Mono generic resolver; a compiler regression checks all three
+collection readers. IL2CPP's callback reports that this storage proof is still
+unavailable, preserving the existing supported behavior while its distinct
+metadata route remains unfinished. Layout caches retain completed storage facts,
+not root contexts or resolver closures.
+
+Private slot validation passes 3,664 cases in Debug/Release, including 528 new
+Mono generic cases: reference and inline success, equal-width category confusion,
+wrong value widths, missing/unreadable/overflowing descriptors and class flags,
+and successful retry after repair. A deliberately different generic-definition
+size verifies that only the inflated class determines storage. All 28 affected
+public artifacts pass; new public List/Map/Set cases read generic inline values
+and reject incompatible cached schemas. Lists pass 848 runtime cases, including
+V1 as well as V1Cattrs/V2/V3 and IL2CPP coverage where applicable. Existing layout,
+nesting, freezing, and shared-budget suites remain green; documentation validates.
+
+All 32 fixtures without List/Map/Set readers retain module/section sizes,
+function/type counts, and function-body size multisets. Mono List grows 977 bytes,
+Map 771, and Set 767 for instantiated-class resolution and backend dispatch.
+IL2CPP List grows 331 bytes, Map 239, and Set 144 for the shared dispatch/member
+interface, with the Mono implementation absent. Scratch, host read capacity, and
+memory pages remain unchanged. Only Mono List adds static data (92 bytes).
+Explicit Lunistice remains 58,178 bytes and automatic selection 182,416 bytes;
+both edition behavior checks pass.
+
+Full generic argument/type identity, IL2CPP generic storage classification and
+plain value-type resolution, raw-array element contracts, metadata scheduling,
+native platform validation, and final size acceptance remain open.
+
 ## Source map for implementation
 
 Upstream links below are pinned to the reviewed tip; the PR table provides the historical changes.

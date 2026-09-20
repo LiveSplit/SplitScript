@@ -1827,6 +1827,34 @@ private struct UnityClassNames {
         } else { process.read<u64>(slot)? as address })
     }
 
+    private fn unboxedSize(class: address, offset: u64) -> u32! {
+        let size = process.read<i32>(self.member(class, offset, 4)?)?
+        let header = 2 * self.width
+        if size < 0 || (size as u64) <= header || (size as u64) - header > 1024 {
+            throw "Unity collection entry size is invalid or exceeds 1024 bytes"
+        }
+        return ((size as u64) - header) as u32
+    }
+
+    private fn monoGenericSize(typeAddress: address, dataOffset: u64?, instanceSize: u64?, charge: () -> bool) -> i32! {
+        // Definition, two context pointers, flags, then cached inflated class.
+        // Never use the generic definition's instance size.
+        let data = dataOffset else throw "Unity profile lacks type data metadata"
+        if !(charge)() { throw "managed read work limit exceeded" }
+        let generic = self.pointer(typeAddress, data)?
+        if generic == 0 { throw "Unity collection generic descriptor is null" }
+        if !(charge)() { throw "managed read work limit exceeded" }
+        let class = self.pointer(generic, 4 * self.width)?
+        if class == 0 { throw "Unity collection generic class is not initialized" }
+        // MonoClass's first flag word follows instance_size; bit 2 is valuetype.
+        let size = instanceSize else throw "Unity profile lacks instance size metadata"
+        if !(charge)() { throw "managed read work limit exceeded" }
+        let flags = process.read<u8>(self.member(class, size + 4, 1)?)?
+        if (flags & 4) == 0 { return 0 }
+        if !(charge)() { throw "managed read work limit exceeded" }
+        return self.unboxedSize(class, size)? as i32
+    }
+
     private fn text(base: address, offset: u64) -> String! {
         let pointer = self.pointer(base, offset)?
         if pointer == 0 { throw "Unity metadata name pointer is null" }
@@ -2028,10 +2056,7 @@ private struct UnityFields {
             throw "Unity list fields overlap"
         }
         let typeAddress = types.arrayElementType(itemsType, self.fields)?
-        let kind = types.kind(typeAddress)?
-        let element = UnityCollectionMember { offset: 0, typeAddress, kind,
-            minimumWidth: types.minimumWidth(typeAddress, kind)?,
-            exactWidth: kind != 0x15 && (kind != 0x11 || types.mono) }
+        let element = types.storageMember(typeAddress, 0)?
         return Ok(UnityListLayout { runtimeClass: class, declaringClass: owner,
             items: itemsOffset, size: sizeOffset, element })
     }
@@ -2067,11 +2092,7 @@ private struct UnityFields {
                         throw "Unity collection field does not use supported instance storage"
                     }
                     let typeAddress = types.fieldTypeAddress(field)?
-                    let kind = types.kind(typeAddress)?
-                    found[slot] = Some(UnityCollectionMember {
-                        offset: (offset as u32) - header, typeAddress,
-                        kind, minimumWidth: types.minimumWidth(typeAddress, kind)?,
-                        exactWidth: kind != 0x15 && (kind != 0x11 || types.mono) })
+                    found[slot] = Some(types.storageMember(typeAddress, (offset as u32) - header)?)
                 }
                 slot += 1
             }
@@ -2148,10 +2169,7 @@ private struct UnityFields {
         index = 2
         while index < outer.length() - 2 {
             let element = types.arrayElementType(outer[index].typeAddress, self.fields)?
-            let kind = types.kind(element)?
-            inner.push(UnityCollectionMember { offset: 0, typeAddress: element, kind,
-                minimumWidth: types.minimumWidth(element, kind)?,
-                exactWidth: kind != 0x15 && (kind != 0x11 || types.mono) })
+            inner.push(types.storageMember(element, 0)?)
             index += 1
         }
         return UnityKeyedLayout { runtimeClass: class, declaringClass: owner,
@@ -8869,6 +8887,7 @@ private struct UnityModule {
             fields: self.profile.classFields, fieldName: self.profile.fieldName,
             fieldValue: self.profile.fieldValue, stride: self.profile.fieldStride }
         let types = UnityCollectionTypes { names, charge, mono: false,
+            genericSize: (_type, _data, _size) => -1,
             data: self.profile.typeData, kindOffset: self.profile.typeKind,
             cached: self.profile.genericCachedClass,
             instanceSize: self.profile.classInstanceSize, fieldType: self.profile.fieldType }
@@ -8892,6 +8911,7 @@ private struct UnityModule {
             fields: self.profile.classFields, fieldName: self.profile.fieldName,
             fieldValue: self.profile.fieldValue, stride: self.profile.fieldStride }
         let types = UnityCollectionTypes { names, charge, mono: false,
+            genericSize: (_type, _data, _size) => -1,
             kindOffset: self.profile.typeKind, fieldType: self.profile.fieldType,
             data: self.profile.typeData, cached: None, instanceSize: self.profile.classInstanceSize }
         return fields.listLayout(class, types, current => self.fieldCount(current, names))
@@ -13049,6 +13069,7 @@ private struct MonoModule {
             fields: self.layout.classFields, fieldName: self.layout.fieldName,
             fieldValue: self.layout.fieldValue, stride: self.layout.fieldStride }
         let types = UnityCollectionTypes { names, charge, mono: true,
+            genericSize: (type, data, size) => names.monoGenericSize(type, data, size, charge),
             data: self.layout.typeData, kindOffset: self.layout.typeKind,
             cached: None,
             instanceSize: self.layout.classInstanceSize, fieldType: self.layout.fieldType }
@@ -13072,6 +13093,7 @@ private struct MonoModule {
             fields: self.layout.classFields, fieldName: self.layout.fieldName,
             fieldValue: self.layout.fieldValue, stride: self.layout.fieldStride }
         let types = UnityCollectionTypes { names, charge, mono: true,
+            genericSize: (type, data, size) => names.monoGenericSize(type, data, size, charge),
             kindOffset: self.layout.typeKind, fieldType: self.layout.fieldType,
             data: self.layout.typeData, cached: None, instanceSize: self.layout.classInstanceSize }
         return fields.listLayout(class, types, current => self.fieldCount(current, names))
@@ -14975,6 +14997,9 @@ struct CatalogSuspensionProbe {
 @representation(gcStruct, nullable)
 @valueUsage(localVariable)
 private struct UnityCollectionTypes {
+    /// Backend generic storage resolver: zero is a reference, positive is an
+    /// exact unboxed size, and negative means the metadata proof is unavailable.
+    private genericSize: (address, u64?, u64?) -> i32!,
     /// Root work counter shared with payload decoding and sibling layouts.
     private charge: () -> bool,
     /// Target-width checked metadata reads.
@@ -15047,15 +15072,26 @@ private struct UnityCollectionTypes {
     private fn stride(class: address) -> u32! {
         self.chargeWork()?
         let offset = self.instanceSize else throw "Unity profile lacks instance size metadata"
-        let size = process.read<i32>(self.names.member(class, offset, 4)?)?
-        let header = 2 * self.names.width
-        if size < 0 || (size as u64) <= header || (size as u64) - header > 1024 {
-            throw "Unity collection entry size is invalid or exceeds 1024 bytes"
-        }
-        return ((size as u64) - header) as u32
+        return self.names.unboxedSize(class, offset)
     }
 
-    // Mono's non-generic value types name their class directly. Other value
+    private fn storageMember(typeAddress: address, offset: u32) -> UnityCollectionMember! {
+        let kind = self.kind(typeAddress)?
+        if kind == 0x15 {
+            let size = (self.genericSize)(typeAddress, self.data, self.instanceSize)?
+            if size >= 0 {
+                return UnityCollectionMember { offset, typeAddress,
+                    kind: if size > 0 { 0x11 as u8 } else { 0x12 as u8 },
+                    minimumWidth: if size > 0 { size as u32 } else { self.names.width as u32 },
+                    exactWidth: true }
+            }
+        }
+        return UnityCollectionMember { offset, typeAddress, kind,
+            minimumWidth: self.minimumWidth(typeAddress, kind)?,
+            exactWidth: kind != 0x15 && (kind != 0x11 || self.mono) }
+    }
+
+    // Mono's non-generic value types name their class directly. IL2CPP value
     // types and generic instances still need further class/argument metadata.
     private fn minimumWidth(typeAddress: address, kind: u8) -> u32! {
         if self.mono && kind == 0x11 {
@@ -15093,7 +15129,7 @@ private struct UnityCollectionMember {
     private offset: u32,
     /// Remote metadata type address.
     private typeAddress: address,
-    /// Remote type tag retained with the discovered shape.
+    /// Remote storage kind; proven generic instances normalize to class/value.
     private kind: u8,
     /// Minimum remote width justified by the field's type metadata.
     private minimumWidth: u32,

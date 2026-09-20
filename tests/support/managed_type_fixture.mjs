@@ -13,5 +13,19 @@ export function writeVectorElementType({mono, width, family, ptr, number}, vecto
         ptr(elementType, elementClass);
         number(elementClass + BigInt(width === 64 ? 0x1c : 0x10), 4, 2 * bytes + valueBytes);
     }
+    if (kind === 0x15) writeGenericType({mono, width, ptr, number, cachedClass: elementClass}, elementType);
     return elementType;
+}
+
+export function writeGenericType({mono, width, ptr, number, cachedClass}, typeAddress, value = false, valueBytes = 16) {
+    const bytes = width / 8;
+    number(typeAddress + BigInt(bytes + 2), 1, 0x15);
+    const klass = cachedClass ?? typeAddress + 0x10000000n, descriptor = klass + 0x400n;
+    const flags = klass + BigInt(width === 64 ? 0x20 : 0x14);
+    if (mono) {
+        ptr(typeAddress, descriptor); ptr(descriptor + BigInt(4 * bytes), klass);
+        number(flags, 1, value ? 4 : 0);
+        number(flags - 4n, 4, 2 * bytes + valueBytes);
+    }
+    return {klass, descriptor, flags};
 }

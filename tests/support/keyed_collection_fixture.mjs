@@ -85,5 +85,5 @@ export function createKeyedCollectionFixture({family='V2', width=64, dictionary=
     ptr(object,mono?vtable:root);ptr(vtable,root);
     number((0x60000n + base),8,object);number((0x60008n + base),1,dictionary?0:1);number((0x60009n + base),1,0);
     number((0x6000an + base),1,family==='V1Cattrs'?1:family==='V3'?3:2);
-    return {...fixture,number,ptr,object,vtable,root,owner,width,bytes,outer,stride,hash,next,key,value,keyBytes,valueBytes,keyType,valueType};
+    return {...fixture,number,ptr,object,vtable,root,owner,width,bytes,outer,stride,hash,next,key,value,keyBytes,valueBytes,keyType,valueType,keyClass,valueClass};
 }

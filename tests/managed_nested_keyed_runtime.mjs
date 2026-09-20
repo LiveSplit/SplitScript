@@ -1,3 +1,4 @@
+import {writeGenericType} from './support/managed_type_fixture.mjs';
 import assert from 'node:assert/strict';
 import { SplitScriptHost } from './support/splitscript_host.mjs';
 import { createKeyedCollectionFixture } from './support/keyed_collection_fixture.mjs';
@@ -23,7 +24,7 @@ for (const parallel of [false, true]) for (const mode of ['seed', 'reorder', 'mu
     name.forEach((byte, i) => memory.set(0x59000n + BigInt(i), byte));
     number(0x58000n + BigInt(wide ? 0x18 : 0xc), 4, 0x10);
     ptr((mono ? 0x18000n : 0x16000n) + 0x10n, f.object);
-    number((dictionary ? f.keyType : f.valueType) + BigInt(bytes + 2), 1, 0x15);
+    writeGenericType({mono, width, ptr, number, cachedClass: dictionary ? f.keyClass : f.valueClass}, dictionary ? f.keyType : f.valueType);
     if (dictionary) number(f.valueType + BigInt(bytes + 2), 1, 0x1d);
     number(inner.valueType + BigInt(bytes + 2), 1, 0x1d);
     const vector = (at, values) => {

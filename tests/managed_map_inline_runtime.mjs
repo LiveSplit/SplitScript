@@ -1,3 +1,4 @@
+import {writeGenericType} from './support/managed_type_fixture.mjs';
 import assert from 'node:assert/strict';
 import { SplitScriptHost } from './support/splitscript_host.mjs';
 import { createKeyedCollectionFixture } from './support/keyed_collection_fixture.mjs';
@@ -10,11 +11,13 @@ const layouts = {
 };
 let cases = 0;
 for (const family of Object.keys(layouts)) for (const width of [32, 64])
-for (const parallel of [false, true]) for (const mode of ['seed', 'mutate', 'duplicate', 'unreadable', 'freeze', 'short schema', 'long schema']) {
+for (const parallel of [false, true]) for (const mode of ['generic', 'generic short schema', 'seed', 'mutate', 'duplicate', 'unreadable', 'freeze', 'short schema', 'long schema']) {
+    if (mode.startsWith('generic') && family === 'il2cpp') continue;
     if (mode.endsWith('schema') && family === 'il2cpp') continue;
     const f = createKeyedCollectionFixture({family, width, parallel, inline: true});
     const {number, ptr, memory, object, outer, bytes, stride, hash, next, key, value} = f;
     const mono = family !== 'il2cpp', wide = width === 64, [fields, count] = layouts[family][width];
+    if (mode.startsWith('generic')) writeGenericType({mono, width, ptr, number, cachedClass: f.valueClass}, f.valueType, true);
     ptr(0x14000n + BigInt(fields), 0x58000n);
     number(0x14000n + BigInt(count), mono ? 4 : 2, 3);
     ['rows', 'shortRows', 'longRows'].forEach((text, i) => {
@@ -56,12 +59,12 @@ for (const parallel of [false, true]) for (const mode of ['seed', 'mutate', 'dup
         number(0x6f000n, 4, 1);
         assert.throws(() => host.update(), WebAssembly.RuntimeError, label); cases++; continue;
     }
-    if (mode.endsWith('schema')) number(0x6f000n, 4, mode === 'short schema' ? 2 : 3);
+    if (mode.endsWith('schema')) number(0x6f000n, 4, mode.endsWith('short schema') ? 2 : 3);
     host.update();
     if (mode.endsWith('schema')) assert.match(host.variables.get('wrong'), /width is incompatible/, label);
     assert.equal(normalize(host.variables.get('old')), before, label);
     assert.equal(normalize(host.variables.get('rows')), mode === 'mutate' ? before.replace('-1', '99') : before, label);
-    assert.equal(host.variables.get('result') === 'ok', ['seed', 'mutate', 'short schema', 'long schema'].includes(mode), label);
+    assert.equal(host.variables.get('result') === 'ok', ['generic', 'generic short schema', 'seed', 'mutate', 'short schema', 'long schema'].includes(mode), label);
     cases++;
 }
 console.log(JSON.stringify({managedInlineMapCases: cases}));

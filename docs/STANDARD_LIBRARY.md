@@ -429,8 +429,10 @@ within that class on both backends.
 List/Map/Set readers validate available runtime element kinds and storage widths
 before reading their payloads, including old corlib collections with separate
 key/value arrays. Cached layouts are checked against each requested schema;
-using a cached class through an incompatible schema still fails. Full generic
-type identity validation is not yet implemented.
+using a cached class through an incompatible schema still fails. Mono generic
+elements use the cached instantiated class to distinguish reference storage
+from inline values and to obtain the latter's exact size. Full generic type
+identity validation and IL2CPP generic storage classification are not yet implemented.
 
 Class-typed
 static and instance fields are live references: every state poll rereads the

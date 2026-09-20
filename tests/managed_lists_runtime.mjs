@@ -1,4 +1,4 @@
-import {writeVectorElementType} from './support/managed_type_fixture.mjs';
+import {writeVectorElementType, writeGenericType} from './support/managed_type_fixture.mjs';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { SplitScriptHost } from './support/splitscript_host.mjs';
@@ -7,7 +7,7 @@ import { createIl2cppPeFixture } from './support/il2cpp_pe_fixture.mjs';
 
 const [wasm] = process.argv.slice(2);
 const profiles = JSON.parse(await readFile(new URL('./fixtures/mono-pe-profiles.json', import.meta.url)));
-const modes = ['wrong array schema', 'wrong scalar schema', 'wrong inline schema', 'seed', 'mutate', 'empty', 'large spare capacity', 'null empty backing',
+const modes = ['generic record', 'generic short schema', 'wrong array schema', 'wrong scalar schema', 'wrong inline schema', 'seed', 'mutate', 'empty', 'large spare capacity', 'null empty backing',
     'negative count', 'count exceeds capacity', 'element budget', 'null backing', 'null list',
     'indexed string', 'unreadable size', 'unreadable backing slot', 'unreadable live slot', 'unreadable string',
     'null nested list', 'class cycle', 'shared element budget', 'capacity overflow',
@@ -26,7 +26,7 @@ const monoLayouts = {
 };
 for (const backend of [...Object.keys(monoLayouts), 'il2cpp']) for (const width of [32, 64]) for (const mode of modes) {
     const mono = backend !== 'il2cpp';
-    if (!mono && mode === 'wrong inline schema') continue;
+    if (!mono && (mode === 'wrong inline schema' || mode.startsWith('generic '))) continue;
     const wide = width === 64, bytes = width / 8;
     const fixture = mono ? createMonoPeFixture(profiles.builds.find(p => p.width === width && p.version === backend))
         : createIl2cppPeFixture({width, version: [2022, 3, 0, 37029]});
@@ -57,7 +57,10 @@ for (const backend of [...Object.keys(monoLayouts), 'il2cpp']) for (const width 
                 const type = typeBase + (text === '_items' ? 0n : 0x100n);
                 ptr(field + BigInt(mono ? 0 : bytes), type);
                 number(type + BigInt(bytes + 2), 1, text === '_items' ? 0x1d : 0x08);
-                if (text === '_items') writeVectorElementType({mono, width, family: backend, ptr, number}, type, typeBase + 0x1000n, elementKind);
+                if (text === '_items') {
+                    const elementType = writeVectorElementType({mono, width, family: backend, ptr, number}, type, typeBase + 0x1000n, elementKind);
+                    if (elementKind === 0x11 && mode.startsWith('generic ')) writeGenericType({mono, width, ptr, number, cachedClass: typeBase + 0x1000n}, elementType, true, 8);
+                }
             }
         });
     };
@@ -121,7 +124,7 @@ for (const backend of [...Object.keys(monoLayouts), 'il2cpp']) for (const width 
     fixture.process.read = request => {
         const address = BigInt.asUintN(64, request.address);
         assert(address + BigInt(Math.max(request.length, 1) - 1) <= limit, `${mono}/${width}/${mode}: overflowing host read`);
-        if (mode.startsWith('wrong ') && address === 0x6f000n) reads.length = 0;
+        if ((mode.startsWith('wrong ') || mode === 'generic short schema') && address === 0x6f000n) reads.length = 0;
         reads.push({address, length: request.length});
         if (armed && address === rowsArray + BigInt(4 * bytes)) {
             armed = false;
@@ -148,7 +151,8 @@ for (const backend of [...Object.keys(monoLayouts), 'il2cpp']) for (const width 
     reads.length = 0;
     let success = false;
     if (mode.startsWith('torn')) { text(string, 'new'); vector(0x8a000n, [row]); armed = true; }
-    if (mode === 'seed') success = true;
+    if (mode === 'seed' || mode === 'generic record') success = true;
+    if (mode === 'generic short schema') { number(0x6f000n, 4, 8); success = true; }
     if (mode.startsWith('wrong ')) { number(0x6f000n, 4, 6 + ['wrong array schema', 'wrong scalar schema', 'wrong inline schema'].indexOf(mode)); success = true; }
     if (mode === 'mutate') { text(string, 'new'); success = true; }
     if (mode === 'empty') { number(rows + BigInt(3 * bytes), 4, 0); success = true; }
@@ -215,7 +219,7 @@ for (const backend of [...Object.keys(monoLayouts), 'il2cpp']) for (const width 
         continue;
     }
     host.update();
-    if (mode.startsWith('wrong ')) {
+    if (mode.startsWith('wrong ') || mode === 'generic short schema') {
         assert.match(host.variables.get('wrong'), /incompatible with/, label);
         assert(!reads.some(r => r.address >= rowsArray && r.address < string), `${label}: incompatible cached schema read its payload`);
     }

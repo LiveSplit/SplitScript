@@ -1936,3 +1936,39 @@ fn managed_error_paths_follow_observed_payloads() {
         }
     }
 }
+
+#[test]
+fn mono_generic_storage_resolver_follows_the_selected_backend() {
+    for (selector, mono) in [
+        ("Unity.mono(MonoVersion.V2)", true),
+        ("Unity.il2cpp(Il2CppProfile.unity2022_3_0f1X64())", false),
+    ] {
+        for collection in ["List<String>", "Map<String, String>", "Set<String>"] {
+            let source = format!(
+                r#"
+                image "Assembly-CSharp" {{ class Probe {{ static {collection} values; }} }}
+                state {selector} ["game.exe"] {{ values = Probe.values?; }}
+            "#
+            );
+            let checked = splitscript::check(splitscript::parse(&source).unwrap()).unwrap();
+            let (wasm, report) = splitscript::compiler::codegen_with_report(
+                &checked,
+                splitscript::CompilerOptions {
+                    profile: splitscript::BuildProfile::Release,
+                    ..Default::default()
+                },
+            );
+            Validator::new_with_features(WasmFeatures::all())
+                .validate_all(&wasm)
+                .unwrap();
+            assert_eq!(
+                report
+                    .functions
+                    .iter()
+                    .any(|(_, name)| name.contains("MonoGenericSize")),
+                mono,
+                "{selector}: {collection}"
+            );
+        }
+    }
+}
