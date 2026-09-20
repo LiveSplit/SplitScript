@@ -1,3 +1,4 @@
+import {writeVectorElementType} from './support/managed_type_fixture.mjs';
 import assert from 'node:assert/strict';
 import {SplitScriptHost} from './support/splitscript_host.mjs';
 import {createKeyedCollectionFixture} from './support/keyed_collection_fixture.mjs';
@@ -32,6 +33,7 @@ for (const family of Object.keys(layouts)) for (const width of [32,64]) for (con
     number(0x60080n,1,kind);
     if (kind===0) {
         text(0x40200n,'List`1');
+        writeVectorElementType({mono, width, family, ptr, number}, 0x50000n, 0x56000n, 0x0e);
         text(0x46000n,'_items'); text(0x46100n,'_size');
         ptr(0x37000n+BigInt(mono?bytes:0),0x46000n);
         ptr(0x37000n+BigInt(fieldStride+(mono?bytes:0)),0x46100n);

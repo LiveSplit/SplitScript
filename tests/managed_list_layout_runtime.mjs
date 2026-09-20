@@ -1,3 +1,4 @@
+import {writeVectorElementType} from './support/managed_type_fixture.mjs';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { SplitScriptHost } from './support/splitscript_host.mjs';
@@ -6,7 +7,7 @@ import { createIl2cppPeFixture } from './support/il2cpp_pe_fixture.mjs';
 const [wasm, backend] = process.argv.slice(2);
 const mono = backend === 'mono';
 const profiles = JSON.parse(await readFile(new URL('./fixtures/mono-pe-profiles.json', import.meta.url)));
-const typeModes = ['items class', 'items string', 'items multidimensional array', 'items generic',
+const typeModes = ['element null', 'element unreadable', 'element unsupported', 'element overflow', 'items class', 'items string', 'items multidimensional array', 'items generic',
     'size unsigned', 'size long', 'null items type', 'null size type', 'unreadable type pointer',
     'unreadable type kind', 'overflowing type'];
 const modes = [...typeModes, 'derived', 'direct', 'replacement', 'late object', 'null header', 'null class', 'unreadable object', 'unreadable name', 'unreadable parent', 'cycle', 'wrong namespace', 'wrong name', 'null fields', 'missing items', 'missing size', 'duplicate items', 'duplicate size', 'negative offset', 'header offset', 'overlap', 'large count', 'unreadable field', 'null name', 'unreadable generic', 'null generic', 'object overflow', 'field span overflow', 'negative count', 'unreadable count', 'unreadable namespace', 'null required name', 'null definition'];
@@ -64,7 +65,7 @@ for (const width of [32, 64]) for (const mode of modes) {
     if (mode === 'overlap') entries[2][1] = 2 * bytes + 1;
     number(counted + BigInt(countOffset), mono ? 4 : 2, mode === 'large count' ? 4097 : entries.length);
     const itemsType = 0x54000n, sizeType = 0x54100n;
-    number(itemsType + BigInt(bytes + 2), 1, 0x1d);
+    const elementType = writeVectorElementType({mono, width, family: "V2", ptr, number}, itemsType, 0x55000n, 0x0e);
     number(sizeType + BigInt(bytes + 2), 1, 0x08);
     entries.forEach(([name, offset], i) => {
         const field = fields + BigInt(i * stride), at = 0x44000n + BigInt(i * 256);
@@ -110,6 +111,10 @@ for (const width of [32, 64]) for (const mode of modes) {
     if (mode === 'unreadable type pointer') memory.delete(itemsFieldType);
     if (mode === 'unreadable type kind') memory.delete(itemsType + BigInt(bytes + 2));
     if (mode === 'overflowing type') ptr(itemsFieldType, limit - 1n);
+    if (mode === 'element null') ptr(itemsType, 0);
+    if (mode === 'element unreadable') memory.delete(elementType + BigInt(bytes + 2));
+    if (mode === 'element unsupported') number(elementType + BigInt(bytes + 2), 1, 0x10);
+    if (mode === 'element overflow') ptr(itemsType, limit - 1n);
     const originalRead = fixture.process.read;
     fixture.process.read = request => {
         const address = BigInt.asUintN(64, request.address);
@@ -134,7 +139,7 @@ for (const width of [32, 64]) for (const mode of modes) {
         }
         // Failed discovery must remain retryable when metadata materializes.
         ptr(itemsFieldType, itemsType); ptr(sizeFieldType, sizeType);
-        number(itemsType + BigInt(bytes + 2), 1, 0x1d);
+        writeVectorElementType({mono, width, family: "V2", ptr, number}, itemsType, 0x55000n, 0x0e);
         number(sizeType + BigInt(bytes + 2), 1, 0x08);
         host.updateUntil(() => host.variables.get('result') === 'ok', label);
     }

@@ -5,12 +5,10 @@ use super::super::{
     Type, context::EmissionContext, emit_result_success, emit_typed_struct_get,
     managed_snapshots::result_for, semantic_type,
 };
-use super::{CONTEXT, Reader, nullable, read_word};
+use super::{CONTEXT, Reader, nullable, read_word, storage_kinds, storage_width as width};
 use crate::{
     capabilities::CapabilityAnalysis,
     intrinsic_registry::RuntimeHelperId as H,
-    managed_read::ManagedDecoderKind,
-    memory::MemoryAddressWidth,
     stdlib::{CoreTypeId, StdlibFieldId as F, StdlibTypeConstructorId as C, StdlibTypeId},
     types::{TypeId, TypeKind},
 };
@@ -491,78 +489,6 @@ fn remaining(f: &mut Function, l: &EmissionContext<'_>, slot: u32, limit: i64, n
         .instruction(&I::I64Sub);
     if narrow {
         f.instruction(&I::I32WrapI64);
-    }
-}
-fn width(f: &mut Function, r: &Reader<'_, '_>, source: TypeId) {
-    if matches!(
-        r.capabilities.managed_decoder(source).unwrap().kind,
-        ManagedDecoderKind::Memory
-    ) {
-        let sizes = [MemoryAddressWidth::Bit32, MemoryAddressWidth::Bit64].map(|w| {
-            r.lowering
-                .memory
-                .layout(source, r.lowering.semantics, w)
-                .unwrap()
-                .size() as i32
-        });
-        f.instruction(&I::I32Const(sizes[0]))
-            .instruction(&I::I32Const(sizes[1]))
-            .instruction(&I::LocalGet(2))
-            .instruction(&I::I32Const(4))
-            .instruction(&I::I32Eq)
-            .instruction(&I::Select);
-    } else {
-        f.instruction(&I::LocalGet(2));
-    }
-}
-
-// CLR type-tag masks describe remote storage, not the projected owned type.
-// Nullable references have the same storage as their non-null child. Enum
-// schemas also admit their explicit scalar representation; field/class facts
-// are still needed to validate remote value types and generic instances fully.
-fn storage_kinds(r: &Reader<'_, '_>, source: TypeId) -> u32 {
-    match r.capabilities.managed_decoder(source).unwrap().kind {
-        ManagedDecoderKind::Optional { value } => storage_kinds(r, value),
-        ManagedDecoderKind::String => 1 << 0x0e,
-        ManagedDecoderKind::Array { .. } => 1 << 0x1d,
-        ManagedDecoderKind::Class { .. }
-        | ManagedDecoderKind::List { .. }
-        | ManagedDecoderKind::Map { .. }
-        | ManagedDecoderKind::Set { .. } => (1 << 0x12) | (1 << 0x15),
-        ManagedDecoderKind::Memory => match r.lowering.semantics.types().kind(source) {
-            TypeKind::Builtin(core) => match core {
-                CoreTypeId::Bool => 1 << 0x02,
-                CoreTypeId::Char => 1 << 0x03,
-                CoreTypeId::I8 => 1 << 0x04,
-                CoreTypeId::U8 => 1 << 0x05,
-                CoreTypeId::I16 => 1 << 0x06,
-                CoreTypeId::U16 => (1 << 0x03) | (1 << 0x07),
-                CoreTypeId::I32 => 1 << 0x08,
-                CoreTypeId::U32 => 1 << 0x09,
-                CoreTypeId::I64 => 1 << 0x0a,
-                CoreTypeId::U64 => 1 << 0x0b,
-                CoreTypeId::F32 => 1 << 0x0c,
-                CoreTypeId::F64 => 1 << 0x0d,
-                CoreTypeId::Address => {
-                    (1 << 0x18)
-                        | (1 << 0x19)
-                        | (1 << 0x0e)
-                        | (1 << 0x12)
-                        | (1 << 0x1c)
-                        | (1 << 0x1d)
-                }
-                _ => unreachable!("non-memory scalar in a managed memory decoder"),
-            },
-            TypeKind::Enum(enumeration) => {
-                let representation = r
-                    .lowering
-                    .semantics
-                    .enum_representation(*enumeration)
-                    .unwrap();
-                (1 << 0x11) | storage_kinds(r, representation)
-            }
-            _ => (1 << 0x11) | (1 << 0x15),
-        },
     }
 }
 fn binding(

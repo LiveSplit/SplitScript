@@ -1,6 +1,6 @@
 # Unity support: ASR research and SplitScript implementation plan
 
-Status: core recursive managed values and snapshots, measured IL2CPP profiles, and Windows/Linux/macOS Mono automatic attachment are implemented. Explicit Windows/Linux/macOS Mono family selectors are also implemented. Nested materialization error paths and parallel-array element storage checks are implemented. Remaining work includes full runtime type/generic validation, shared metadata traversal, native platform validation, and final size acceptance. See [implementation progress](#implementation-progress).
+Status: core recursive managed values and snapshots, measured IL2CPP profiles, and Windows/Linux/macOS Mono automatic attachment are implemented. Explicit Windows/Linux/macOS Mono family selectors are also implemented. Nested materialization error paths and List/Map/Set element storage checks are implemented. Remaining work includes full runtime type/generic validation, shared metadata traversal, native platform validation, and final size acceptance. See [implementation progress](#implementation-progress).
 
 ## Objective and baseline
 
@@ -1889,6 +1889,45 @@ This completes the parallel-array element storage checks supported by existing
 type tags and Mono value-class sizes. Full generic identity/reference-vs-value
 proof, IL2CPP plain value-type routing, and recursive Array/List element contracts
 remain unfinished, as do the final size and other goal acceptance requirements.
+
+## List element storage contracts (2026-09-20)
+
+List discovery now resolves the `_items` vector's element type and retains its
+kind and justified width in the cached layout. The generated List reader passes
+its source element's storage width and allowed type tags to the layout callback.
+Both cold and cached callbacks validate those facts before reading the count,
+backing array, or element payloads. Nullable elements use their child's remote
+storage contract. List, Map, and Set readers share the compiler's storage-kind
+and width logic; no source syntax changes are needed.
+
+The existing Mono class/by-value route and IL2CPP element-type route handle
+reference and primitive elements. Non-generic Mono value types additionally
+require the exact unboxed class size. The facts are retained as a private
+`UnityCollectionMember` in `UnityListLayout`; metadata discovery uses the root's
+existing work counter, and failed discovery remains retryable.
+
+Public fixtures now model distinct runtime classes for distinct closed List
+element types, including a separate empty List for string and class children.
+They reject cached array/string, integer/float, and short Mono inline-structure
+schema mismatches without payload reads. All 816 List cases and all 28 affected
+collection artifacts pass in Debug/Release, including nested Lists in Map/Set
+keys and values, snapshots, layout replacement, retries, and shared budgets.
+Private List discovery passes 356 cases including null, unreadable, unsupported,
+and overflowing element metadata with repair/retry; the keyed adapter suites
+also remain green.
+
+The 36 fixtures without List readers retain module/section sizes, function/type
+counts, and function-body size multisets. Mono List grows 1,991 bytes to 48,639;
+IL2CPP List grows 1,993 bytes to 57,792. Each now retains the element-type resolver,
+minimum-width/Mono-stride readers, storage validator, five additional types, and
+453 bytes of static data. Scratch, host read capacity, and memory pages are
+unchanged. Explicit Lunistice remains 58,178 bytes and automatic selection
+182,416 bytes; both edition behavior checks pass.
+
+This proves element storage kinds and available exact widths for Lists. Full
+generic argument/type identity, generic reference-vs-value classification,
+IL2CPP plain value-type resolution, and recursively validating raw array element
+metadata remain separate unfinished requirements.
 
 ## Source map for implementation
 

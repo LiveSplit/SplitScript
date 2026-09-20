@@ -1990,6 +1990,7 @@ private struct UnityFields {
         let fields = self.names.pointer(owner, self.fields)?
         if fields == 0 { throw "Unity collection field array is not initialized" }
         let items: u32? = None
+        let itemsType: address = 0
         let size: u32? = None
         let index: u32 = 0
         while index < (count as u32) {
@@ -2004,13 +2005,15 @@ private struct UnityFields {
                 if offset < 0 || (offset as u64) < 2 * self.names.width {
                     throw "Unity list field does not use supported instance storage"
                 }
-                let kind = types.kind(types.fieldTypeAddress(field)?)?
+                let typeAddress = types.fieldTypeAddress(field)?
+                let kind = types.kind(typeAddress)?
                 if kind != (if name == "_items" { 0x1d as u8 } else { 0x08 as u8 }) {
                     throw "Unity list has invalid backing or count field types"
                 }
                 if name == "_items" {
                     if items != None { throw "Unity list metadata contains duplicate items fields" }
                     items = Some(offset as u32)
+                    itemsType = typeAddress
                 } else {
                     if size != None { throw "Unity list metadata contains duplicate size fields" }
                     size = Some(offset as u32)
@@ -2024,8 +2027,13 @@ private struct UnityFields {
         if (itemsOffset as u64) < sizeEnd && (sizeOffset as u64) < itemsEnd {
             throw "Unity list fields overlap"
         }
+        let typeAddress = types.arrayElementType(itemsType, self.fields)?
+        let kind = types.kind(typeAddress)?
+        let element = UnityCollectionMember { offset: 0, typeAddress, kind,
+            minimumWidth: types.minimumWidth(typeAddress, kind)?,
+            exactWidth: kind != 0x15 && (kind != 0x11 || types.mono) }
         return Ok(UnityListLayout { runtimeClass: class, declaringClass: owner,
-            items: itemsOffset, size: sizeOffset })
+            items: itemsOffset, size: sizeOffset, element })
     }
 
     // Read every required field on the exact corlib/entry owner. A missing or
@@ -8885,7 +8893,7 @@ private struct UnityModule {
             fieldValue: self.profile.fieldValue, stride: self.profile.fieldStride }
         let types = UnityCollectionTypes { names, charge, mono: false,
             kindOffset: self.profile.typeKind, fieldType: self.profile.fieldType,
-            data: None, cached: None, instanceSize: None }
+            data: self.profile.typeData, cached: None, instanceSize: self.profile.classInstanceSize }
         return fields.listLayout(class, types, current => self.fieldCount(current, names))
     }
 
@@ -9436,6 +9444,8 @@ private struct UnityListLayout {
     /// ```
     size: u32,
 
+    /// Validated storage facts for the backing vector's element type.
+    private element: UnityCollectionMember,
 }
 
 /// Describes where an IL2CPP image stores its first type index.
@@ -13063,7 +13073,7 @@ private struct MonoModule {
             fieldValue: self.layout.fieldValue, stride: self.layout.fieldStride }
         let types = UnityCollectionTypes { names, charge, mono: true,
             kindOffset: self.layout.typeKind, fieldType: self.layout.fieldType,
-            data: None, cached: None, instanceSize: None }
+            data: self.layout.typeData, cached: None, instanceSize: self.layout.classInstanceSize }
         return fields.listLayout(class, types, current => self.fieldCount(current, names))
     }
 

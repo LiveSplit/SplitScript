@@ -1,3 +1,4 @@
+struct ShortRecord { _pair: [i32; 1], }
 struct Record { pair: [i32; 2], }
 image "Assembly-CSharp" {
     class ProfileProbe {
@@ -8,6 +9,9 @@ image "Assembly-CSharp" {
         static List<i32> numbers;
         static List<address> pointers;
         static List<Record> records;
+        static List<String> wrongRows;
+        static List<f32> wrongNumbers;
+        static List<ShortRecord> shortRecords;
         List<ProfileProbe?> children;
         List<String> tags;
         i32 value;
@@ -38,6 +42,9 @@ whileAttached {
     let root = ProfileProbe.instance else return
     setVariable("treeResult", match root.snapshot() { Ok(_) => "ok", Err(error) => error })
     let mutation = process.read<i32>(0x6f000) else return
+    if mutation == 6 { setVariable("wrong", match ProfileProbe.wrongRows { Ok(_) => "ok", Err(error) => error }) }
+    if mutation == 7 { setVariable("wrong", match ProfileProbe.wrongNumbers { Ok(_) => "ok", Err(error) => error }) }
+    if mutation == 8 { setVariable("wrong", match ProfileProbe.shortRecords { Ok(_) => "ok", Err(error) => error }) }
     if mutation == 1 { current.rows.clear() }
     if mutation == 2 { current.nested[0].clear() }
     if mutation == 3 { current.tree.tags.clear() }
