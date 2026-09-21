@@ -2205,6 +2205,32 @@ private struct UnityClassCursor {
     }
 }
 
+/// Attachment-local field values and metadata used by generated schema binding.
+///
+/// # Example
+///
+/// Bind fields through a managed schema
+///
+/// ```splitscript
+/// image "Assembly-CSharp" { class Runner { static i32 lives; } }
+/// state Unity ["game.exe"] { lives = Runner.lives?; }
+/// ```
+@representation(gcStruct, nullable)
+@valueUsage(localVariable)
+private struct UnityFieldBindings {
+    /// Final instance offsets or static storage addresses.
+    private values: [address],
+    /// Original metadata, retaining completed absence for shape probing.
+    private fields: [UnityField?],
+
+    private fn staticField(index: u32) -> address? {
+        return match self.fields[index] {
+            Some(_) => Some(self.values[index]),
+            None => None,
+        }
+    }
+}
+
 /// One bounded field-walk continuation, owned by an attachment operation.
 ///
 /// # Example
@@ -2706,15 +2732,15 @@ private struct UnityMetadataClass {
     /// Contains the class when the runtime uses Mono.
     private mono: MonoClass?,
 
-    private fn bindFields(names: [[String]], statics: [bool]) -> async [address] {
+    private fn bindFields(names: [[String]], statics: [bool], required: [bool]) -> async UnityFieldBindings {
         return match self.backend {
             UnityRuntimeBackend.Il2cpp => {
                 let class = self.il2cpp else await process.closed()
-                await class.bindFields(names, statics)
+                await class.bindFields(names, statics, required)
             },
             UnityRuntimeBackend.Mono => {
                 let class = self.mono else await process.closed()
-                await class.bindFields(names, statics)
+                await class.bindFields(names, statics, required)
             },
         }
     }
@@ -9733,19 +9759,28 @@ private struct UnityClass {
         return await fields.find(self.address, names, current => self.module.fieldCount(current, fields.names))
     }
 
-    // Share the continuation for required fields, preserving declaration order,
-    // retry behavior, and the static field's declaring owner.
-    private fn bindFields(names: [[String]], statics: [bool]) -> async [address] {
+    // Share required and conditional traversal while retaining completed absence.
+    // Results are published only after every selected field has been processed.
+    private fn bindFields(names: [[String]], statics: [bool], required: [bool]) -> async UnityFieldBindings {
         let values: [address] = []
+        let fields: [UnityField?] = []
         for index in 0..<names.length() {
-            let field = await self.fieldAny(names[index])
-            let value = if statics[index] {
-                let owner = UnityClass { address: field.owner, module: self.module }
-                retry owner.readStaticSlot(field.offset)
-            } else { field.offset as address }
+            let candidate = await self.probeFieldAny(names[index])
+            let value = match candidate {
+                Some(field) => if statics[index] {
+                    let owner = UnityClass { address: field.owner, module: self.module }
+                    retry owner.readStaticSlot(field.offset)
+                } else { field.offset as address },
+                None if required[index] => {
+                    print(`no Unity field matches metadata names {String.join(names[index], ", ")}`)
+                    await process.closed()
+                },
+                None => 0 as address,
+            }
             values.push(value)
+            fields.push(candidate)
         }
-        return values
+        return UnityFieldBindings { values, fields }
     }
 
     // Resolves static storage against the field's declaring runtime class.
@@ -14186,16 +14221,25 @@ private struct MonoClass {
         return await self.staticSlot(field.owner, field.offset)
     }
 
-    private fn bindFields(names: [[String]], statics: [bool]) -> async [address] {
+    private fn bindFields(names: [[String]], statics: [bool], required: [bool]) -> async UnityFieldBindings {
         let values: [address] = []
+        let fields: [UnityField?] = []
         for index in 0..<names.length() {
-            let field = await self.fieldAny(names[index])
-            let value = if statics[index] {
-                await self.staticSlot(field.owner, field.offset)
-            } else { field.offset as address }
+            let candidate = await self.probeFieldAny(names[index])
+            let value = match candidate {
+                Some(field) => if statics[index] {
+                    await self.staticSlot(field.owner, field.offset)
+                } else { field.offset as address },
+                None if required[index] => {
+                    print(`no Unity field matches metadata names {String.join(names[index], ", ")}`)
+                    await process.closed()
+                },
+                None => 0 as address,
+            }
             values.push(value)
+            fields.push(candidate)
         }
-        return values
+        return UnityFieldBindings { values, fields }
     }
 
     private fn staticSlot(owner: address, offset: u32) -> async address {

@@ -864,16 +864,19 @@ fn managed_backend_binding_source(
                 managed_instance_header_name(class.class.id.index())
             ));
         }
-        if class.class.fields.len() >= MANAGED_BATCH_MIN_FIELDS {
-            push_batched_managed_field_bindings(&mut source, &class_local, &class.class.fields);
+        let grouped = class_fields(class.class).count() >= MANAGED_BATCH_MIN_FIELDS;
+        if grouped {
+            push_batched_managed_field_bindings(&mut source, &class_local, class.class);
         } else {
             for field in &class.class.fields {
                 push_required_managed_field_binding(&mut source, &class_local, field);
             }
         }
-        for group in &class.class.conditional_fields {
-            for field in &group.fields {
-                push_optional_managed_field_binding(&mut source, &class_local, field);
+        if !grouped {
+            for group in &class.class.conditional_fields {
+                for field in &group.fields {
+                    push_optional_managed_field_binding(&mut source, &class_local, field, None);
+                }
             }
         }
     }
@@ -971,8 +974,9 @@ fn required_managed_field_binding(
 fn push_batched_managed_field_bindings(
     source: &mut String,
     class_local: &str,
-    fields: &[crate::ast::ManagedFieldDecl],
+    class: &ManagedClassDecl,
 ) {
+    let fields = class_fields(class).collect::<Vec<_>>();
     let names = fields
         .iter()
         .map(|field| format!("[{}]", managed_field_candidates(field)))
@@ -983,17 +987,25 @@ fn push_batched_managed_field_bindings(
         .map(|field| field.is_static.to_string())
         .collect::<Vec<_>>()
         .join(", ");
+    let required = (0..fields.len())
+        .map(|index| (index < class.fields.len()).to_string())
+        .collect::<Vec<_>>()
+        .join(", ");
     let bindings = format!("{class_local}_fields");
     source.push_str(&format!(
-        "            let {bindings} = await {class_local}.bindFields([{names}], [{statics}])\n"
+        "            let {bindings} = await {class_local}.bindFields([{names}], [{statics}], [{required}])\n"
     ));
     // Both choices are checked here. Managed demand pruning filters the group
     // and selects one path before lowering; unused fields cause no discovery.
     for (index, field) in fields.iter().enumerate() {
+        if index >= class.fields.len() {
+            push_optional_managed_field_binding(source, class_local, field, Some(index));
+            continue;
+        }
         let (name, individual) = required_managed_field_binding(class_local, field);
         let ty = if field.is_static { "address" } else { "u32" };
         source.push_str(&format!(
-            "            let {name} = if true {{ {bindings}[{index}] as {ty} }} else {{ {individual} }}\n"
+            "            let {name} = if true {{ {bindings}.values[{index}] as {ty} }} else {{ {individual} }}\n"
         ));
     }
 }
@@ -1011,22 +1023,34 @@ fn push_optional_managed_field_binding(
     source: &mut String,
     class_local: &str,
     field: &crate::ast::ManagedFieldDecl,
+    batch_index: Option<usize>,
 ) {
     let candidates = managed_field_candidates(field);
     let probe = format!("__field_{}_conditional_probe", field.id.index());
+    let method = if field.is_static {
+        "probeStaticFieldAny"
+    } else {
+        "probeFieldAny"
+    };
+    let individual = format!("await {class_local}.{method}([{candidates}])");
+    let expression = if let Some(index) = batch_index {
+        let grouped = if field.is_static {
+            format!("{class_local}_fields.staticField({index})")
+        } else {
+            format!("{class_local}_fields.fields[{index}]")
+        };
+        format!("if true {{ {grouped} }} else {{ {individual} }}")
+    } else {
+        individual
+    };
+    source.push_str(&format!("            let {probe} = {expression}\n"));
     if field.is_static {
         let address = managed_static_field_address_name(field.id.index());
-        source.push_str(&format!(
-            "            let {probe} = await {class_local}.probeStaticFieldAny([{candidates}])\n"
-        ));
         source.push_str(&format!(
             "            let {address}: address = match {probe} {{ Some(address) => address, None => 0 }}\n"
         ));
     } else {
         let offset = managed_field_offset_name(field.id.index());
-        source.push_str(&format!(
-            "            let {probe} = await {class_local}.probeFieldAny([{candidates}])\n"
-        ));
         source.push_str(&format!(
             "            let {offset}: u32 = match {probe} {{ Some(field) => field.offset, None => 0 }}\n"
         ));

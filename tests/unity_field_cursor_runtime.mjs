@@ -12,7 +12,7 @@ for (const backend of ["mono", "il2cpp"]) for (const width of [32, 64]) {
     const wide = width === 64, bytes = width / 8;
     const profile = profiles.builds.find(p => p.width === width && p.version === "V2");
     const modes = grouped
-        ? ["direct", "inherited", "shadowed", "ambiguous aliases", "unreadable offset", "large", "late grouped offset"]
+        ? ["direct", "inherited", "shadowed", "ambiguous aliases", "unreadable offset", "large", "late grouped offset", "absent optional fields", "absent required field"]
         : ["direct", "backing", "hole", "same slot", "ambiguous aliases", "inherited", "shadowed",
         "unreadable name", "unreadable offset", "null field array", "negative offset", "large",
         "ordinary MonoBehaviour", "System MonoBehaviour", "ordinary Object", "UnityEngine Object",
@@ -70,6 +70,7 @@ for (const backend of ["mono", "il2cpp"]) for (const width of [32, 64]) {
             if (mode === "object boundary" || mode === "System MonoBehaviour") text(0x61100n, "System");
         }
         if (mode === "backing") text(0x60000n, "<second>k__BackingField");
+        if (mode === "absent required field") text(0x60000n, "unrelated");
         if (["hole", "same slot", "ambiguous aliases", "unreadable name"].includes(mode)) {
             write(klass + count, countBytes, 2);
             ptr(table + stride + fieldName, 0x60100n); text(0x60100n, "second");
@@ -102,7 +103,8 @@ for (const backend of ["mono", "il2cpp"]) for (const width of [32, 64]) {
             for (let byte = 0; byte < countBytes; byte++) {
                 previousCount += memory.get(owner + count + BigInt(byte)) * 2 ** (byte * 8);
             }
-            for (const [index, field] of ["extraOne", "extraTwo", "extraThree"].entries()) {
+            const extras = mode === "absent optional fields" ? ["extraOne"] : ["extraOne", "extraTwo", "extraThree"];
+            for (const [index, field] of extras.entries()) {
                 const entry = table + BigInt(previousCount + index) * stride;
                 const fieldText = 0x62000n + BigInt(index) * 0x100n;
                 const offset = 0x14 + index * 4;
@@ -111,7 +113,7 @@ for (const backend of ["mono", "il2cpp"]) for (const width of [32, 64]) {
                 write((mono ? 0x18000n : 0x16000n) + BigInt(offset), 4, 43 + index);
                 if (inherited) write(0x36000n + BigInt(offset), 4, 99);
             }
-            write(owner + count, countBytes, previousCount + 3);
+            write(owner + count, countBytes, previousCount + extras.length);
             if (mode === "late grouped offset") {
                 const entry = table + BigInt(previousCount + 1) * stride;
                 memory.delete(entry + fieldValue);
@@ -124,7 +126,7 @@ for (const backend of ["mono", "il2cpp"]) for (const width of [32, 64]) {
         const { fixture: remote, repair } = fixture(mode);
         const host = await SplitScriptHost.instantiate(wasmPath);
         host.addProcess("game.exe", remote.process); host.start();
-        const rejected = ["ambiguous aliases", "shadowed", "negative offset", "engine boundary", "object boundary"].includes(mode);
+        const rejected = ["ambiguous aliases", "shadowed", "negative offset", "engine boundary", "object boundary", "absent required field"].includes(mode);
         if (rejected || repair) {
             host.update(150);
             assert(!host.messages.includes("42"), `${backend}/${width}/${mode}: invalid field published state`);
@@ -132,7 +134,7 @@ for (const backend of ["mono", "il2cpp"]) for (const width of [32, 64]) {
                 assert(!host.messages.some(message => message.startsWith("no Unity field")), "unreadable metadata was treated as absence");
                 repair(); host.updateUntil(() => host.messages.includes("42"), "late field metadata");
             } else {
-                const expected = mode.includes("boundary") ? "no Unity field" : mode === "negative offset" ? "thread-static" : "multiple Unity fields";
+                const expected = mode.includes("boundary") || mode === "absent required field" ? "no Unity field" : mode === "negative offset" ? "thread-static" : "multiple Unity fields";
                 assert(host.messages.some(message => message.includes(expected)
                     && message.includes("first") && message.includes("second")),
                     `${mode}: diagnostic must retain the reason and both field aliases: ${host.messages}`);

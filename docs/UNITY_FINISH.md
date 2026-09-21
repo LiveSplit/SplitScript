@@ -38,7 +38,8 @@ These are stored measurements, inspected without rebuilding:
 | `c46a76e` | 36,136 | Unqualified schema class matching |
 | `4473e70` | 34,436 | Passive GC string initializers |
 | `eedc9ff` | 33,234 | Grouped required-field binding |
-| Current tested working tree | 32,353 | Name-only lookup diagnostics |
+| `bb9485a` | 32,353 | Name-only lookup diagnostics |
+| Current tested working tree | 32,121 | Shared required/conditional binding |
 
 Historical evidence: `tests/baselines/unity.json` at each revision. Current
 evidence: `target/unity-baseline/report.json` (ephemeral build artifact).
@@ -512,3 +513,39 @@ the existing memory limits. No game was launched.
 complete final size acceptance. Directly returning a child future from a
 synchronous forwarding function is not currently supported; do not turn that
 into a general compiler optimization project as part of this migration.
+
+## Share conditional field binding with required fields
+
+The existing demand-selected binding loop now includes conditional fields.
+Its result separates final offsets/static addresses from original field
+metadata, so required fields read their values directly and conditional fields
+retain completed absence. Required absence still rejects attachment; unreadable
+metadata still retries. Inherited static storage uses the declaring owner.
+No partial group becomes visible to state reads. Small demanded groups retain
+their individual lookup paths, and unused required or conditional fields are
+removed before grouping and result-slot assignment.
+
+Explicit Lunistice shrinks **32,353 -> 32,121 bytes** (-232); automatic selection
+shrinks **144,418 -> 142,234 bytes** (-2,184). The explicit preparation poll
+shrinks from 3,166 to 2,904 bytes. The other 36 measured artifacts are unchanged
+in size. All 38 preserve their source fingerprints, runtime helper sets,
+scratch/read capacities, linear static data, and initial page counts.
+
+All 54 profile/code-generation tests pass, including unused nested Maps inside
+conditional groups. All 172 public runtime artifacts validate and all 210
+scenarios pass. The grouped fixture runs 36 cases per build profile across both
+backends and widths, including optional absence, required absence, late metadata,
+inherited owners, and bounded traversal. Both Release Lunistice editions,
+the reviewed baseline gate, documentation validation (561 pages), and Clippy
+with warnings denied pass. Evidence: `target/unity-optional-batch-slots-profiles.log`,
+`target/unity-optional-batch-slots-runtime.log`,
+`target/unity-optional-batch-slots-strict.log`,
+`target/unity-optional-batch-slots-docs.log`, and
+`target/unity-optional-batch-slots-clippy.log`.
+
+The full compiler suite also passes all 690 tests against this final source
+(`target/unity-optional-batch-slots-compiler.log`); Rustfmt passes. Every command
+used the existing serialized memory guard, without raising its limits.
+
+**Remaining:** remove another 2,122 bytes to get strictly below 30,000 and
+complete final size acceptance. No game was launched.

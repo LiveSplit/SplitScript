@@ -208,10 +208,9 @@ pub(super) fn prune(
     let mut batches = HashMap::new();
     let mut batch_inputs = HashMap::new();
     for class in &managed.classes {
-        if class.fields.len() >= crate::stdlib::MANAGED_BATCH_MIN_FIELDS {
+        if class.all_fields().count() >= crate::stdlib::MANAGED_BATCH_MIN_FIELDS {
             let selected = class
-                .fields
-                .iter()
+                .all_fields()
                 .map(|field| fields.contains(&field.id))
                 .collect::<Vec<_>>();
             let grouped = selected.iter().filter(|selected| **selected).count()
@@ -223,10 +222,17 @@ pub(super) fn prune(
                 remove.insert(name);
             }
             let mut slot = 0;
-            for (field, selected) in class.fields.iter().zip(selected) {
+            for (field, selected) in class.all_fields().zip(selected) {
                 let index = (grouped && selected).then_some(slot);
-                batches.insert(managed_field_offset_name(field.id.index()), index);
-                batches.insert(managed_static_field_address_name(field.id.index()), index);
+                if class.fields.iter().any(|required| required.id == field.id) {
+                    batches.insert(managed_field_offset_name(field.id.index()), index);
+                    batches.insert(managed_static_field_address_name(field.id.index()), index);
+                } else {
+                    batches.insert(
+                        format!("__field_{}_conditional_probe", field.id.index()),
+                        index,
+                    );
+                }
                 slot += usize::from(selected);
             }
         }
@@ -374,6 +380,18 @@ fn reindex_binding(expression: &mut Expr, slot: usize) {
         ExprKind::Index { index, .. } => {
             let ExprKind::Int { value, .. } = &mut index.kind else {
                 unreachable!("generated field uses a literal slot")
+            };
+            *value = slot as u64;
+        }
+        ExprKind::Call { args, .. } => {
+            let [
+                Expr {
+                    kind: ExprKind::Int { value, .. },
+                    ..
+                },
+            ] = args.as_mut_slice()
+            else {
+                unreachable!("generated static probe uses one literal slot")
             };
             *value = slot as u64;
         }

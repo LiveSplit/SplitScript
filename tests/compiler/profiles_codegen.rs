@@ -525,6 +525,60 @@ fn unused_range_types_do_not_change_wasm() {
 }
 
 #[test]
+fn grouped_conditional_field_binding_prunes_unused_slots() {
+    for provider in [
+        "Unity.il2cpp(Il2CppProfile.unity2022_3_0f1X64())",
+        "Unity.mono(MonoVersion.V2)",
+        "Unity",
+    ] {
+        let source = |extra: &str| {
+            format!(
+                r#"
+            enum Edition {{ Base, Extras }}
+            let edition: Edition
+            image "Assembly-CSharp" {{ class Probe {{
+                static i32 value;
+                if edition == Edition.Extras {{
+                    {extra}
+                    static i32 second; static i32 third; static i32 fourth;
+                }}
+            }} }}
+            state {provider} ["game.exe"] {{
+                value = Probe.value?;
+                second = if edition == Edition.Extras {{ Probe.second? }} else {{ 0 }};
+                third = if edition == Edition.Extras {{ Probe.third? }} else {{ 0 }};
+                fourth = if edition == Edition.Extras {{ Probe.fourth? }} else {{ 0 }};
+            }}
+            onAttach {{ edition = Edition.Extras }}
+        "#
+            )
+        };
+        let (plain, report) = release_emission(&source(""));
+        let (extra, extra_report) =
+            release_emission(&source("static Map<String, [String]> unobserved;"));
+        for wasm in [&plain, &extra] {
+            Validator::new_with_features(WasmFeatures::all())
+                .validate_all(wasm)
+                .unwrap();
+        }
+        assert_eq!(
+            plain.len(),
+            extra.len(),
+            "unused conditional field grew {provider}"
+        );
+        assert_eq!(report.runtime_helpers, extra_report.runtime_helpers);
+        assert_eq!(report.functions.len(), extra_report.functions.len());
+        assert!(!contains_string_literal(&extra, b"unobserved"));
+        assert!(
+            report
+                .functions
+                .iter()
+                .any(|(_, name)| name.contains("BindFields"))
+        );
+    }
+}
+
+#[test]
 fn class_verification_follows_reachable_snapshots_and_live_reads() {
     for selector in [
         "Unity.mono(MonoVersion.V2)",
