@@ -67,6 +67,8 @@ gameAssemblyView.setBigUint64(0x1400, 0x2500n, true);
 gameAssemblyView.setUint32(0x1418, 0x20, true);
 gameAssembly.set(new TextEncoder().encode("<Instance>k__BackingField\0"), 0x1500);
 gameAssemblyView.setBigUint64(0x1620, 0x2700n, true);
+// The singleton is a GameManager object, including its IL2CPP class header.
+gameAssemblyView.setBigUint64(0x1700, 0x1e00n, true);
 const managedScene = "Shrine01 🦊";
 gameAssemblyView.setUint32(0x1810, managedScene.length, true);
 for (let index = 0; index < managedScene.length; index += 1) {
