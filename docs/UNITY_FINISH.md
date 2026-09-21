@@ -37,7 +37,8 @@ These are stored measurements, inspected without rebuilding:
 | `36c30ef` | 36,922 | Remove unused linear-memory string copies |
 | `c46a76e` | 36,136 | Unqualified schema class matching |
 | `4473e70` | 34,436 | Passive GC string initializers |
-| Current tested working tree | 33,234 | Grouped required-field binding |
+| `eedc9ff` | 33,234 | Grouped required-field binding |
+| Current tested working tree | 32,353 | Name-only lookup diagnostics |
 
 Historical evidence: `tests/baselines/unity.json` at each revision. Current
 evidence: `target/unity-baseline/report.json` (ephemeral build artifact).
@@ -482,3 +483,32 @@ Clippy with warnings denied pass. Logs:
 
 **Remaining:** remove another 3,235 bytes to get strictly below 30,000, then
 complete the final size acceptance. No game was launched.
+
+## Remove array pretty-printing from lookup diagnostics
+
+Unity's seven class/field lookup diagnostics now join candidate names directly.
+They retain the failure reason and names without invoking structural array
+formatting. The shared field cursor's error branch must use the same formatting:
+changing only the outer lookup messages leaves the array formatter reachable.
+No lookup, alias expansion, suspension, or Lunistice source behavior changes.
+
+Explicit Lunistice shrinks **33,234 -> 32,353 bytes** (-881); automatic selection
+shrinks **145,268 -> 144,418 bytes** (-850). Five functions disappear: the array
+formatter and `QuoteDebugString`, `IndentDisplay`, `WrapDebugEntry`, and
+`WrapDebugVariant`. None of the 38 baseline artifacts grows; their sources,
+scratch/read capacities, linear static data, and initial page counts are
+unchanged. Native and non-Unity fixtures are unchanged in size.
+
+All 172 public runtime artifacts validate and all 210 scenarios pass. Field
+cursor rejection cases now assert that the same message contains both aliases
+and the failure reason, across both backends and widths, in both build profiles.
+Both Release Lunistice editions, the reviewed baseline gate, and documentation
+validation pass. Evidence: `target/unity-name-diagnostics-runtime.log`,
+`target/unity-name-diagnostics-strict.log`, and
+`target/unity-name-diagnostics-docs.log`. All builds and tests ran serially under
+the existing memory limits. No game was launched.
+
+**Remaining:** remove another 2,354 bytes to get strictly below 30,000, then
+complete final size acceptance. Directly returning a child future from a
+synchronous forwarding function is not currently supported; do not turn that
+into a general compiler optimization project as part of this migration.

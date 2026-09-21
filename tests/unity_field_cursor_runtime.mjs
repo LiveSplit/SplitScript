@@ -133,7 +133,9 @@ for (const backend of ["mono", "il2cpp"]) for (const width of [32, 64]) {
                 repair(); host.updateUntil(() => host.messages.includes("42"), "late field metadata");
             } else {
                 const expected = mode.includes("boundary") ? "no Unity field" : mode === "negative offset" ? "thread-static" : "multiple Unity fields";
-                assert(host.messages.some(message => message.includes(expected)), `${mode}: ${host.messages}`);
+                assert(host.messages.some(message => message.includes(expected)
+                    && message.includes("first") && message.includes("second")),
+                    `${mode}: diagnostic must retain the reason and both field aliases: ${host.messages}`);
                 host.setProcessOpen("game.exe", false); host.update();
                 host.addProcess("game.exe", fixture("direct").fixture.process);
                 host.updateUntil(() => host.messages.includes("42"), "reattach after rejected fields");

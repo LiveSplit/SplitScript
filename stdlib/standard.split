@@ -2583,7 +2583,7 @@ private struct UnityFields {
         loop {
             cursor = retry self.step(cursor, aliases, readCount)
             match cursor.error {
-                Some(error) => { print(`{error}: {names}`); await process.closed() },
+                Some(error) => { print(`{error}: {String.join(names, ", ")}`); await process.closed() },
                 None => {},
             }
             if cursor.current == 0 { return cursor.selected }
@@ -9534,9 +9534,9 @@ private struct UnityModule {
                 if cursor.selected != 0 { return UnityClass { address: cursor.selected, module: self } }
                 // A conflicting match ends the scan before its final index.
                 if cursor.index < cursor.count {
-                    print(`multiple Unity classes match metadata names {names}`)
+                    print(`multiple Unity classes match metadata names {String.join(names, ", ")}`)
                 } else {
-                    print(`no Unity class matches metadata names {names}`)
+                    print(`no Unity class matches metadata names {String.join(names, ", ")}`)
                 }
                 await process.closed()
             }
@@ -9715,7 +9715,7 @@ private struct UnityClass {
     ) -> async UnityField {
         let candidate = await self.probeFieldAny(names)
         let field = candidate else {
-            print(`no Unity field matches metadata names {names}`)
+            print(`no Unity field matches metadata names {String.join(names, ", ")}`)
             await process.closed()
         }
         return field
@@ -13877,7 +13877,7 @@ private struct MonoModule {
                 }
                 if visited == 0 { await nextTick(); continue }
                 if ambiguous {
-                    print(`multiple Unity classes match metadata names {names}`)
+                    print(`multiple Unity classes match metadata names {String.join(names, ", ")}`)
                     await process.closed()
                 } else if selectedClass != 0 {
                     return MonoClass {
@@ -13885,7 +13885,7 @@ private struct MonoModule {
                         module: self,
                     }
                 } else {
-                    print(`no Unity class matches metadata names {names}`)
+                    print(`no Unity class matches metadata names {String.join(names, ", ")}`)
                     await process.closed()
                 }
             }
@@ -13939,7 +13939,7 @@ private struct MonoModule {
         while true {
             let found = await self.probeFieldAnyInClass(classAddress, names)
             let field = found else {
-                print(`no Unity field matches metadata names {names}`)
+                print(`no Unity field matches metadata names {String.join(names, ", ")}`)
                 await process.closed()
             }
             return field
