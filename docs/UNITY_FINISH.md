@@ -36,7 +36,7 @@ These are stored measurements, inspected without rebuilding:
 | `2c0dc00` | 38,995 | Smaller lookup continuations |
 | `36c30ef` | 36,922 | Remove unused linear-memory string copies |
 | `c46a76e` | 36,136 | Unqualified schema class matching |
-| Current tested working tree | 34,436 | Passive GC string initializers |
+| `4473e70` | 34,436 | Passive GC string initializers |
 
 Historical evidence: `tests/baselines/unity.json` at each revision. Current
 evidence: `target/unity-baseline/report.json` (ephemeral build artifact).
@@ -381,3 +381,31 @@ Evidence: `target/unity-passive-strings-*.log`.
 
 **Remaining:** remove another 4,437 bytes to get strictly below 30,000, then
 complete final repository verification. No game was launched.
+
+### Follow-up verification and rejected experiment
+
+The reviewed 38-artifact baseline passes its strict comparison, including both
+Release Lunistice editions (`target/unity-passive-strings-baseline-strict.log`).
+Both profile importers also pass `--check` against the pinned ASR audit checkout
+(`target/unity-final-mono-profiles.log`, `target/unity-final-il2cpp-profiles.log`).
+
+The seven private adapter tests in `src/managed_collection_layout_tests.rs`
+still need a fresh run. Building the full library-test executable exceeded the
+1,536 MiB hard process-tree cap with native optimization levels 3, 1, and 0.
+These are build-resource failures, not executed test failures. The cap remains
+unchanged. Logs: `target/unity-final-private-build*.log`. The successful public
+compiler/runtime results above do not substitute for these private fixtures.
+
+An experiment replacing metadata-name debug arrays with joined strings was
+reverted: explicit Lunistice grew by 43 bytes and retained the same helpers.
+Its build and report (`target/unity-name-diagnostics-*`) are not evidence for
+the retained source. In particular, `target/release` binaries and the ephemeral
+`target/unity-baseline/report.json` from that experiment need rebuilding before
+further measurements; the checked-in baseline records the accepted 34,436 bytes.
+
+Inspection identified a specific follow-up: `codegen/dependencies.rs` retains
+all structural debug helpers whenever any structural debug formatter is used.
+Determine the actual formatter requirements before changing that dependency
+rule. No prospective saving is counted. Default async-frame construction was
+also investigated but left unchanged because the immutable dispatch tag
+prevents a direct `struct.new_default` substitution.
