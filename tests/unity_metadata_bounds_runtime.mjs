@@ -6,7 +6,7 @@ import {createIl2cppPeFixture} from './support/il2cpp_pe_fixture.mjs';
 
 const [wasm] = process.argv.slice(2);
 const profiles = JSON.parse(await readFile(new URL('./fixtures/mono-pe-profiles.json', import.meta.url)));
-const modes = ['valid', 'late image', 'late name', 'late count', 'late class',
+const modes = ['valid', 'named namespace', 'late image', 'late name', 'late count', 'late class',
     'class name null', 'class name unreadable', 'image overflow', 'name overflow',
     'assembly overflow', 'class overflow', 'class name overflow', 'table overflow',
     'excessive count', 'large', 'large retry', 'large images', 'large images retry', 'cancel'];
@@ -44,6 +44,8 @@ for (const route of ['mono image', 'mono assembly', 'il2cpp image']) for (const 
         const tableSlot = mono ? image + BigInt(wide ? 0x4e0 : 0x368) : f.typeInfo;
         const classSlot = table + (mono ? 0n : 8n * p);
         const pristine = new Map(memory);
+        // Unqualified source names match a class in any runtime namespace.
+        if (mode === 'named namespace') text(0x23000n, 'Game.Runtime');
         if (mode === 'late image') ptr(imageSlot,0);
         if (mode === 'late name') ptr(nameSlot,0);
         if (mode === 'late count') write(countSlot,4,0);
@@ -96,7 +98,7 @@ for (const route of ['mono image', 'mono assembly', 'il2cpp image']) for (const 
         const label=`${route}/${width}/${mode}`;
         let ticks=0, maximum=0;
         const update=()=>{const before=reads;host.update();maximum=Math.max(maximum,reads-before);ticks++;};
-        if (mode==='valid'||mode==='large'||mode==='large images') {
+        if (mode==='valid'||mode==='named namespace'||mode==='large'||mode==='large images') {
             while (!host.messages.includes('42')&&ticks<80) update();
             assert(host.messages.includes('42'),label);
             if (mode==='large'||mode==='large images') assert(ticks>=4,`${label}: monopolized one update`);

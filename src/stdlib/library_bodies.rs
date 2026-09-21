@@ -836,8 +836,15 @@ fn managed_backend_binding_source(
             .any(|(name, _)| name.contains('+'))
         {
             "classAny"
-        } else {
+        } else if !class.namespace.is_empty()
+            || class
+                .class
+                .metadata_name_candidates()
+                .any(|(name, _)| name.contains('.'))
+        {
             "classAnyFlat"
+        } else {
+            "classAnyUnqualified"
         };
         source.push_str(&format!(
             "            let {class_local} = await __image_{image_index}.{class_lookup}([{candidates}])\n"
@@ -1493,7 +1500,7 @@ mod tests {
 
         let source = managed_preparation_source(&program, "__prepare", "", None, &[]);
         assert!(source.contains("await __runtime.image(\"Assembly-CSharp\")"));
-        assert!(source.contains("await __image_0.classAnyFlat([\"GameManager\"])"));
+        assert!(source.contains("await __image_0.classAnyUnqualified([\"GameManager\"])"));
         assert!(source.contains("__runtime.pointerBytes()"));
         assert!(!source.contains("__runtime.il2cpp"));
         assert!(!source.contains("__runtime.mono"));

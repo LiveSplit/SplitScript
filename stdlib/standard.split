@@ -2659,6 +2659,27 @@ private struct UnityMetadataImage {
             },
         }
     }
+
+    private fn classAnyUnqualified(names: [String]) -> async UnityMetadataClass {
+        return match self.backend {
+            UnityRuntimeBackend.Il2cpp => {
+                let image = self.il2cpp else await process.closed()
+                UnityMetadataClass {
+                    backend: self.backend,
+                    il2cpp: await image.classAnyUnqualified(names),
+                    mono: None,
+                }
+            },
+            UnityRuntimeBackend.Mono => {
+                let image = self.mono else await process.closed()
+                UnityMetadataClass {
+                    backend: self.backend,
+                    il2cpp: None,
+                    mono: await image.classAnyUnqualified(names),
+                }
+            },
+        }
+    }
 }
 
 /// Backend-neutral class used only by generated Unity schema binding.
@@ -9593,6 +9614,12 @@ private struct UnityImage {
         return await self.module.findClass(self.address, names, (class, candidate, name) => matcher.matchesFlat(class, candidate, name))
     }
 
+    // The schema binder has already proved every candidate has no namespace
+    // or declaring-class qualifier. Do not retain their parsers in this case.
+    private fn classAnyUnqualified(names: [String]) -> async UnityClass {
+        return await self.module.findClass(self.address, names, (class, candidate, name) => Ok(candidate == name))
+    }
+
 
 }
 
@@ -14032,6 +14059,12 @@ private struct MonoImage {
     private fn classAnyFlat(names: [String]) -> async MonoClass {
         let matcher = self.classNames()
         return await self.module.classAnyInImage(self.address, names, (class, candidate, name) => matcher.matchesFlat(class, candidate, name))
+    }
+
+    // The schema binder has already proved every candidate has no namespace
+    // or declaring-class qualifier. Do not retain their parsers in this case.
+    private fn classAnyUnqualified(names: [String]) -> async MonoClass {
+        return await self.module.classAnyInImage(self.address, names, (class, candidate, name) => Ok(candidate == name))
     }
 }
 

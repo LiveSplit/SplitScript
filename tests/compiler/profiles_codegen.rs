@@ -174,7 +174,7 @@ fn flat_schema_names_omit_nested_matching_and_unused_nested_declarations() {
         );
         let (wasm, report) = release_emission(&source);
         assert!(
-            report
+            !report
                 .functions
                 .iter()
                 .any(|(_, name)| name.ends_with("UnityClassNamesMatchesFlat"))
@@ -193,6 +193,18 @@ fn flat_schema_names_omit_nested_matching_and_unused_nested_declarations() {
             "{source}\nimage \"Unused\" {{ class Nested from \"Other.Outer+Leaf\" {{ static i32 value; }} }}"
         );
         assert_eq!(wasm, release_emission(&unused).0);
+        // Either a declaration namespace or a qualified alias needs the flat
+        // matcher. Bare aliases keep their existing namespace-agnostic meaning.
+        for qualified in [
+            source.replace("class Probe {", "class Probe from \"Game.Probe\" {"),
+            source.replace("class Probe {", "class Probe from [\"Probe\", \"Game.Probe\"] {"),
+            source.replace("image \"Assembly-CSharp\" { class Probe { static i32 value; } }",
+                "image \"Assembly-CSharp\" { namespace Game { class Probe { static i32 value; } } }"),
+        ] {
+            let (wasm, report) = release_emission(&qualified);
+            assert!(report.functions.iter().any(|(_, name)| name.ends_with("UnityClassNamesMatchesFlat")));
+            Validator::new_with_features(WasmFeatures::all()).validate_all(&wasm).unwrap();
+        }
         let nested = source.replace("class Probe {", "class Probe from \"Game.Outer+Probe\" {");
         let (wasm, report) = release_emission(&nested);
         assert!(

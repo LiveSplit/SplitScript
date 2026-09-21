@@ -34,7 +34,8 @@ These are stored measurements, inspected without rebuilding:
 | `c4b0e39` | 41,504 | Debug-only descriptor sanity checks |
 | `c5089e5` | 40,194 | Direct field binding |
 | `2c0dc00` | 38,995 | Smaller lookup continuations |
-| Current tested working tree | 36,922 | Remove unused linear-memory string copies |
+| `36c30ef` | 36,922 | Remove unused linear-memory string copies |
+| Current tested working tree | 36,136 | Unqualified schema class matching |
 
 Historical evidence: `tests/baselines/unity.json` at each revision. Current
 evidence: `target/unity-baseline/report.json` (ephemeral build artifact).
@@ -325,4 +326,30 @@ The strict regression baseline, documentation validation, Rustfmt, and Clippy
 with warnings denied pass under the resource guard.
 
 **Remaining:** remove another 6,923 bytes to get strictly below 30,000, then
+complete final repository verification. No game was launched.
+
+
+## Unqualified schema class matching
+
+Generated binding selects a simple comparison when every candidate for that
+class lacks namespace and declaring-class qualifiers. Qualified aliases and
+namespace declarations keep the flat matcher; nested names keep declaring-chain
+matching. The decision is per class, so an unused qualified declaration cannot
+force a parser into an otherwise simple script. Runtime ambiguity checks and
+unqualified names' namespace-agnostic meaning are preserved.
+
+Explicit Lunistice shrinks **36,922 -> 36,136 bytes** (-786); automatic selection
+shrinks **159,829 -> 158,930 bytes** (-899). Explicit output no longer retains
+`StringRFind` or `StringSlice` for class matching. None of the 38 baseline
+artifacts grows; source fingerprints, scratch/read capacities, and initial page
+counts are unchanged, and no new runtime helper is retained.
+
+All 50 profile/code-generation tests pass, including qualified, mixed-alias,
+namespace, nested, and unused-declaration cases. All 33 metadata artifacts and
+38 runtime scenarios pass. The bounds fixture now has 108 cases per build
+profile, including unqualified names in nonempty runtime namespaces at both
+pointer widths. Both Release Lunistice editions, documentation, Rustfmt, and
+Clippy with warnings denied pass. Logs: `target/unity-unqualified-*.log`.
+
+**Remaining:** remove another 6,137 bytes to get strictly below 30,000, then
 complete final repository verification. No game was launched.
