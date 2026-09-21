@@ -112,18 +112,22 @@ impl StaticData {
             if !reachability.contains_expression(expression.id) {
                 continue;
             }
-            match &expression.kind {
-                wasm_ir::ExpressionKind::String(value) => {
-                    strings.intern(value);
-                }
-                wasm_ir::ExpressionKind::InterpolatedString(parts) => {
-                    for part in parts {
-                        if let wasm_ir::InterpolatedPart::Text(value) = part {
-                            strings.intern(value);
-                        }
-                    }
-                }
-                _ => {}
+            // Ordinary literals are emitted as GC arrays. Only module queries
+            // pass an expression's literal directly to the linear-memory ABI.
+            // Interning every reachable literal also retained discarded error
+            // messages from Unity's fallible metadata readers.
+            if let wasm_ir::ExpressionKind::Call { target, arguments } = &expression.kind
+                && super::resolved_intrinsic(target)
+                    == Some(crate::stdlib::IntrinsicId::ProcessModule)
+            {
+                let wasm_ir::ExpressionKind::String(name) = &wasm_ir
+                    .expression(arguments[0])
+                    .expect("module name belongs to Wasm IR")
+                    .kind
+                else {
+                    unreachable!("module queries require a literal name")
+                };
+                strings.intern(name);
             }
         }
         let mut signatures = SignaturePool::new();

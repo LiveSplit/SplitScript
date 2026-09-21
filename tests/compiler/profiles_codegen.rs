@@ -10,11 +10,7 @@ fn explicit_il2cpp_profiles_omit_the_measured_catalog_and_version_lookup() {
     Validator::new_with_features(WasmFeatures::all())
         .validate_all(&wasm)
         .unwrap();
-    assert!(
-        !wasm
-            .windows(b"UnityPlayer.dll".len())
-            .any(|bytes| bytes == b"UnityPlayer.dll")
-    );
+    assert!(!contains_string_literal(&wasm, b"UnityPlayer.dll"));
     for (_, function) in &report.functions {
         assert!(
             !function.contains("Il2CppProfileSelect") && !function.contains("Il2CppProfileUnity"),
@@ -105,6 +101,65 @@ fn release_emission(source: &str) -> (Vec<u8>, splitscript::compiler::CodegenRep
 }
 
 #[test]
+fn static_strings_follow_abi_demand_instead_of_expression_reachability() {
+    let source = r#"
+        state "game.exe" {}
+        fn probe() -> u32! { throw "discarded metadata error" }
+        onAttach {
+            let module = await process.module("required.dll")
+            print("GC-only literal")
+            print(`GC-only interpolation {module.address}`)
+            print(probe() else 0)
+        }
+    "#;
+    let checked = splitscript::check(splitscript::parse(source).unwrap()).unwrap();
+    for profile in [
+        splitscript::BuildProfile::Debug,
+        splitscript::BuildProfile::Release,
+    ] {
+        let (wasm, report) = splitscript::compiler::codegen_with_report(
+            &checked,
+            splitscript::CompilerOptions {
+                profile,
+                ..Default::default()
+            },
+        );
+        Validator::new_with_features(WasmFeatures::all())
+            .validate_all(&wasm)
+            .unwrap();
+        assert_eq!(
+            report.static_data_end - u64::from(report.static_data_start),
+            ("game.exe".len() + "required.dll".len()) as u64
+        );
+        assert!(contains_string_literal(&wasm, b"GC-only literal"));
+        assert!(contains_string_literal(&wasm, b"GC-only interpolation "));
+        let data: Vec<_> = Parser::new(0)
+            .parse_all(&wasm)
+            .filter_map(|payload| {
+                if let Payload::DataSection(section) = payload.unwrap() {
+                    Some(
+                        section
+                            .into_iter()
+                            .flat_map(|segment| segment.unwrap().data.to_vec())
+                            .collect::<Vec<_>>(),
+                    )
+                } else {
+                    None
+                }
+            })
+            .flatten()
+            .collect();
+        assert!(
+            data.windows(b"required.dll".len())
+                .any(|bytes| bytes == b"required.dll")
+        );
+        for absent in [b"GC-only".as_slice(), b"discarded metadata error"] {
+            assert!(!data.windows(absent.len()).any(|bytes| bytes == absent));
+        }
+    }
+}
+
+#[test]
 fn flat_schema_names_omit_nested_matching_and_unused_nested_declarations() {
     for provider in [
         "Unity",
@@ -130,11 +185,10 @@ fn flat_schema_names_omit_nested_matching_and_unused_nested_declarations() {
                 .iter()
                 .any(|(_, name)| name.ends_with("UnityClassNamesMatches"))
         );
-        assert!(
-            !wasm
-                .windows(b"Unity profile lacks nested class metadata".len())
-                .any(|bytes| bytes == b"Unity profile lacks nested class metadata")
-        );
+        assert!(!contains_string_literal(
+            &wasm,
+            b"Unity profile lacks nested class metadata"
+        ));
         let unused = format!(
             "{source}\nimage \"Unused\" {{ class Nested from \"Other.Outer+Leaf\" {{ static i32 value; }} }}"
         );
@@ -210,9 +264,7 @@ fn explicit_mono_families_exclude_build_identity_discovery() {
                 "GameAssembly.dll",
             ] {
                 assert!(
-                    !wasm
-                        .windows(player.len())
-                        .any(|bytes| bytes == player.as_bytes()),
+                    !contains_string_literal(&wasm, player.as_bytes()),
                     "explicit {selector}/{family} retained {player}"
                 );
             }
@@ -284,9 +336,7 @@ fn managed_metadata_demand_ignores_dead_and_debug_reads() {
             "AnotherAbsentClass",
         ] {
             assert!(
-                !wasm
-                    .windows(name.len())
-                    .any(|bytes| bytes == name.as_bytes()),
+                !contains_string_literal(&wasm, name.as_bytes()),
                 "retained {name} in {provider}"
             );
         }
@@ -359,14 +409,12 @@ fn class_verification_follows_reachable_snapshots_and_live_reads() {
                 snapshot,
                 "{selector}: {expression}"
             );
-            assert!(
-                !wasm
-                    .windows(b"UnusedSnapshot".len())
-                    .any(|s| s == b"UnusedSnapshot")
-            );
+            assert!(!contains_string_literal(&wasm, b"UnusedSnapshot"));
             assert_eq!(
-                wasm.windows(b"managed snapshot object is incompatible".len())
-                    .any(|s| s == b"managed snapshot object is incompatible"),
+                report
+                    .functions
+                    .iter()
+                    .any(|(_, name)| name.contains("ObjectClass")),
                 snapshot,
                 "{selector}: {expression}"
             );
@@ -387,10 +435,7 @@ fn managed_snapshot_demand_keeps_unprojected_instance_fields() {
     Validator::new_with_features(WasmFeatures::all())
         .validate_all(&wasm)
         .unwrap();
-    assert!(
-        wasm.windows(b"snapshotText".len())
-            .any(|bytes| bytes == b"snapshotText")
-    );
+    assert!(contains_string_literal(&wasm, b"snapshotText"));
     assert!(
         report
             .runtime_helpers
@@ -419,7 +464,7 @@ fn managed_metadata_keeps_automatic_evidence_but_prunes_unused_explicit_shape_fi
             .validate_all(&wasm)
             .unwrap();
         for name in [b"evidenceBase", b"evidenceDemo"] {
-            assert_eq!(wasm.windows(name.len()).any(|bytes| bytes == name), present);
+            assert_eq!(contains_string_literal(&wasm, name), present);
         }
     }
 }
@@ -2129,16 +2174,8 @@ fn debug_statements_are_checked_but_erased_from_release_lowering() {
         b"debug local".as_slice(),
         b"runtime_print_message".as_slice(),
     ] {
-        assert!(
-            debug
-                .windows(debug_only.len())
-                .any(|bytes| bytes == debug_only)
-        );
-        assert!(
-            !release
-                .windows(debug_only.len())
-                .any(|bytes| bytes == debug_only)
-        );
+        assert!(contains_string_literal(&debug, debug_only));
+        assert!(!contains_string_literal(&release, debug_only));
     }
     let count_globals = |wasm: &[u8]| {
         Parser::new(0)
@@ -2187,7 +2224,7 @@ fn debug_bindings_support_suspension_and_are_erased_from_release() {
             .validate_all(&release)
             .unwrap();
         assert!(release.len() < debug.len());
-        assert!(!release.windows(10).any(|bytes| bytes == b"debug-only"));
+        assert!(!contains_string_literal(&release, b"debug-only"));
     }
 }
 
@@ -2302,33 +2339,25 @@ fn compiles_a_complete_autosplitter_to_valid_wasm_gc() {
 }
 
 #[test]
-fn linear_memory_grows_for_large_static_data_without_an_unused_scratch_page() {
-    let source = format!(
-        "state \"game.exe\" {{}}\nwhileAttached {{ print(\"{}\") }}",
-        "x".repeat(70_000)
-    );
-    let wasm = splitscript::compile(&source).expect("large static strings should compile");
-    let minimum_pages = Parser::new(0)
-        .parse_all(&wasm)
-        .find_map(
-            |payload| match payload.expect("generated module should parse") {
-                Payload::MemorySection(memories) => Some(
-                    memories
-                        .into_iter()
-                        .next()
-                        .expect("generated module should declare memory")
-                        .expect("generated memory should parse")
-                        .initial,
-                ),
-                _ => None,
-            },
-        )
-        .expect("generated module should contain a memory section");
-
-    assert_eq!(minimum_pages, 2);
-    Validator::new_with_features(WasmFeatures::all())
-        .validate_all(&wasm)
-        .expect("large static-data WebAssembly GC should validate");
+fn linear_memory_grows_only_for_large_strings_used_by_the_linear_abi() {
+    for (body, minimum_pages) in [
+        // Settings reserve ABI scratch before their linear string data.
+        (
+            format!("settings {{ \"{}\" => enabled: true }}", "x".repeat(70_000)),
+            3,
+        ),
+        (
+            format!("whileAttached {{ print(\"{}\") }}", "x".repeat(70_000)),
+            1,
+        ),
+    ] {
+        let source = format!("state \"game.exe\" {{}}\n{body}");
+        let (wasm, report) = release_emission(&source);
+        assert_eq!(report.minimum_memory_pages, minimum_pages);
+        Validator::new_with_features(WasmFeatures::all())
+            .validate_all(&wasm)
+            .expect("large strings must validate in either representation");
+    }
 }
 
 #[test]
@@ -2402,7 +2431,7 @@ fn compiles_attach_await_and_print_hello_world() {
         b"GameAssembly.dll".as_slice(),
         b"Hello, world from SplitScript!".as_slice(),
     ] {
-        assert!(wasm.windows(expected.len()).any(|bytes| bytes == expected));
+        assert!(contains_string_literal(&wasm, expected));
     }
 }
 
@@ -2480,7 +2509,7 @@ fn compiles_the_complete_settings_showcase() {
         b"Layout File".as_slice(),
         b"image/*".as_slice(),
     ] {
-        assert!(wasm.windows(expected.len()).any(|bytes| bytes == expected));
+        assert!(contains_string_literal(&wasm, expected));
     }
 }
 

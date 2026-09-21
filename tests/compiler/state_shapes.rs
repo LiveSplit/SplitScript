@@ -1,5 +1,7 @@
 use wasmparser::{Validator, WasmFeatures};
 
+use super::contains_string_literal;
+
 #[test]
 fn optional_expression_state_fields_contextualize_none() {
     let source = r#"
@@ -229,10 +231,7 @@ fn automatic_shape_failure_report_names_observations_and_source_candidates() {
     Validator::new_with_features(WasmFeatures::all())
         .validate_all(&wasm)
         .expect("the attachment report should emit valid Wasm GC");
-    let contains = |needle: &str| {
-        wasm.windows(needle.len())
-            .any(|window| window == needle.as_bytes())
-    };
+    let contains = |needle: &str| contains_string_literal(&wasm, needle.as_bytes());
     assert!(contains(
         "Could not select the attachment shape: managed metadata did not match any declared shape"
     ));

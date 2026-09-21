@@ -23,6 +23,34 @@ const EXAMPLE: &str = include_str!("../examples/lunistice.split");
 const HELLO: &str = include_str!("../examples/hello_lunistice.split");
 const SETTINGS_EXAMPLE: &str = include_str!("../examples/lso_desktop_settings.split");
 
+// Runtime strings may live in linear data or be constructed by GC byte-array
+// instructions. Reachability assertions must inspect both representations.
+fn contains_string_literal(wasm: &[u8], needle: &[u8]) -> bool {
+    if wasm.windows(needle.len()).any(|bytes| bytes == needle) {
+        return true;
+    }
+    for payload in Parser::new(0).parse_all(wasm) {
+        if let Payload::CodeSectionEntry(body) = payload.unwrap() {
+            let mut bytes = Vec::new();
+            for operator in body.get_operators_reader().unwrap() {
+                match operator.unwrap() {
+                    wasmparser::Operator::I32Const { value } if (0..=255).contains(&value) => {
+                        bytes.push(value as u8);
+                    }
+                    wasmparser::Operator::ArrayNewFixed { .. } => {
+                        if bytes.windows(needle.len()).any(|part| part == needle) {
+                            return true;
+                        }
+                        bytes.clear();
+                    }
+                    _ => bytes.clear(),
+                }
+            }
+        }
+    }
+    false
+}
+
 #[path = "compiler/async_runtime.rs"]
 mod async_runtime;
 #[path = "compiler/catalogs_types.rs"]

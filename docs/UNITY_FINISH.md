@@ -33,7 +33,8 @@ These are stored measurements, inspected without rebuilding:
 | `7545e6f` | 43,627 | Bounded image scan and fixed-width discovery |
 | `c4b0e39` | 41,504 | Debug-only descriptor sanity checks |
 | `c5089e5` | 40,194 | Direct field binding |
-| Current tested working tree | 38,995 | Smaller lookup continuations |
+| `2c0dc00` | 38,995 | Smaller lookup continuations |
+| Current tested working tree | 36,922 | Remove unused linear-memory string copies |
 
 Historical evidence: `tests/baselines/unity.json` at each revision. Current
 evidence: `target/unity-baseline/report.json` (ephemeral build artifact).
@@ -287,4 +288,41 @@ editions pass, and documentation validation passes. Logs are
 `target/unity-lookup-continuations-*.log`.
 
 **Remaining:** remove another 8,996 bytes to get strictly below 30,000, then
+complete final repository verification. No game was launched.
+
+
+## Remove unused linear-memory string copies
+
+The static-data planner interned every reachable string expression, although
+ordinary strings are constructed as GC arrays. This also retained text from
+Unity metadata errors whose payload construction was already omitted. Static
+strings now follow their actual ABI consumers: process and module names,
+settings, pointer paths, and attachment-shape reports. GC string construction,
+error behavior, signature data, and the output pipeline are unchanged. This
+fixes demand-driven emission; it does not introduce the deferred general
+optimization passes or the earlier string-pooling experiment.
+
+Explicit Lunistice shrinks **38,995 -> 36,922 bytes** (-2,073); automatic selection
+shrinks **167,631 -> 159,829 bytes** (-7,802). All 38 artifacts shrink or remain
+unchanged. Source fingerprints, function-body byte counts, type/function counts,
+helper sets, scratch capacity, and initial pages are identical. Both Release
+Lunistice editions pass.
+
+Reachability tests now inspect GC byte-array instructions as well as literal
+bytes. New checks cover retained module-query data, omitted GC/error copies, and
+large strings that do or do not require linear memory. The compiler run passed
+684 tests; its sole failure was an outdated page-count expectation in the new
+settings case. After correcting that expectation, all 50 profile tests and the
+targeted signature-data test pass.
+
+The full public runtime catalog compiled and validated 170 artifacts and passed
+207 of 208 scenarios. The remaining smoke fixture supplied a GameManager object
+without its IL2CPP class header, so the existing nominal-class check rejected it.
+Adding the missing header makes that scenario pass as well. No runtime behavior
+was changed to accommodate the fixture. Logs: `target/unity-static-data-*.log`.
+
+The strict regression baseline, documentation validation, Rustfmt, and Clippy
+with warnings denied pass under the resource guard.
+
+**Remaining:** remove another 6,923 bytes to get strictly below 30,000, then
 complete final repository verification. No game was launched.

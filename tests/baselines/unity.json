@@ -1,6 +1,6 @@
 {
   "format_version": 1,
-  "compiler": "0.1.0 (c5089e5209bb)",
+  "compiler": "0.1.0 (2c0dc00840ca)",
   "rustc": "rustc 1.98.1 (48a229cea 2026-09-01)",
   "node": "v24.14.0",
   "compiler_build": "optimized",
@@ -9,11 +9,11 @@
   "fixtures": {
     "elf-build-id": {
       "source_fingerprint": "ead9b1584fa2fad0",
-      "compile_micros": 184590,
-      "module_bytes": 7718,
+      "compile_micros": 180601,
+      "module_bytes": 7168,
       "sections": {
         "10:code": 6299,
-        "11:data": 575,
+        "11:data": 25,
         "1:type": 371,
         "2:import": 206,
         "3:function": 13,
@@ -87,17 +87,17 @@
         "scratch_bytes": 56,
         "abi_read_capacity": 56,
         "static_data_start": 65536,
-        "static_data_end": 66099,
+        "static_data_end": 65551,
         "minimum_memory_pages": 2
       }
     },
     "elf-export": {
       "source_fingerprint": "5834cad14b38fb57",
-      "compile_micros": 96843,
-      "module_bytes": 14867,
+      "compile_micros": 91397,
+      "module_bytes": 13989,
       "sections": {
         "10:code": 12894,
-        "11:data": 903,
+        "11:data": 25,
         "1:type": 593,
         "2:import": 203,
         "3:function": 20,
@@ -211,17 +211,17 @@
         "scratch_bytes": 4096,
         "abi_read_capacity": 56,
         "static_data_start": 65536,
-        "static_data_end": 66427,
+        "static_data_end": 65551,
         "minimum_memory_pages": 2
       }
     },
     "il2cpp-array": {
       "source_fingerprint": "32b05803960248f8",
-      "compile_micros": 137373,
-      "module_bytes": 37982,
+      "compile_micros": 136749,
+      "module_bytes": 35118,
       "sections": {
         "10:code": 31814,
-        "11:data": 3047,
+        "11:data": 183,
         "1:type": 2400,
         "2:import": 206,
         "3:function": 216,
@@ -880,17 +880,17 @@
         "scratch_bytes": 10264,
         "abi_read_capacity": 16,
         "static_data_start": 65536,
-        "static_data_end": 68563,
+        "static_data_end": 65700,
         "minimum_memory_pages": 2
       }
     },
     "il2cpp-auto-profile": {
       "source_fingerprint": "37fd82bc7487fe96",
-      "compile_micros": 204597,
-      "module_bytes": 150482,
+      "compile_micros": 199600,
+      "module_bytes": 143376,
       "sections": {
         "10:code": 136539,
-        "11:data": 7523,
+        "11:data": 417,
         "1:type": 5413,
         "2:import": 214,
         "3:function": 491,
@@ -2157,17 +2157,17 @@
         "scratch_bytes": 4120,
         "abi_read_capacity": 56,
         "static_data_start": 65536,
-        "static_data_end": 73039,
+        "static_data_end": 65934,
         "minimum_memory_pages": 2
       }
     },
     "il2cpp-inline-array": {
       "source_fingerprint": "1f316155b8185be4",
-      "compile_micros": 134366,
-      "module_bytes": 26802,
+      "compile_micros": 130057,
+      "module_bytes": 25364,
       "sections": {
         "10:code": 22674,
-        "11:data": 1621,
+        "11:data": 183,
         "1:type": 1881,
         "2:import": 206,
         "3:function": 128,
@@ -2648,17 +2648,17 @@
         "scratch_bytes": 4120,
         "abi_read_capacity": 16,
         "static_data_start": 65536,
-        "static_data_end": 67137,
+        "static_data_end": 65700,
         "minimum_memory_pages": 2
       }
     },
     "il2cpp-instances": {
       "source_fingerprint": "88b331674c01cf45",
-      "compile_micros": 125219,
-      "module_bytes": 19956,
+      "compile_micros": 128073,
+      "module_bytes": 19094,
       "sections": {
         "10:code": 16763,
-        "11:data": 1045,
+        "11:data": 183,
         "1:type": 1445,
         "2:import": 355,
         "3:function": 70,
@@ -3022,17 +3022,17 @@
         "scratch_bytes": 4120,
         "abi_read_capacity": 16,
         "static_data_start": 65536,
-        "static_data_end": 66561,
+        "static_data_end": 65700,
         "minimum_memory_pages": 2
       }
     },
     "il2cpp-list": {
       "source_fingerprint": "fdba54c66643392a",
-      "compile_micros": 138173,
-      "module_bytes": 44257,
+      "compile_micros": 141231,
+      "module_bytes": 40641,
       "sections": {
         "10:code": 37072,
-        "11:data": 3799,
+        "11:data": 183,
         "1:type": 2606,
         "2:import": 206,
         "3:function": 258,
@@ -3766,17 +3766,17 @@
         "scratch_bytes": 10264,
         "abi_read_capacity": 16,
         "static_data_start": 65536,
-        "static_data_end": 69315,
+        "static_data_end": 65700,
         "minimum_memory_pages": 2
       }
     },
     "il2cpp-map": {
       "source_fingerprint": "6369c2fef54be9f6",
-      "compile_micros": 155453,
-      "module_bytes": 59393,
+      "compile_micros": 155331,
+      "module_bytes": 53901,
       "sections": {
         "10:code": 49474,
-        "11:data": 5675,
+        "11:data": 183,
         "1:type": 3362,
         "2:import": 214,
         "3:function": 336,
@@ -4696,17 +4696,17 @@
         "scratch_bytes": 10264,
         "abi_read_capacity": 16,
         "static_data_start": 65536,
-        "static_data_end": 71191,
+        "static_data_end": 65700,
         "minimum_memory_pages": 2
       }
     },
     "il2cpp-nested-array": {
       "source_fingerprint": "ec81d7bea3801a18",
-      "compile_micros": 136293,
-      "module_bytes": 39357,
+      "compile_micros": 139301,
+      "module_bytes": 36493,
       "sections": {
         "10:code": 33060,
-        "11:data": 3047,
+        "11:data": 183,
         "1:type": 2509,
         "2:import": 206,
         "3:function": 231,
@@ -5380,17 +5380,17 @@
         "scratch_bytes": 10264,
         "abi_read_capacity": 16,
         "static_data_start": 65536,
-        "static_data_end": 68563,
+        "static_data_end": 65700,
         "minimum_memory_pages": 2
       }
     },
     "il2cpp-scalar": {
       "source_fingerprint": "934760e2d8311a59",
-      "compile_micros": 135417,
-      "module_bytes": 26493,
+      "compile_micros": 133086,
+      "module_bytes": 25055,
       "sections": {
         "10:code": 22435,
-        "11:data": 1621,
+        "11:data": 183,
         "1:type": 1824,
         "2:import": 206,
         "3:function": 115,
@@ -5849,17 +5849,17 @@
         "scratch_bytes": 4120,
         "abi_read_capacity": 16,
         "static_data_start": 65536,
-        "static_data_end": 67137,
+        "static_data_end": 65700,
         "minimum_memory_pages": 2
       }
     },
     "il2cpp-set": {
       "source_fingerprint": "a06963419700f4f1",
-      "compile_micros": 152826,
-      "module_bytes": 59312,
+      "compile_micros": 148907,
+      "module_bytes": 53846,
       "sections": {
         "10:code": 49412,
-        "11:data": 5649,
+        "11:data": 183,
         "1:type": 3365,
         "2:import": 214,
         "3:function": 340,
@@ -6789,17 +6789,17 @@
         "scratch_bytes": 10264,
         "abi_read_capacity": 16,
         "static_data_start": 65536,
-        "static_data_end": 71165,
+        "static_data_end": 65700,
         "minimum_memory_pages": 2
       }
     },
     "il2cpp-string": {
       "source_fingerprint": "568809964bba959a",
-      "compile_micros": 128759,
-      "module_bytes": 27458,
+      "compile_micros": 129426,
+      "module_bytes": 26020,
       "sections": {
         "10:code": 23368,
-        "11:data": 1621,
+        "11:data": 183,
         "1:type": 1849,
         "2:import": 206,
         "3:function": 122,
@@ -7270,17 +7270,17 @@
         "scratch_bytes": 10264,
         "abi_read_capacity": 16,
         "static_data_start": 65536,
-        "static_data_end": 67137,
+        "static_data_end": 65700,
         "minimum_memory_pages": 2
       }
     },
     "il2cpp-unused-string": {
       "source_fingerprint": "38dc9194fccfb639",
-      "compile_micros": 129123,
-      "module_bytes": 26493,
+      "compile_micros": 128565,
+      "module_bytes": 25055,
       "sections": {
         "10:code": 22435,
-        "11:data": 1621,
+        "11:data": 183,
         "1:type": 1824,
         "2:import": 206,
         "3:function": 115,
@@ -7739,17 +7739,17 @@
         "scratch_bytes": 4120,
         "abi_read_capacity": 16,
         "static_data_start": 65536,
-        "static_data_end": 67137,
+        "static_data_end": 65700,
         "minimum_memory_pages": 2
       }
     },
     "il2cpp-x86-profile": {
       "source_fingerprint": "edc069673e15919a",
-      "compile_micros": 129988,
-      "module_bytes": 27715,
+      "compile_micros": 130859,
+      "module_bytes": 26208,
       "sections": {
         "10:code": 23463,
-        "11:data": 1766,
+        "11:data": 259,
         "1:type": 1864,
         "2:import": 206,
         "3:function": 124,
@@ -8223,17 +8223,17 @@
         "scratch_bytes": 4120,
         "abi_read_capacity": 16,
         "static_data_start": 65536,
-        "static_data_end": 67282,
+        "static_data_end": 65776,
         "minimum_memory_pages": 2
       }
     },
     "local-map": {
       "source_fingerprint": "f2f2aeaf86f8d4ff",
-      "compile_micros": 90090,
-      "module_bytes": 4860,
+      "compile_micros": 87645,
+      "module_bytes": 4797,
       "sections": {
         "10:code": 4015,
-        "11:data": 79,
+        "11:data": 16,
         "1:type": 319,
         "2:import": 149,
         "3:function": 33,
@@ -8413,17 +8413,17 @@
         "scratch_bytes": 0,
         "abi_read_capacity": 0,
         "static_data_start": 0,
-        "static_data_end": 71,
+        "static_data_end": 8,
         "minimum_memory_pages": 1
       }
     },
     "local-set": {
       "source_fingerprint": "b288825dd79bff60",
-      "compile_micros": 87448,
-      "module_bytes": 3181,
+      "compile_micros": 88208,
+      "module_bytes": 3124,
       "sections": {
         "10:code": 2481,
-        "11:data": 73,
+        "11:data": 16,
         "1:type": 186,
         "2:import": 149,
         "3:function": 21,
@@ -8539,17 +8539,17 @@
         "scratch_bytes": 0,
         "abi_read_capacity": 0,
         "static_data_start": 0,
-        "static_data_end": 65,
+        "static_data_end": 8,
         "minimum_memory_pages": 1
       }
     },
     "lunistice": {
       "source_fingerprint": "2ba678ddbcbe8ce5",
-      "compile_micros": 133325,
-      "module_bytes": 38995,
+      "compile_micros": 137948,
+      "module_bytes": 36922,
       "sections": {
         "10:code": 32921,
-        "11:data": 2657,
+        "11:data": 584,
         "1:type": 2485,
         "2:import": 390,
         "3:function": 207,
@@ -9185,17 +9185,17 @@
         "scratch_bytes": 10264,
         "abi_read_capacity": 16,
         "static_data_start": 65536,
-        "static_data_end": 68173,
+        "static_data_end": 66100,
         "minimum_memory_pages": 2
       }
     },
     "lunistice-auto": {
       "source_fingerprint": "4a11e3dc8fb25579",
-      "compile_micros": 217926,
-      "module_bytes": 167631,
+      "compile_micros": 224551,
+      "module_bytes": 159829,
       "sections": {
         "10:code": 151370,
-        "11:data": 8620,
+        "11:data": 818,
         "1:type": 6317,
         "2:import": 406,
         "3:function": 575,
@@ -10683,17 +10683,17 @@
         "scratch_bytes": 10264,
         "abi_read_capacity": 56,
         "static_data_start": 65536,
-        "static_data_end": 74136,
+        "static_data_end": 66334,
         "minimum_memory_pages": 2
       }
     },
     "mach-export": {
       "source_fingerprint": "6a46f83e542b1a52",
-      "compile_micros": 93614,
-      "module_bytes": 13510,
+      "compile_micros": 90774,
+      "module_bytes": 12453,
       "sections": {
         "10:code": 11423,
-        "11:data": 1082,
+        "11:data": 25,
         "1:type": 527,
         "2:import": 203,
         "3:function": 21,
@@ -10812,17 +10812,17 @@
         "scratch_bytes": 4096,
         "abi_read_capacity": 32,
         "static_data_start": 65536,
-        "static_data_end": 66606,
+        "static_data_end": 65551,
         "minimum_memory_pages": 2
       }
     },
     "mach-uuid": {
       "source_fingerprint": "5106d448d3c16584",
-      "compile_micros": 89490,
-      "module_bytes": 4308,
+      "compile_micros": 90169,
+      "module_bytes": 3976,
       "sections": {
         "10:code": 3228,
-        "11:data": 357,
+        "11:data": 25,
         "1:type": 252,
         "2:import": 206,
         "3:function": 11,
@@ -10886,17 +10886,17 @@
         "scratch_bytes": 32,
         "abi_read_capacity": 32,
         "static_data_start": 65536,
-        "static_data_end": 65881,
+        "static_data_end": 65551,
         "minimum_memory_pages": 2
       }
     },
     "mono-array": {
       "source_fingerprint": "364311585c26906f",
-      "compile_micros": 131965,
-      "module_bytes": 44522,
+      "compile_micros": 130181,
+      "module_bytes": 41651,
       "sections": {
         "10:code": 38658,
-        "11:data": 2934,
+        "11:data": 63,
         "1:type": 2250,
         "2:import": 206,
         "3:function": 178,
@@ -11465,17 +11465,17 @@
         "scratch_bytes": 10248,
         "abi_read_capacity": 16,
         "static_data_start": 65536,
-        "static_data_end": 68451,
+        "static_data_end": 65582,
         "minimum_memory_pages": 2
       }
     },
     "mono-inherited-static": {
       "source_fingerprint": "d849259d66b37bb4",
-      "compile_micros": 131195,
-      "module_bytes": 39305,
+      "compile_micros": 215510,
+      "module_bytes": 36967,
       "sections": {
         "10:code": 34255,
-        "11:data": 2401,
+        "11:data": 63,
         "1:type": 2012,
         "2:import": 206,
         "3:function": 137,
@@ -11956,17 +11956,17 @@
         "scratch_bytes": 4104,
         "abi_read_capacity": 16,
         "static_data_start": 65536,
-        "static_data_end": 67918,
+        "static_data_end": 65582,
         "minimum_memory_pages": 2
       }
     },
     "mono-inline-array": {
       "source_fingerprint": "df99a0b6b4ca1a73",
-      "compile_micros": 130684,
-      "module_bytes": 37065,
+      "compile_micros": 225422,
+      "module_bytes": 35118,
       "sections": {
         "10:code": 32564,
-        "11:data": 2010,
+        "11:data": 63,
         "1:type": 1877,
         "2:import": 206,
         "3:function": 116,
@@ -12417,17 +12417,17 @@
         "scratch_bytes": 4104,
         "abi_read_capacity": 16,
         "static_data_start": 65536,
-        "static_data_end": 67527,
+        "static_data_end": 65582,
         "minimum_memory_pages": 2
       }
     },
     "mono-instances": {
       "source_fingerprint": "f8114e5628a14dee",
-      "compile_micros": 125158,
-      "module_bytes": 29401,
+      "compile_micros": 211693,
+      "module_bytes": 28114,
       "sections": {
         "10:code": 25944,
-        "11:data": 1350,
+        "11:data": 63,
         "1:type": 1408,
         "2:import": 355,
         "3:function": 66,
@@ -12781,17 +12781,17 @@
         "scratch_bytes": 4104,
         "abi_read_capacity": 16,
         "static_data_start": 65536,
-        "static_data_end": 66867,
+        "static_data_end": 65582,
         "minimum_memory_pages": 2
       }
     },
     "mono-linux-explicit": {
       "source_fingerprint": "69be4bc008e9c6ca",
-      "compile_micros": 129061,
-      "module_bytes": 42297,
+      "compile_micros": 241394,
+      "module_bytes": 40024,
       "sections": {
         "10:code": 37294,
-        "11:data": 2312,
+        "11:data": 39,
         "1:type": 2061,
         "2:import": 206,
         "3:function": 132,
@@ -13227,17 +13227,17 @@
         "scratch_bytes": 4104,
         "abi_read_capacity": 56,
         "static_data_start": 65536,
-        "static_data_end": 67829,
+        "static_data_end": 65558,
         "minimum_memory_pages": 2
       }
     },
     "mono-list": {
       "source_fingerprint": "2d7619314ff3eebd",
-      "compile_micros": 132034,
-      "module_bytes": 50727,
+      "compile_micros": 251965,
+      "module_bytes": 47130,
       "sections": {
         "10:code": 43898,
-        "11:data": 3660,
+        "11:data": 63,
         "1:type": 2443,
         "2:import": 206,
         "3:function": 217,
@@ -13881,17 +13881,17 @@
         "scratch_bytes": 10248,
         "abi_read_capacity": 16,
         "static_data_start": 65536,
-        "static_data_end": 69177,
+        "static_data_end": 65582,
         "minimum_memory_pages": 2
       }
     },
     "mono-mac-explicit": {
       "source_fingerprint": "c948452567507ec7",
-      "compile_micros": 129230,
-      "module_bytes": 43374,
+      "compile_micros": 237225,
+      "module_bytes": 40807,
       "sections": {
         "10:code": 38092,
-        "11:data": 2606,
+        "11:data": 39,
         "1:type": 2047,
         "2:import": 206,
         "3:function": 131,
@@ -14342,17 +14342,17 @@
         "scratch_bytes": 4104,
         "abi_read_capacity": 32,
         "static_data_start": 65536,
-        "static_data_end": 68123,
+        "static_data_end": 65558,
         "minimum_memory_pages": 2
       }
     },
     "mono-map": {
       "source_fingerprint": "62f56d824ad6e361",
-      "compile_micros": 153032,
-      "module_bytes": 66453,
+      "compile_micros": 255653,
+      "module_bytes": 60980,
       "sections": {
         "10:code": 56893,
-        "11:data": 5536,
+        "11:data": 63,
         "1:type": 3178,
         "2:import": 214,
         "3:function": 300,
@@ -15182,17 +15182,17 @@
         "scratch_bytes": 10248,
         "abi_read_capacity": 16,
         "static_data_start": 65536,
-        "static_data_end": 71053,
+        "static_data_end": 65582,
         "minimum_memory_pages": 2
       }
     },
     "mono-nested-array": {
       "source_fingerprint": "ac4cf6167d643ecf",
-      "compile_micros": 127700,
-      "module_bytes": 45877,
+      "compile_micros": 233805,
+      "module_bytes": 43006,
       "sections": {
         "10:code": 39892,
-        "11:data": 2934,
+        "11:data": 63,
         "1:type": 2355,
         "2:import": 206,
         "3:function": 192,
@@ -15776,17 +15776,17 @@
         "scratch_bytes": 10248,
         "abi_read_capacity": 16,
         "static_data_start": 65536,
-        "static_data_end": 68451,
+        "static_data_end": 65582,
         "minimum_memory_pages": 2
       }
     },
     "mono-old": {
       "source_fingerprint": "0f71900d22e0bafa",
-      "compile_micros": 125726,
-      "module_bytes": 37034,
+      "compile_micros": 255528,
+      "module_bytes": 35080,
       "sections": {
         "10:code": 32575,
-        "11:data": 2017,
+        "11:data": 63,
         "1:type": 1836,
         "2:import": 206,
         "3:function": 108,
@@ -16226,17 +16226,17 @@
         "scratch_bytes": 4104,
         "abi_read_capacity": 16,
         "static_data_start": 65536,
-        "static_data_end": 67534,
+        "static_data_end": 65582,
         "minimum_memory_pages": 2
       }
     },
     "mono-profiles-auto": {
       "source_fingerprint": "37fd82bc7487fe96",
-      "compile_micros": 199712,
-      "module_bytes": 150482,
+      "compile_micros": 364920,
+      "module_bytes": 143376,
       "sections": {
         "10:code": 136539,
-        "11:data": 7523,
+        "11:data": 417,
         "1:type": 5413,
         "2:import": 214,
         "3:function": 491,
@@ -17503,17 +17503,17 @@
         "scratch_bytes": 4120,
         "abi_read_capacity": 56,
         "static_data_start": 65536,
-        "static_data_end": 73039,
+        "static_data_end": 65934,
         "minimum_memory_pages": 2
       }
     },
     "mono-scalar": {
       "source_fingerprint": "e70ab4de5b26343a",
-      "compile_micros": 125048,
-      "module_bytes": 36757,
+      "compile_micros": 221669,
+      "module_bytes": 34810,
       "sections": {
         "10:code": 32325,
-        "11:data": 2010,
+        "11:data": 63,
         "1:type": 1820,
         "2:import": 206,
         "3:function": 104,
@@ -17942,17 +17942,17 @@
         "scratch_bytes": 4104,
         "abi_read_capacity": 16,
         "static_data_start": 65536,
-        "static_data_end": 67527,
+        "static_data_end": 65582,
         "minimum_memory_pages": 2
       }
     },
     "mono-set": {
       "source_fingerprint": "6f04dff54c392572",
-      "compile_micros": 146865,
-      "module_bytes": 66376,
+      "compile_micros": 261080,
+      "module_bytes": 60929,
       "sections": {
         "10:code": 56835,
-        "11:data": 5510,
+        "11:data": 63,
         "1:type": 3181,
         "2:import": 214,
         "3:function": 304,
@@ -18792,17 +18792,17 @@
         "scratch_bytes": 10248,
         "abi_read_capacity": 16,
         "static_data_start": 65536,
-        "static_data_end": 71027,
+        "static_data_end": 65582,
         "minimum_memory_pages": 2
       }
     },
     "mono-string": {
       "source_fingerprint": "573aadb9694d6a6d",
-      "compile_micros": 124630,
-      "module_bytes": 37720,
+      "compile_micros": 245061,
+      "module_bytes": 35773,
       "sections": {
         "10:code": 33258,
-        "11:data": 2010,
+        "11:data": 63,
         "1:type": 1845,
         "2:import": 206,
         "3:function": 109,
@@ -19243,17 +19243,17 @@
         "scratch_bytes": 10248,
         "abi_read_capacity": 16,
         "static_data_start": 65536,
-        "static_data_end": 67527,
+        "static_data_end": 65582,
         "minimum_memory_pages": 2
       }
     },
     "mono-unused-string": {
       "source_fingerprint": "8840055e14f8d9da",
-      "compile_micros": 123468,
-      "module_bytes": 36757,
+      "compile_micros": 228092,
+      "module_bytes": 34810,
       "sections": {
         "10:code": 32325,
-        "11:data": 2010,
+        "11:data": 63,
         "1:type": 1820,
         "2:import": 206,
         "3:function": 104,
@@ -19682,13 +19682,13 @@
         "scratch_bytes": 4104,
         "abi_read_capacity": 16,
         "static_data_start": 65536,
-        "static_data_end": 67527,
+        "static_data_end": 65582,
         "minimum_memory_pages": 2
       }
     },
     "native": {
       "source_fingerprint": "9733d9cb885f7136",
-      "compile_micros": 82773,
+      "compile_micros": 148234,
       "module_bytes": 615,
       "sections": {
         "10:code": 194,
@@ -19728,11 +19728,11 @@
     },
     "pe-debug-id": {
       "source_fingerprint": "7c84c46d1b10e5e4",
-      "compile_micros": 89337,
-      "module_bytes": 7135,
+      "compile_micros": 157304,
+      "module_bytes": 6609,
       "sections": {
         "10:code": 5805,
-        "11:data": 555,
+        "11:data": 29,
         "1:type": 301,
         "2:import": 206,
         "3:function": 14,
@@ -19811,17 +19811,17 @@
         "scratch_bytes": 32,
         "abi_read_capacity": 28,
         "static_data_start": 65536,
-        "static_data_end": 66079,
+        "static_data_end": 65555,
         "minimum_memory_pages": 2
       }
     },
     "unity-nested-metadata": {
       "source_fingerprint": "02d531da636f05c0",
-      "compile_micros": 203054,
-      "module_bytes": 152564,
+      "compile_micros": 378748,
+      "module_bytes": 145406,
       "sections": {
         "10:code": 138520,
-        "11:data": 7575,
+        "11:data": 417,
         "1:type": 5458,
         "2:import": 214,
         "3:function": 495,
@@ -21099,7 +21099,7 @@
         "scratch_bytes": 4120,
         "abi_read_capacity": 56,
         "static_data_start": 65536,
-        "static_data_end": 73091,
+        "static_data_end": 65934,
         "minimum_memory_pages": 2
       }
     }

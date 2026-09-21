@@ -1165,9 +1165,7 @@ fn debug_only_reachability_warns_transitively_and_offers_erasure_fixes() {
     )
     .expect("applying the suggested modifiers should produce a release build");
     assert!(
-        !release
-            .windows(b"debug-profile-marker".len())
-            .any(|bytes| bytes == b"debug-profile-marker"),
+        !contains_string_literal(&release, b"debug-profile-marker"),
         "release reachability should erase the complete debug-only helper chain"
     );
 }

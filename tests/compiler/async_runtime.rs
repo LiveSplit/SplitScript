@@ -2916,7 +2916,7 @@ fn process_fallbacks_and_awaited_module_values_are_typed_and_persistent() {
         .validate_all(&wasm)
         .expect("module GC values should validate");
     for expected in [b"full.exe".as_slice(), b"demo.exe".as_slice()] {
-        assert!(wasm.windows(expected.len()).any(|bytes| bytes == expected));
+        assert!(contains_string_literal(&wasm, expected));
     }
 }
 
@@ -5471,11 +5471,7 @@ fn unreachable_user_functions_and_their_dependencies_are_omitted() {
         .validate_all(&wasm)
         .expect("pruned function indices should remain valid");
 
-    assert!(
-        !wasm
-            .windows(DEAD_STRING.len())
-            .any(|window| window == DEAD_STRING)
-    );
+    assert!(!contains_string_literal(&wasm, DEAD_STRING));
     let imports = Parser::new(0)
         .parse_all(&wasm)
         .filter_map(|payload| match payload.unwrap() {
