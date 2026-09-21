@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::{cell::RefCell, collections::HashMap};
 
 use wasm_encoder::{ConstExpr, DataSection};
 
@@ -28,6 +28,55 @@ pub(super) struct StringPool {
     base: u32,
     bytes: Vec<u8>,
     entries: HashMap<String, (u32, u32)>,
+}
+
+/// Passive initializer bytes for GC strings, collected only during emission.
+/// These bytes never occupy linear memory or require a runtime reader helper.
+#[derive(Default)]
+pub(super) struct GcStringLiterals {
+    segment: Option<u32>,
+    pool: RefCell<GcStringPool>,
+}
+
+#[derive(Default)]
+struct GcStringPool {
+    bytes: Vec<u8>,
+    offsets: HashMap<String, u32>,
+}
+
+impl GcStringLiterals {
+    pub fn enable(&mut self, segment: u32) {
+        self.segment = Some(segment);
+    }
+
+    pub fn intern(&self, value: &str) -> Option<(u32, u32)> {
+        let segment = self.segment?;
+        // Short strings do not reliably recover the data-section and operand
+        // overhead. Keep their existing fixed-array encoding.
+        if value.len() < 32 {
+            return None;
+        }
+        let mut pool = self.pool.borrow_mut();
+        let offset = if let Some(offset) = pool.offsets.get(value) {
+            *offset
+        } else {
+            let offset = u32::try_from(pool.bytes.len()).expect("GC string data must fit wasm32");
+            pool.bytes.extend_from_slice(value.as_bytes());
+            pool.offsets.insert(value.to_owned(), offset);
+            offset
+        };
+        Some((segment, offset))
+    }
+
+    pub fn append_to(&self, data: &mut DataSection) -> bool {
+        let pool = self.pool.borrow();
+        if pool.bytes.is_empty() {
+            return false;
+        }
+        assert_eq!(self.segment, Some(data.len()));
+        data.passive(pool.bytes.iter().copied());
+        true
+    }
 }
 
 #[derive(Clone, Copy)]
@@ -177,6 +226,12 @@ impl StaticData {
 
     pub fn layout(&self) -> LinearMemoryLayout {
         self.layout
+    }
+
+    pub fn segment_count(&self) -> u32 {
+        u32::from(!self.strings.bytes.is_empty())
+            + u32::from(!self.signatures.bytes.is_empty())
+            + u32::from(self.float_format.is_some())
     }
 
     pub fn encode(&self) -> DataSection {

@@ -612,7 +612,7 @@ fn compile_internal(inputs: BackendProgram<'_>, report: Option<&mut CodegenRepor
     let gc_types::EncodedTypes {
         section: mut types,
         next_type_index: first_import_type,
-        layout: gc,
+        layout: mut gc,
     } = gc_types::encode(gc_types::Inputs {
         standard_library: &standard_library,
         program,
@@ -631,6 +631,9 @@ fn compile_internal(inputs: BackendProgram<'_>, report: Option<&mut CodegenRepor
         range_types: &range_types,
         reachability: &reachability,
     });
+    if wasm_ir.profile() == crate::BuildProfile::Release {
+        gc.string_literals.enable(static_data.segment_count());
+    }
     let mut function_types = function_types::FunctionTypes::new(first_import_type);
     let imports::EncodedImports {
         section: imports,
@@ -1182,6 +1185,7 @@ fn compile_internal(inputs: BackendProgram<'_>, report: Option<&mut CodegenRepor
             codes: codes.finish(),
         },
         &static_data,
+        &gc.string_literals,
         start_function,
         update_function,
         debug_artifacts.as_ref(),
@@ -2176,6 +2180,16 @@ fn emit_integer_literal(function: &mut Function, value: u64, negative: bool, ty:
 }
 
 fn emit_string_literal(function: &mut Function, value: &str, gc: &GcLayout) {
+    if let Some((segment, offset)) = gc.string_literals.intern(value) {
+        function
+            .instruction(&Instruction::I32Const(offset as i32))
+            .instruction(&Instruction::I32Const(value.len() as i32))
+            .instruction(&Instruction::ArrayNewData {
+                array_type_index: gc.standard_index(StdlibTypeId::String),
+                array_data_index: segment,
+            });
+        return;
+    }
     for byte in value.bytes() {
         function.instruction(&Instruction::I32Const(byte as i32));
     }

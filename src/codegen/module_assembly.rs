@@ -1,11 +1,15 @@
 use std::borrow::Cow;
 
 use wasm_encoder::{
-    CodeSection, CustomSection, ElementSection, Elements, ExportKind, ExportSection,
-    FunctionSection, GlobalSection, ImportSection, MemorySection, MemoryType, Module, TypeSection,
+    CodeSection, CustomSection, DataCountSection, ElementSection, Elements, ExportKind,
+    ExportSection, FunctionSection, GlobalSection, ImportSection, MemorySection, MemoryType,
+    Module, TypeSection,
 };
 
-use super::{data_plan::StaticData, debug_artifacts::DebugArtifactPlan};
+use super::{
+    data_plan::{GcStringLiterals, StaticData},
+    debug_artifacts::DebugArtifactPlan,
+};
 
 pub(super) struct Sections {
     pub types: TypeSection,
@@ -19,6 +23,7 @@ pub(super) struct Sections {
 pub(super) fn finish(
     sections: Sections,
     data: &StaticData,
+    string_literals: &GcStringLiterals,
     start_function: u32,
     update_function: u32,
     debug: Option<&DebugArtifactPlan>,
@@ -43,7 +48,8 @@ pub(super) fn finish(
     exports.export("memory", ExportKind::Memory, 0);
     exports.export("_start", ExportKind::Func, start_function);
     exports.export("update", ExportKind::Func, update_function);
-    let data = data.encode();
+    let mut data = data.encode();
+    let has_passive_strings = string_literals.append_to(&mut data);
     let mut elements = ElementSection::new();
     if !referenced_functions.is_empty() {
         elements.declared(Elements::Functions(Cow::Owned(referenced_functions)));
@@ -58,6 +64,9 @@ pub(super) fn finish(
     module.section(&exports);
     if !elements.is_empty() {
         module.section(&elements);
+    }
+    if has_passive_strings {
+        module.section(&DataCountSection { count: data.len() });
     }
     module.section(&codes);
     module.section(&data);

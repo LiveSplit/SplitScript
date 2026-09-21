@@ -160,6 +160,78 @@ fn static_strings_follow_abi_demand_instead_of_expression_reachability() {
 }
 
 #[test]
+fn release_long_gc_literals_use_demanded_passive_data() {
+    let marker = "metadata literal 🦊 repeated across allocations, long enough for passive data";
+    let source = format!(
+        r#"
+        state "game.exe" {{}}
+        fn first() -> String {{ return "{marker}" }}
+        fn second() -> String {{ return "{marker}" }}
+        fn discarded() -> u32! {{ throw "unused metadata payload that must not reach passive data" }}
+        whileAttached {{ print(first()); print(second()); print(discarded() else 0) }}
+    "#
+    );
+    let checked = splitscript::check(splitscript::parse(&source).unwrap()).unwrap();
+    for profile in [
+        splitscript::BuildProfile::Debug,
+        splitscript::BuildProfile::Release,
+    ] {
+        let (wasm, report) = splitscript::compiler::codegen_with_report(
+            &checked,
+            splitscript::CompilerOptions {
+                profile,
+                ..Default::default()
+            },
+        );
+        Validator::new_with_features(WasmFeatures::all())
+            .validate_all(&wasm)
+            .unwrap();
+        let mut passive = Vec::new();
+        let mut data_arrays = 0;
+        let mut has_data_count = false;
+        for payload in Parser::new(0).parse_all(&wasm) {
+            match payload.unwrap() {
+                Payload::DataSection(section) => {
+                    for segment in section {
+                        let segment = segment.unwrap();
+                        if matches!(segment.kind, wasmparser::DataKind::Passive) {
+                            passive.extend_from_slice(segment.data);
+                        }
+                    }
+                }
+                Payload::DataCountSection { .. } => has_data_count = true,
+                Payload::CodeSectionEntry(body) => {
+                    for op in body.get_operators_reader().unwrap() {
+                        if matches!(op.unwrap(), wasmparser::Operator::ArrayNewData { .. }) {
+                            data_arrays += 1;
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+        let release = profile == splitscript::BuildProfile::Release;
+        assert_eq!(has_data_count, release);
+        assert_eq!(data_arrays, if release { 2 } else { 0 });
+        assert_eq!(passive, if release { marker.as_bytes() } else { &[] });
+        assert_eq!(
+            report.static_data_end - u64::from(report.static_data_start),
+            "game.exe".len() as u64
+        );
+    }
+
+    let small = r#"state "game.exe" {} whileAttached { print("short") }"#;
+    let (baseline, _) = release_emission(small);
+    let unused = format!(r#"{small} fn unused() {{ print("{marker}") }}"#);
+    assert_eq!(baseline, release_emission(&unused).0);
+    assert!(
+        !Parser::new(0)
+            .parse_all(&baseline)
+            .any(|p| matches!(p.unwrap(), Payload::DataCountSection { .. }))
+    );
+}
+
+#[test]
 fn flat_schema_names_omit_nested_matching_and_unused_nested_declarations() {
     for provider in [
         "Unity",

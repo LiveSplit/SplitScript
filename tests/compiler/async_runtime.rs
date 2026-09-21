@@ -379,6 +379,39 @@ fn execute_with_mock_host(source: &str) -> (wasmtime::Store<AsyncTestHost>, wasm
     execute_with_mock_host_with_profile(source, splitscript::BuildProfile::Debug)
 }
 
+#[test]
+fn release_gc_data_literals_remain_available_across_suspensions() {
+    let marker = "metadata literal 🦊 must survive repeated GC allocations and suspension";
+    let source = format!(
+        r#"
+        state "game.exe" {{}}
+        fn message() -> String {{ return "{marker}" }}
+        onAttach {{
+            print(message())
+            await nextTick()
+            print(message())
+            print(message().byteLength())
+        }}
+    "#
+    );
+    let (mut store, instance) =
+        execute_with_mock_host_with_profile(&source, splitscript::BuildProfile::Release);
+    let update = instance
+        .get_typed_func::<(), ()>(&mut store, "update")
+        .unwrap();
+    for _ in 0..10 {
+        update.call(&mut store, ()).unwrap();
+    }
+    assert_eq!(
+        store.data().messages,
+        [
+            marker.to_owned(),
+            marker.to_owned(),
+            marker.len().to_string()
+        ]
+    );
+}
+
 fn execute_with_mock_host_with_profile(
     source: &str,
     profile: splitscript::BuildProfile,

@@ -25,6 +25,7 @@ use super::{
 
 pub(super) struct GcLayout {
     pub standard_library: StandardLibrary,
+    pub string_literals: super::data_plan::GcStringLiterals,
     standard: HashMap<StdlibTypeId, u32>,
     standard_fields: HashMap<StdlibFieldId, u32>,
     async_frame: u32,
@@ -399,6 +400,7 @@ impl GcLayout {
 
         Self {
             standard_library,
+            string_literals: Default::default(),
             standard,
             standard_fields,
             async_frame,

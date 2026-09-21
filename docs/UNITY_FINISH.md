@@ -35,7 +35,8 @@ These are stored measurements, inspected without rebuilding:
 | `c5089e5` | 40,194 | Direct field binding |
 | `2c0dc00` | 38,995 | Smaller lookup continuations |
 | `36c30ef` | 36,922 | Remove unused linear-memory string copies |
-| Current tested working tree | 36,136 | Unqualified schema class matching |
+| `c46a76e` | 36,136 | Unqualified schema class matching |
+| Current tested working tree | 34,436 | Passive GC string initializers |
 
 Historical evidence: `tests/baselines/unity.json` at each revision. Current
 evidence: `target/unity-baseline/report.json` (ephemeral build artifact).
@@ -352,4 +353,31 @@ pointer widths. Both Release Lunistice editions, documentation, Rustfmt, and
 Clippy with warnings denied pass. Logs: `target/unity-unqualified-*.log`.
 
 **Remaining:** remove another 6,137 bytes to get strictly below 30,000, then
+complete final repository verification. No game was launched.
+
+## Passive GC string initializers
+
+Release emits GC string literals of at least 32 UTF-8 bytes with `array.new_data`
+instead of one constant instruction per byte. One passive segment stores the
+initializer bytes, deduplicating identical text while preserving separate GC
+allocations. Bytes are collected only when a constructor is actually emitted;
+discarded error payloads and unreachable functions retain no initializer data.
+This directly reduces the diagnostic-string overhead introduced by source-defined
+Unity discovery. General compiler optimization passes remain deferred.
+
+Explicit Lunistice shrinks **36,136 -> 34,436 bytes** (-1,700); automatic selection
+shrinks **158,930 -> 147,572 bytes** (-11,358). The explicit artifact removes
+2,553 code bytes and adds 853 bytes of passive data and section metadata. None
+of the 38 baseline artifacts grows. Source fingerprints, type/function counts,
+helper sets, scratch/read capacities, and initial pages are unchanged. Passive
+bytes occupy no linear memory. Debug encoding remains unchanged: the checked
+IL2CPP fixture is byte-identical excluding compiler-identity metadata.
+
+All 687 compiler tests pass, including demand-driven initializer retention and
+Unicode allocation across suspensions. The full public runtime catalog validates
+170 artifacts and passes 208 scenarios; both Release Lunistice editions pass.
+Documentation validation (561 pages) and Clippy with warnings denied pass.
+Evidence: `target/unity-passive-strings-*.log`.
+
+**Remaining:** remove another 4,437 bytes to get strictly below 30,000, then
 complete final repository verification. No game was launched.
