@@ -409,3 +409,26 @@ Determine the actual formatter requirements before changing that dependency
 rule. No prospective saving is counted. Default async-frame construction was
 also investigated but left unchanged because the immutable dispatch tag
 prevents a direct `struct.new_default` substitution.
+
+### Private adapter verification completed
+
+All seven groups from `src/managed_collection_layout_tests.rs` now pass against
+the retained compiler source at `460eb35`. To avoid compiling unrelated library
+unit tests, a temporary Cargo example used a copy of the production crate root
+plus the existing fixture module, removing only its `#[test]` attributes and
+calling the seven functions sequentially. No assertions, input fixtures, Node
+harnesses, or production behavior were changed. The temporary example entry and
+source were removed after execution.
+
+The guarded build passed at 1,473 MiB peak and execution at 634 MiB. Both Wasm
+profiles cover collection type contracts, list layouts, keyed layouts/slots,
+Mono declaring-owner static paths, and IL2CPP plain/generic storage. The latter
+two run 462 and 330 cases respectively in each profile. Evidence:
+`target/unity-private-runner-build.log`, `target/unity-private-runner-runtime.log`.
+This closes the private-fixture gap above without raising the memory cap.
+
+The first field-grouping prototype was removed before compilation: grouping
+lookups before managed demand pruning would retain unused field lookups. Any
+future grouping must be selected only after actual field demand is known and
+preserve the individual-lookup path for partially used schemas. No source or
+size change from that prototype is retained. The accepted size remains 34,436.
