@@ -205,7 +205,31 @@ pub(super) fn prune(
     }
     let mut images = HashMap::new();
     let mut needed_images = HashSet::new();
+    let mut batches = HashMap::new();
+    let mut batch_inputs = HashMap::new();
     for class in &managed.classes {
+        if class.fields.len() >= crate::stdlib::MANAGED_BATCH_MIN_FIELDS {
+            let selected = class
+                .fields
+                .iter()
+                .map(|field| fields.contains(&field.id))
+                .collect::<Vec<_>>();
+            let grouped = selected.iter().filter(|selected| **selected).count()
+                >= crate::stdlib::MANAGED_BATCH_MIN_FIELDS;
+            let name = format!("__class_{}_fields", class.id.index());
+            if grouped {
+                batch_inputs.insert(name, selected.clone());
+            } else {
+                remove.insert(name);
+            }
+            let mut slot = 0;
+            for (field, selected) in class.fields.iter().zip(selected) {
+                let index = (grouped && selected).then_some(slot);
+                batches.insert(managed_field_offset_name(field.id.index()), index);
+                batches.insert(managed_static_field_address_name(field.id.index()), index);
+                slot += usize::from(selected);
+            }
+        }
         let next = images.len();
         let image = *images.entry(&class.image_name).or_insert(next);
         let needed = reference_classes.contains(&class.id)
@@ -244,7 +268,8 @@ pub(super) fn prune(
         .map(|f| f.id)
         .collect::<HashSet<_>>();
     // An empty, unused class still has a lookup even without binding fields.
-    if removed_fields.is_empty()
+    if batches.is_empty()
+        && removed_fields.is_empty()
         && needed_images.len() == images.len()
         && managed
             .classes
@@ -266,30 +291,105 @@ pub(super) fn prune(
         .iter_mut()
         .find(|f| f.name == PROVIDER_PREPARATION_FUNCTION)
         .expect("bindings have a preparation function");
-    prune_block(&mut preparation.body, &remove);
+    prune_block(&mut preparation.body, &remove, &batches, &batch_inputs);
     semantics.remove_generated_struct_literal_fields(&removed_fields);
     Some(pruned)
 }
 
-fn prune_block(block: &mut Block, remove: &HashSet<String>) {
+fn prune_block(
+    block: &mut Block,
+    remove: &HashSet<String>,
+    batches: &HashMap<String, Option<usize>>,
+    batch_inputs: &HashMap<String, Vec<bool>>,
+) {
     block.statements.retain_mut(|statement| {
         match statement {
-            Stmt::Variable(variable) => return !remove.contains(&variable.name),
+            Stmt::Variable(variable) => {
+                if remove.contains(&variable.name) {
+                    return false;
+                }
+                if let Some(selected) = batch_inputs.get(&variable.name) {
+                    let ExprKind::Suspend { value, .. } =
+                        &mut variable.value.as_mut().unwrap().kind
+                    else {
+                        unreachable!("generated group awaits its reader")
+                    };
+                    let ExprKind::Call { args, .. } = &mut value.kind else {
+                        unreachable!("generated group calls its reader")
+                    };
+                    for argument in args {
+                        let ExprKind::Array(elements) = &mut argument.kind else {
+                            unreachable!("generated group arguments are arrays")
+                        };
+                        assert_eq!(elements.len(), selected.len());
+                        let mut selection = selected.iter();
+                        elements.retain(|_| *selection.next().unwrap());
+                    }
+                }
+                if let Some(batch) = batches.get(&variable.name) {
+                    let value = variable
+                        .value
+                        .as_mut()
+                        .expect("generated binding has a value");
+                    let ExprKind::If {
+                        then_expr,
+                        else_expr,
+                        ..
+                    } = &value.kind
+                    else {
+                        unreachable!("groupable field bindings have checked alternatives")
+                    };
+                    *value = if batch.is_some() {
+                        *then_expr.clone()
+                    } else {
+                        *else_expr.clone()
+                    };
+                    if let Some(index) = batch {
+                        reindex_binding(value, *index);
+                    }
+                }
+            }
             Stmt::Suspend {
                 binding: Some(binding),
                 ..
             } => return !remove.contains(&binding.name),
-            Stmt::Expression(expression) => prune_expression(expression, remove),
+            Stmt::Expression(expression) => {
+                prune_expression(expression, remove, batches, batch_inputs)
+            }
             _ => {}
         }
         true
     });
 }
 
-fn prune_expression(expression: &mut Expr, remove: &HashSet<String>) {
+fn reindex_binding(expression: &mut Expr, slot: usize) {
     match &mut expression.kind {
-        ExprKind::Return(Some(value)) => prune_expression(value, remove),
-        ExprKind::Block(block) => prune_block(block, remove),
+        ExprKind::Block(block) => {
+            let Some(Stmt::Expression(value)) = block.statements.last_mut() else {
+                unreachable!("generated field branch ends with its value")
+            };
+            reindex_binding(value, slot);
+        }
+        ExprKind::Cast { expr, .. } => reindex_binding(expr, slot),
+        ExprKind::Index { index, .. } => {
+            let ExprKind::Int { value, .. } = &mut index.kind else {
+                unreachable!("generated field uses a literal slot")
+            };
+            *value = slot as u64;
+        }
+        _ => unreachable!("generated field reads a group slot"),
+    }
+}
+
+fn prune_expression(
+    expression: &mut Expr,
+    remove: &HashSet<String>,
+    batches: &HashMap<String, Option<usize>>,
+    batch_inputs: &HashMap<String, Vec<bool>>,
+) {
+    match &mut expression.kind {
+        ExprKind::Return(Some(value)) => prune_expression(value, remove, batches, batch_inputs),
+        ExprKind::Block(block) => prune_block(block, remove, batches, batch_inputs),
         ExprKind::Struct { name, fields, .. } if name == PROVIDER_BINDINGS_TYPE => {
             fields.retain(|field| !remove.contains(&field.name));
         }

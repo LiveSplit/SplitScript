@@ -452,6 +452,79 @@ fn managed_metadata_demand_ignores_dead_and_debug_reads() {
 }
 
 #[test]
+fn grouped_field_binding_uses_only_demanded_fields() {
+    for provider in [
+        "Unity.il2cpp(Il2CppProfile.unity2022_3_0f1X64())",
+        "Unity.mono(MonoVersion.V2)",
+        "Unity",
+    ] {
+        let source = |extra: &str, reads: &str| {
+            format!(
+                r#"image "Assembly-CSharp" {{
+                class Probe {{ static i32 value; {extra} }}
+            }}
+            state {provider} ["game.exe"] {{ value = Probe.value?; {reads} }}"#
+            )
+        };
+        let extra = "static i32 second; static i32 third; static i32 fourth;";
+        let (small, _) = release_emission(&source("", ""));
+        let (partial, report) = release_emission(&source(extra, ""));
+        assert_eq!(small, partial, "unused fields changed {provider}");
+        assert!(
+            report
+                .functions
+                .iter()
+                .all(|(_, name)| !name.contains("BindFields"))
+        );
+        let (complete, report) = release_emission(&source(
+            extra,
+            "second = Probe.second?; third = Probe.third?; fourth = Probe.fourth?;",
+        ));
+        Validator::new_with_features(WasmFeatures::all())
+            .validate_all(&complete)
+            .unwrap();
+        assert!(
+            report
+                .functions
+                .iter()
+                .any(|(_, name)| name.contains("BindFields"))
+        );
+        let unused = format!("static Map<String, [String]> unobserved; {extra}");
+        let (with_unused, unused_report) = release_emission(&source(
+            &unused,
+            "second = Probe.second?; third = Probe.third?; fourth = Probe.fourth?;",
+        ));
+        // An unused composite type can reorder existing GC type indices; it
+        // must not add bytes, helpers, or discovery to the grouped binding.
+        assert_eq!(
+            complete.len(),
+            with_unused.len(),
+            "unused field grew {provider}"
+        );
+        assert_eq!(report.runtime_helpers, unused_report.runtime_helpers);
+        assert_eq!(report.functions.len(), unused_report.functions.len());
+        assert!(!contains_string_literal(&with_unused, b"unobserved"));
+        assert!(
+            unused_report
+                .functions
+                .iter()
+                .any(|(_, name)| name.contains("BindFields"))
+        );
+        Validator::new_with_features(WasmFeatures::all())
+            .validate_all(&with_unused)
+            .unwrap();
+    }
+}
+
+#[test]
+fn unused_range_types_do_not_change_wasm() {
+    let source = "state \"game.exe\" {}";
+    let (plain, _) = release_emission(source);
+    let (unused, _) = release_emission(&format!("{source}\nfn unused() {{ return 1u32..<10u32 }}"));
+    assert_eq!(plain, unused);
+}
+
+#[test]
 fn class_verification_follows_reachable_snapshots_and_live_reads() {
     for selector in [
         "Unity.mono(MonoVersion.V2)",

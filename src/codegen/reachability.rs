@@ -3,7 +3,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use crate::{
     ast::{
         ArrayTypeId, AsyncTypeId, CallableTypeId, EnumId, ExprId, IteratorTypeId, ManagedClassId,
-        OptionTypeId, Program, ResultTypeId, StructId, TypeApplicationId,
+        OptionTypeId, Program, RangeTypeId, ResultTypeId, StructId, TypeApplicationId,
     },
     semantic::{ClosureInstance, FunctionInstance, FunctionValueInstance, SemanticModel},
     stdlib::{
@@ -51,6 +51,7 @@ pub(super) struct Reachability {
     gc_asyncs: BTreeSet<AsyncTypeId>,
     gc_iterators: BTreeSet<IteratorTypeId>,
     gc_callables: BTreeSet<CallableTypeId>,
+    gc_ranges: BTreeSet<RangeTypeId>,
     gc_sets: BTreeSet<TypeApplicationId>,
     set_operations: BTreeSet<(TypeApplicationId, IntrinsicId)>,
     gc_applications: BTreeSet<TypeApplicationId>,
@@ -1061,6 +1062,10 @@ impl Reachability {
         self.gc_callables.contains(&callable)
     }
 
+    pub fn contains_range_type(&self, range: RangeTypeId) -> bool {
+        self.gc_ranges.contains(&range)
+    }
+
     pub fn contains_set_type(&self, set: TypeApplicationId) -> bool {
         self.gc_sets.contains(&set)
     }
@@ -1235,7 +1240,10 @@ impl Reachability {
                     self.gc_array_storage.insert(*backing);
                     pending.push(*element);
                 }
-                TypeKind::Range { bound, .. } => pending.push(*bound),
+                TypeKind::Range { layout, bound, .. } => {
+                    self.gc_ranges.insert(*layout);
+                    pending.push(*bound);
+                }
                 TypeKind::Application {
                     layout,
                     constructor,

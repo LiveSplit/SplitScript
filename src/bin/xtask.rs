@@ -1180,6 +1180,20 @@ const RUNTIME_FIXTURES: &[RuntimeFixture] = &[
         extra_arguments: &[],
     },
     RuntimeFixture {
+        source: "tests/unity_grouped_fields.split",
+        output: "unity_grouped_fields.wasm",
+        profile: "release",
+        harness: "tests/unity_field_cursor_runtime.mjs",
+        extra_arguments: &["--grouped"],
+    },
+    RuntimeFixture {
+        source: "tests/unity_grouped_fields.split",
+        output: "unity_grouped_fields_debug.wasm",
+        profile: "debug",
+        harness: "tests/unity_field_cursor_runtime.mjs",
+        extra_arguments: &["--grouped"],
+    },
+    RuntimeFixture {
         source: "tests/il2cpp_profiles.split",
         output: "unity_metadata_bounds.wasm",
         profile: "release",

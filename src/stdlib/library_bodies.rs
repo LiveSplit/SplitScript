@@ -864,8 +864,12 @@ fn managed_backend_binding_source(
                 managed_instance_header_name(class.class.id.index())
             ));
         }
-        for field in &class.class.fields {
-            push_required_managed_field_binding(&mut source, &class_local, field);
+        if class.class.fields.len() >= MANAGED_BATCH_MIN_FIELDS {
+            push_batched_managed_field_bindings(&mut source, &class_local, &class.class.fields);
+        } else {
+            for field in &class.class.fields {
+                push_required_managed_field_binding(&mut source, &class_local, field);
+            }
         }
         for group in &class.class.conditional_fields {
             for field in &group.fields {
@@ -944,23 +948,63 @@ fn managed_field_candidates(field: &crate::ast::ManagedFieldDecl) -> String {
         .join(", ")
 }
 
+pub(crate) const MANAGED_BATCH_MIN_FIELDS: usize = 4;
+
+fn required_managed_field_binding(
+    class_local: &str,
+    field: &crate::ast::ManagedFieldDecl,
+) -> (String, String) {
+    let candidates = managed_field_candidates(field);
+    if field.is_static {
+        (
+            managed_static_field_address_name(field.id.index()),
+            format!("await {class_local}.staticFieldAny([{candidates}])"),
+        )
+    } else {
+        (
+            managed_field_offset_name(field.id.index()),
+            format!("(await {class_local}.fieldAny([{candidates}])).offset"),
+        )
+    }
+}
+
+fn push_batched_managed_field_bindings(
+    source: &mut String,
+    class_local: &str,
+    fields: &[crate::ast::ManagedFieldDecl],
+) {
+    let names = fields
+        .iter()
+        .map(|field| format!("[{}]", managed_field_candidates(field)))
+        .collect::<Vec<_>>()
+        .join(", ");
+    let statics = fields
+        .iter()
+        .map(|field| field.is_static.to_string())
+        .collect::<Vec<_>>()
+        .join(", ");
+    let bindings = format!("{class_local}_fields");
+    source.push_str(&format!(
+        "            let {bindings} = await {class_local}.bindFields([{names}], [{statics}])\n"
+    ));
+    // Both choices are checked here. Managed demand pruning filters the group
+    // and selects one path before lowering; unused fields cause no discovery.
+    for (index, field) in fields.iter().enumerate() {
+        let (name, individual) = required_managed_field_binding(class_local, field);
+        let ty = if field.is_static { "address" } else { "u32" };
+        source.push_str(&format!(
+            "            let {name} = if true {{ {bindings}[{index}] as {ty} }} else {{ {individual} }}\n"
+        ));
+    }
+}
+
 fn push_required_managed_field_binding(
     source: &mut String,
     class_local: &str,
     field: &crate::ast::ManagedFieldDecl,
 ) {
-    let candidates = managed_field_candidates(field);
-    if field.is_static {
-        let address = managed_static_field_address_name(field.id.index());
-        source.push_str(&format!(
-            "            let {address} = await {class_local}.staticFieldAny([{candidates}])\n"
-        ));
-    } else {
-        let offset = managed_field_offset_name(field.id.index());
-        source.push_str(&format!(
-            "            let {offset} = (await {class_local}.fieldAny([{candidates}])).offset\n"
-        ));
-    }
+    let (name, expression) = required_managed_field_binding(class_local, field);
+    source.push_str(&format!("            let {name} = {expression}\n"));
 }
 
 fn push_optional_managed_field_binding(

@@ -5,12 +5,15 @@ import { createMonoPeFixture } from "./support/mono_pe_fixture.mjs";
 import { createIl2cppPeFixture } from "./support/il2cpp_pe_fixture.mjs";
 
 const [wasmPath] = process.argv.slice(2);
+const grouped = process.argv.includes("--grouped");
 const profiles = JSON.parse(await readFile(new URL("./fixtures/mono-pe-profiles.json", import.meta.url)));
 let cases = 0;
 for (const backend of ["mono", "il2cpp"]) for (const width of [32, 64]) {
     const wide = width === 64, bytes = width / 8;
     const profile = profiles.builds.find(p => p.width === width && p.version === "V2");
-    const modes = ["direct", "backing", "hole", "same slot", "ambiguous aliases", "inherited", "shadowed",
+    const modes = grouped
+        ? ["direct", "inherited", "shadowed", "ambiguous aliases", "unreadable offset", "large", "late grouped offset"]
+        : ["direct", "backing", "hole", "same slot", "ambiguous aliases", "inherited", "shadowed",
         "unreadable name", "unreadable offset", "null field array", "negative offset", "large",
         "ordinary MonoBehaviour", "System MonoBehaviour", "ordinary Object", "UnityEngine Object",
         "engine boundary", "object boundary"];
@@ -93,6 +96,28 @@ for (const backend of ["mono", "il2cpp"]) for (const width of [32, 64]) {
                 write(table + BigInt(i) * stride + fieldValue, 4, 0x10);
             }
         }
+        if (grouped) {
+            const owner = inherited ? base : klass;
+            let previousCount = 0;
+            for (let byte = 0; byte < countBytes; byte++) {
+                previousCount += memory.get(owner + count + BigInt(byte)) * 2 ** (byte * 8);
+            }
+            for (const [index, field] of ["extraOne", "extraTwo", "extraThree"].entries()) {
+                const entry = table + BigInt(previousCount + index) * stride;
+                const fieldText = 0x62000n + BigInt(index) * 0x100n;
+                const offset = 0x14 + index * 4;
+                ptr(entry + fieldName, fieldText); text(fieldText, field);
+                write(entry + fieldValue, 4, offset);
+                write((mono ? 0x18000n : 0x16000n) + BigInt(offset), 4, 43 + index);
+                if (inherited) write(0x36000n + BigInt(offset), 4, 99);
+            }
+            write(owner + count, countBytes, previousCount + 3);
+            if (mode === "late grouped offset") {
+                const entry = table + BigInt(previousCount + 1) * stride;
+                memory.delete(entry + fieldValue);
+                repair = () => write(entry + fieldValue, 4, 0x18);
+            }
+        }
         return { fixture, repair };
     }
     for (const mode of modes) {
@@ -127,4 +152,4 @@ for (const backend of ["mono", "il2cpp"]) for (const width of [32, 64]) {
         cases++;
     }
 }
-console.log(JSON.stringify({ sharedFieldCursorCases: cases }));
+console.log(JSON.stringify({ sharedFieldCursorCases: cases, grouped }));

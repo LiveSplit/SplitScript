@@ -293,6 +293,7 @@ impl GcLayout {
         for range in ranges
             .iter()
             .filter(|range| matches!(range.bound, ResolvedTypeRef::Core(_)))
+            .filter(|range| reachability.contains_range_type(range.id))
         {
             let ty = Type::Range(range.id);
             dynamic.insert(ty, next);

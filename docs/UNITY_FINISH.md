@@ -37,6 +37,7 @@ These are stored measurements, inspected without rebuilding:
 | `36c30ef` | 36,922 | Remove unused linear-memory string copies |
 | `c46a76e` | 36,136 | Unqualified schema class matching |
 | `4473e70` | 34,436 | Passive GC string initializers |
+| Current tested working tree | 33,234 | Grouped required-field binding |
 
 Historical evidence: `tests/baselines/unity.json` at each revision. Current
 evidence: `target/unity-baseline/report.json` (ephemeral build artifact).
@@ -432,3 +433,52 @@ lookups before managed demand pruning would retain unused field lookups. Any
 future grouping must be selected only after actual field demand is known and
 preserve the individual-lookup path for partially used schemas. No source or
 size change from that prototype is retained. The accepted size remains 34,436.
+
+## Group required-field binding after demand analysis
+
+Classes with at least four demanded required fields share one async binding
+loop. The existing managed-demand pass selects and compacts the group's input
+names/static flags and remaps its result slots before lowering. Smaller groups
+keep individual lookups. Adding an unused field cannot retain its discovery or
+disable grouping for the fields that are used. Conditional fields keep their
+existing completed-absence handling. Declaration order, retries, cancellation,
+and inherited static storage owners are preserved on both backends and through
+automatic selection. Lunistice source and diagnostic text are unchanged.
+
+The new loops exposed an existing type leak: range layouts were emitted even
+when unreachable. Range layouts now follow the same reachability requirement
+as other GC types. This removes the prototype's native-only size increase;
+the native fixture shrinks from 615 to 597 bytes. No general optimization pass
+was introduced.
+
+Explicit Lunistice shrinks **34,436 -> 33,234 bytes** (-1,202); automatic selection
+shrinks **147,572 -> 145,268 bytes** (-2,304). Preparation's poll body shrinks
+from 4,453 to 3,167 bytes. None of the 38 baseline artifacts grows; their source
+fingerprints, runtime helper sets, scratch/read capacities, linear static data,
+and initial page counts are unchanged. The final subset-compaction refinement
+leaves all 38 artifact sizes, sections, function bodies, and emission reports
+identical to the first version with range pruning.
+
+All 689 compiler tests passed before the final subset-compaction refinement.
+After refinement, all 53 profile/code-generation tests pass, including scalar
+unused-field exclusion, grouped reads with an unused nested Map, and unused
+range exclusion. For the Map case, existing GC type indices can reorder without
+changing size or retaining additional functions/helpers; requiring identical
+type numbering would exceed the demand-driven guarantee being tested.
+
+Evidence: `target/unity-binding-batch-compiler.log`,
+`target/unity-binding-batch-subset-profiles.log`, and
+`target/unity-binding-batch-subset-baseline.log`.
+
+The final public runtime run validates 172 artifacts and passes all 210
+scenarios. The grouped cursor fixture adds 28 cases in each build profile,
+covering both pointer widths/backends, inherited static owners, ambiguity,
+bounded traversal, and repair after a later field's metadata fails. An unused
+nested Map field is deliberately absent from the simulated game. Both Release
+Lunistice editions pass. Documentation validation (561 pages), Rustfmt, and
+Clippy with warnings denied pass. Logs:
+`target/unity-binding-batch-subset-runtime.log`,
+`target/unity-binding-batch-docs.log`, `target/unity-binding-batch-clippy.log`.
+
+**Remaining:** remove another 3,235 bytes to get strictly below 30,000, then
+complete the final size acceptance. No game was launched.

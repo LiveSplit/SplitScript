@@ -1,0 +1,21 @@
+image "Assembly-CSharp" {
+    class ProfileProbe {
+        static i32 value from ["first", "second"];
+        // This field is absent from the fixture and must not be discovered.
+        static Map<String, [String]> unobserved;
+        static i32 extraOne;
+        static i32 extraTwo;
+        static i32 extraThree;
+    }
+}
+state Unity ["game.exe"] {
+    value = ProfileProbe.value?;
+    one = ProfileProbe.extraOne?;
+    two = ProfileProbe.extraTwo?;
+    three = ProfileProbe.extraThree?;
+}
+whileAttached {
+    if current.one == 43 && current.two == 44 && current.three == 45 {
+        print(current.value)
+    }
+}
