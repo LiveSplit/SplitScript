@@ -326,17 +326,18 @@ to inference or code generation.
 - [x] Add managed-string fields as `String field` and `String? field`, with
   shared decoding for static, live, and snapshot reads. Object headers supply
   the length; nullability is typed and malformed UTF-16 uses replacement decoding.
-- [ ] Finish the active ASR Unity migration using
+- [x] Complete the ASR Unity migration using
   [the finite finish scope](docs/UNITY_FINISH.md). Profiles, nested managed
-  String/array/List/Map/Set reads, and owned class snapshots are implemented.
-  Restore explicit-profile Lunistice below 30,000 bytes, resolve demonstrated
-  parity defects, and complete the relevant verification and documentation.
+  String/array/List/Map/Set reads, and owned class snapshots are implemented and
+  verified. Final Lunistice Release: 32,121 bytes explicit / 142,234 automatic.
+  The user accepted stopping without a concrete further saving of roughly
+  500 bytes or more, replacing the earlier below-30,000-byte completion gate.
   General Release compiler optimizations remain the separate P1 project below.
 - [ ] Exercise the managed collection surface when revisiting Alba and A Short
   Hike. Arrays and remote `List<T>` materialize as `[T]`; remote maps and sets
   retain `Map` and `Set` semantics. Keep dynamic typed tag values as a separate
   language-design question driven by those ports.
-- [ ] Decide explicit Unity field-versus-property binding after the current
+- [ ] Decide explicit Unity field-versus-property binding after the completed
   Unity migration. Prefer explicit intent over automatically trying a C#
   property's backing-field name for every field alias. Consider whether a
   property marker is needed, but do not choose or introduce syntax yet. Keep

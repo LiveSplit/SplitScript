@@ -1,26 +1,21 @@
 # Unity support: ASR research and SplitScript implementation plan
 
-Current finish scope and execution order: [Unity finish audit](UNITY_FINISH.md).
+Final scope, verification, and size acceptance: [Unity finish audit](UNITY_FINISH.md).
 That document supersedes the sequencing and stale completion checklist below;
 the historical research and implementation evidence remain useful.
 
-Status: core recursive managed values and snapshots, measured IL2CPP profiles, and Windows/Linux/macOS Mono automatic attachment are implemented. Explicit Windows/Linux/macOS Mono family selectors are also implemented. Nested materialization error paths, recursive collection contracts, and runtime class checks for snapshots and live references are implemented. Current work addresses final size acceptance and the final parity/coverage audit. Native Linux/macOS live-game behavior remains unverified; existing platform coverage uses fixtures. See [implementation progress](#implementation-progress).
+Status: complete at implementation commit `a7fff23`. Recursive managed values and snapshots, measured IL2CPP profiles, Windows/Linux/macOS Mono automatic attachment and explicit family selectors, nested materialization error paths, recursive collection contracts, and runtime class checks for snapshots and live references are implemented. The finite parity audit identifies no missing requested feature. Native Linux/macOS live-game behavior remains unverified; existing platform coverage uses fixtures. See the finish audit for final verification and [implementation progress](#implementation-progress) for historical checkpoints.
 
 ## Objective and baseline
 
 Bring the improvements from ero-qt's ASR Unity series into SplitScript's schema-based Unity provider, then go beyond ASR with **recursively composable managed reads integrated with class snapshots**. A dictionary containing arrays of strings, or a class snapshot containing such a dictionary, must work through the same decoding system. Flat collection readers alone do not satisfy this plan. **Unused managed features must contribute no feature-specific discovery, decoding, tables, or scratch storage to generated Wasm, and size must be checked at every implementation step using Lunistice as the running baseline.** Replace obsolete implementations where necessary; SplitScript is not stable, so source compatibility, deprecation periods, and compatibility shims are not requirements. Update examples, tests, documentation, and editor support with each API change.
 
-The explicit-profile Lunistice Release artifact must return **below 30,000 bytes**
-before this work is complete, aiming for its earlier 23–28 KB range. The current
-roughly 40 KB artifact is a temporary regression, not an accepted final budget.
-Focus the reduction on the Unity discovery code introduced by this migration:
-specialize known profile facts and avoid unnecessarily large generated async
-walks. Preserve the actual script, metadata correctness, and behavior checks;
-do not meet the target by removing functionality or changing the measurement
-pipeline. Merely proving that oversized general-purpose code is reachable is
-not sufficient justification. Finish this focused size correction and the parity audit; add functional work
-only for demonstrated gaps in the requested behavior, without unrelated compiler
-optimization.
+Final explicit-profile Lunistice Release is **32,121 bytes**; automatic selection
+is **142,234 bytes**. The user accepted stopping when no further concrete saving
+of roughly 500 bytes or more remains, replacing the original below-30,000-byte
+completion gate. The retained reductions address Unity discovery and its emitted
+code while preserving the script, metadata behavior, and measurement pipeline.
+General Release compiler optimization remains a separate TODO project.
 
 The comparison is pinned to:
 

@@ -1,7 +1,7 @@
 # Unity finish scope and size audit
 
-2026-09-21. This is the current execution order for finishing the Unity work.
-It supersedes the open-ended sequencing and stale checklist in
+2026-09-21. The Unity work is complete at implementation commit `a7fff23`.
+This record supersedes the open-ended sequencing and stale checklist in
 [the original research plan](UNITY_ASR_PARITY_PLAN.md), which remains the source
 of the ASR comparison and implementation evidence.
 
@@ -9,9 +9,12 @@ of the ASR comparison and implementation evidence.
 
 Ship the researched ASR profiles and runtime improvements, plus the requested
 recursive String/array/List/Map/Set reads and owned class snapshots. Unused
-features must not add their discovery/readers to Wasm. Explicit-profile
-Lunistice Release must be below 30,000 bytes with the existing source, output
-pipeline, and base/DLC behavior preserved. Breaking internal changes are fine.
+features must not add their discovery/readers to Wasm.
+Lunistice Release finishes at **32,121 bytes** with an explicit profile and
+**142,234 bytes** with automatic selection, preserving the existing source,
+output pipeline, and base/DLC behavior. The user accepted stopping when no
+further concrete optimization saves roughly 500 bytes or more; this replaces
+the earlier below-30,000-byte completion gate. Breaking internal changes are fine.
 
 Do not add further features or expand malformed-metadata coverage without a
 concrete defect that prevents these requirements from working. Raw UTF-16,
@@ -27,7 +30,7 @@ These are stored measurements, inspected without rebuilding:
 | `52f5b65` | 76,166 | Profile migration and source-defined metadata discovery |
 | `d5cc416` | 74,926 | Nested-name/generic metadata changes |
 | `8590627` | 56,641 | Shared field traversal |
-| `8a759ae` | 60,345 | Latest committed implementation |
+| `8a759ae` | 60,345 | Implementation at the start of this audit |
 | Before class-scan change | 57,399 | Pending discovery consolidation |
 | `57ed738` | 49,437 | Bounded synchronous class scan |
 | `7545e6f` | 43,627 | Bounded image scan and fixed-width discovery |
@@ -39,10 +42,10 @@ These are stored measurements, inspected without rebuilding:
 | `4473e70` | 34,436 | Passive GC string initializers |
 | `eedc9ff` | 33,234 | Grouped required-field binding |
 | `bb9485a` | 32,353 | Name-only lookup diagnostics |
-| Current tested working tree | 32,121 | Shared required/conditional binding |
+| `a7fff23` | 32,121 | Shared required/conditional binding; final retained implementation |
 
-Historical evidence: `tests/baselines/unity.json` at each revision. Current
-evidence: `target/unity-baseline/report.json` (ephemeral build artifact).
+Historical evidence: `tests/baselines/unity.json` at each revision. The tracked
+baseline at `a7fff23` records the final accepted measurements.
 
 The major regression happened during the profile migration, before the nested
 collection work. At `52f5b65`, field lookup alone occupied 21,166 bytes and class
@@ -63,11 +66,11 @@ At the start of this audit, explicit output contained 50,604 bytes of code, 2,83
 | Profile validation | 1,941 |
 | Shared field traversal poll | 1,622 |
 
-These are absolute costs, not individually proven removable savings. They do
-not yet attribute every byte of growth. The output also retains a 1,020-byte
-32-bit table-discovery poll despite selecting a fixed x64 profile; this is a
-concrete specialization candidate. Runtime validation of a built-in constant
-profile is another candidate. Neither alone can close the 27,400-byte gap.
+These were absolute costs, not individually proven removable savings. They did
+not attribute every byte of growth. That output also retained a 1,020-byte
+32-bit table-discovery poll despite selecting a fixed x64 profile. This and
+runtime validation of a built-in constant profile became specialization targets,
+addressed in the historical checkpoints below.
 
 The old IL2CPP year/version API is already removed. Mono's V1/V1Cattrs/V2/V3
 families remain in current ASR, and no Mono functions appear in the explicit
@@ -75,31 +78,30 @@ Lunistice report. That report contains the selected profile factory and no
 automatic profile-selection catalog. Removing legacy version tables is therefore
 not a pending fix for this artifact.
 
-## Remaining work, in order
+## Completion status
 
-1. **Restore the size requirement first.** Work from the measured discovery
-   costs above. Simplify generated async traversal and specialize fixed profile
-   facts so unnecessary width/layout branches and built-in validation disappear.
-   Keep retry, cancellation, required lookup behavior, and the requested profiles.
-   Measure each isolated change; do not claim prospective savings as achieved.
-   If library changes are insufficient, identify a specific code-generation
-   defect in these routines before broadening into compiler work.
-2. **Close a finite parity checklist.** Map the 14 researched ASR PRs and the
-   user's nesting/snapshot requirements to existing code and tests. Profiles,
-   recursive containers, and snapshots are already implemented. Repair only
-   demonstrated missing requirements. Additional metadata proof frameworks or
-   traversal redesigns are not independent completion requirements.
-3. **Run final relevant verification and commit.** Verify imported profiles,
-   nested reads/snapshot failure behavior, unused-feature exclusion, Lunistice
-   editions, and the size gate. Reconcile docs with actual support and state
-   native Linux/macOS validation limits explicitly; synthetic fixture evidence
-   is not native game validation. Complete logical commits and the goal once
-   the required behavior and size gates pass.
+The finite audit below maps all 14 researched ASR PRs and the additional nested
+managed-value/snapshot requirements to implementations and fixtures. No requested
+feature remains missing. Imported profiles, unused-feature exclusion, recursive
+reads, snapshot failure behavior, and Lunistice editions have passed verification.
+The final retained source passes 690 compiler tests, 210 public runtime scenarios
+across 172 validated artifacts, documentation validation, formatting, and Clippy.
+The private adapter checks and their resource-limited execution are recorded below.
 
-Builds/tests remain serialized through `scripts/run_limited.py`. No game should
-be left running. Each implementation update should name the requirement being
-addressed, the measured result, and the next remaining gate. Do not continue
-accepting size growth merely because the new code is reachable.
+The final size remains above the original target. A subsequent width-reader
+experiment saved only 109 bytes; another candidate shared a 321-byte scan body.
+Both experiments were discarded under the user's stopping criterion. There is
+no demonstrated remaining saving above roughly 500 bytes to pursue within this
+scope. General Release compiler optimization and explicit field/property syntax
+remain separate TODO items, not completion dependencies.
+
+All builds/tests use the serialized `scripts/run_limited.py` resource guard.
+No game was launched for closeout. Native Linux/macOS live-game validation remains
+unavailable; platform fixtures and Lunistice's live title-screen attachment are
+not claims of full live playthrough validation.
+
+The sections below retain the investigation history. Their intermediate size
+targets and “Remaining” notes describe those checkpoints, not current blockers.
 
 ## First size correction
 
@@ -237,8 +239,8 @@ experimental exact-name change and its Lunistice source edits were reverted.
 A stale standard-library paragraph also claimed IL2CPP generic storage was
 unimplemented; it now describes the existing implementation.
 
-No additional requested feature is identified by this review. Completion still
-requires the size gate and final repository verification. Native Linux/macOS
+No additional requested feature is identified by this review. Final verification
+and size acceptance are recorded in the completion status above. Native Linux/macOS
 game validation is unavailable here and remains explicitly unverified; the
 platform evidence above is synthetic. Lunistice's recorded live evidence covers
 title-screen attachment, while maintained fixtures cover base/DLC behavior.
@@ -547,5 +549,12 @@ The full compiler suite also passes all 690 tests against this final source
 (`target/unity-optional-batch-slots-compiler.log`); Rustfmt passes. Every command
 used the existing serialized memory guard, without raising its limits.
 
-**Remaining:** remove another 2,122 bytes to get strictly below 30,000 and
-complete final size acceptance. No game was launched.
+**Complete:** retained at `a7fff23` under the user's roughly-500-byte stopping
+criterion. Explicit output is 32,121 bytes; automatic output is 142,234 bytes.
+No requested feature remains outstanding. No game was launched.
+
+After discarding the two small experiments, the restored implementation was
+rebuilt under the unchanged memory cap. The fresh baseline matches all 38
+accepted artifact sizes and passes Lunistice base/DLC behavior; documentation
+validation also passes. Evidence: `target/unity-closeout-build.log`,
+`target/unity-closeout-baseline.log`, and `target/unity-closeout-docs.log`.
