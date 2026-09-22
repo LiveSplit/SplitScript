@@ -663,6 +663,7 @@ pub struct TypedProgram {
     setting_choice_options: HashMap<SettingChoiceOptionId, EnumVariantId>,
     visible_expression_count: usize,
     visible_function_count: usize,
+    library_bodies_expected: bool,
     library_functions: HashMap<StdlibItemId, Vec<FunctionId>>,
 }
 
@@ -809,6 +810,10 @@ impl TypedProgram {
             }
         }
 
+        // After the full catalog bootstrap, augmentation injects only the
+        // conservative dependency closure for this compilation.
+        let all_library_bodies_expected =
+            library_bodies_expected && !standard_library.source_body_operations_are_initialized();
         let functions_by_name = syntax
             .functions
             .iter()
@@ -831,7 +836,7 @@ impl TypedProgram {
                     .into_iter()
                     .map(|function_name| {
                         let declaration = functions_by_name.get(function_name).copied();
-                        if library_bodies_expected {
+                        if all_library_bodies_expected {
                             Some(
                                 declaration
                                     .expect("injected library bodies have parsed declarations"),
@@ -862,6 +867,7 @@ impl TypedProgram {
             setting_choice_options,
             visible_expression_count,
             visible_function_count,
+            library_bodies_expected,
             library_functions,
         }
     }
@@ -876,6 +882,10 @@ impl TypedProgram {
 
     pub fn standard_library(&self) -> &StandardLibrary {
         &self.standard_library
+    }
+
+    pub(crate) fn expects_library_bodies(&self) -> bool {
+        self.library_bodies_expected
     }
 
     /// Resolves a catalog-owned source implementation to its inferred hidden

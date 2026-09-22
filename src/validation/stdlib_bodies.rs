@@ -42,6 +42,13 @@ pub(super) fn validate_signatures(
                 })
                 .collect(),
         };
+        if bodies.is_empty()
+            && hir.expects_library_bodies()
+            && library.source_body_operations_are_initialized()
+        {
+            // Unselected templates were validated by the complete bootstrap.
+            continue;
+        }
         if bodies.is_empty() {
             diagnostics.push(Diagnostic::semantic(
                 format!(

@@ -11,8 +11,9 @@ use std::{hint::black_box, time::Instant};
 const DEFAULT_ITERATIONS: usize = 200;
 const WARMUP_ITERATIONS: usize = 20;
 
-const FIXTURES: [(&str, &str); 4] = [
+const FIXTURES: [(&str, &str); 5] = [
     ("minimal", "state \"game.exe\" {}"),
+    ("minish_cap", include_str!("minish_cap.split")),
     ("lunistice", include_str!("lunistice.split")),
     ("cancellation", include_str!("cancellation.split")),
     ("settings", include_str!("lso_desktop_settings.split")),

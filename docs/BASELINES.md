@@ -46,6 +46,84 @@ compiler regression. Generated Wasm byte counts are deterministic, but should
 also be reviewed rather than frozen into brittle assertions because valid
 backend changes can alter them intentionally.
 
+## 2026-09-22 library dependency selection
+
+Ordinary compilations now inject a conservative dependency closure of the
+standard-library source bodies. A graph cached with the library's rendered
+tokens indexes every callable name and follows references transitively.
+Receiver types are not known yet, so all candidates with the same name are
+retained, including every case of an overload. Constants, implicit capability
+implementations, formatting, provider attachment/validation, and generated
+provider/managed helpers supply additional roots. Every user declaration is
+still checked, including unused functions. The complete library bootstrap
+remains the validation authority; signature-only documentation contexts still
+fail strict compilation. Debug and Release use the same selection path.
+
+This is the general implementation motivated by the experiment below. Minish
+Cap now lowers **55 function bodies instead of 412**, including its four user
+functions. The current explicit-profile Lunistice fixture lowers 256 bodies.
+The maintained `compiler_baseline` example now includes both actual
+autosplitters, alongside the existing smaller fixtures.
+
+Measurements compare the compiler through `746243e` with dependency selection
+on top of `fba3680` (the intervening commit changes documentation only). Both
+use ordinary Rust release builds, identical frozen source files, CPU 0, 20
+warmups and 50 measured samples, with both run orders. This paired baseline
+was somewhat slower than the earlier probe's baseline; percentages below use
+the paired measurements, not timings from another run.
+
+| Actual autosplitter / measurement | Before median, first / reverse | After median, first / reverse |
+| --- | ---: | ---: |
+| Minish Cap compilation | 66.30 / 67.79 ms | **9.46 / 9.01 ms** |
+| Lunistice compilation | 122.48 / 125.01 ms | **82.80 / 83.19 ms** |
+| Minish Cap LSP edit → diagnostics | 48.58 / 50.69 ms | **4.99 / 4.78 ms** |
+
+Minish Cap compilation improves 86–87%, Lunistice 32–33%, and Minish Cap
+diagnostics about 90%. Compilation p95 falls from 91.51/75.42 to
+11.58/10.74 ms for Minish Cap and from 137.32/134.91 to 87.17/92.97 ms for
+Lunistice. Minish Cap diagnostics p95 falls from 52.30/54.61 to 6.54/6.12 ms.
+The LSP measurement still alternates a trailing newline and measures complete
+revision rebuilding, not incremental semantic-edit performance.
+
+To distinguish warm compiler throughput from command-line startup, a separate
+measurement starts a fresh `splitc` process for every sample, compiles Minish
+Cap, and writes its release Wasm. With three initial process runs excluded
+and 15 measured launches per pair, medians fall from 132.00/124.30 to
+70.03/69.16 ms. This includes process startup, full library initialization,
+source loading, and output writing; filesystem caches are warm. The remaining
+initialization cost is not hidden by the warm 9 ms result.
+
+| Release Wasm | Before | After |
+| --- | ---: | ---: |
+| Minish Cap | 35,334 B | 35,326 B |
+| Lunistice, explicit IL2CPP profile | 32,121 B | 32,121 B |
+| Lunistice, automatic Unity discovery | 142,234 B | 142,220 B |
+
+The other six release fixtures retain their sizes. Removing unused library
+types can change GC type numbering and remove redundant array subtype entries;
+the Minish Cap type table is smaller, so this change does not claim byte-
+identical output. All nine fixtures in both Debug and Release pass
+`wasm-tools validate --features all`, with no size increases in either profile.
+
+Validation: 694 compiler integration tests pass, including runtime tests for
+providers, managed schemas, collections, closures, and generic effects. The
+final library run passes 459 tests, with one manual benchmark ignored. New
+tests compare selected and complete library compilation for Minish Cap,
+Lunistice, cancellation, sets, and maps: diagnostics and user-function effects
+agree, backend helper/scratch plans agree, and both profiles emit valid Wasm.
+Additional checks preserve unused-user-function errors and token spans, and
+assert that Minish Cap no longer retains most of the library. The existing
+strict documentation-context test caught a distinction during development;
+the final implementation preserves it without changing that test.
+
+Logs and frozen runners are under ignored
+`target/performance-review/2026-09-22`, principally
+`dependencies-measurements.log`, `dependencies-cold-minish.log`,
+`dependencies-counts.log`, `dependencies-compiler-tests.log`,
+`dependencies-lib-tests-fixed.log`, and the two `dependencies-*-sizes.log`
+files. Next latency work should target remaining Lunistice work and library
+startup costs using these real-autosplitter measurements.
+
 ## 2026-09-22 Minish Cap regression diagnosis
 
 Minish Cap is the primary latency target for the next architectural change.

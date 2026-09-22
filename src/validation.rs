@@ -125,9 +125,9 @@ pub(crate) fn validate(
     ));
 
     // The standalone standard-library bootstrap is the authority for catalog
-    // metadata. Every ordinary compilation rechecks the same injected bodies
-    // and verifies that their complete typed call graph still agrees with the
-    // cached, user-independent result.
+    // metadata. Ordinary compilations recheck their selected dependency closure
+    // and verify that its typed call graph still agrees with that cached,
+    // user-independent result.
     if standard_library.source_body_operations_are_initialized() {
         for item in standard_library.all_items() {
             if !matches!(
@@ -138,9 +138,9 @@ pub(crate) fn validate(
             }
             let cataloged = standard_library.operation_metadata(item.id);
             let mut functions = hir.library_functions(item.id);
-            // Signature-only tooling contexts deliberately omit catalog body
-            // declarations. Their operation metadata was already derived by
-            // the standalone bootstrap, so there is no local body to compare.
+            // Dependency selection and signature-only tooling may omit this
+            // body. Its metadata was already derived by the full bootstrap,
+            // so there is no local body to compare.
             let Some(function) = functions.next() else {
                 continue;
             };

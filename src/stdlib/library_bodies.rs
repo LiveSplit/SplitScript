@@ -5,6 +5,10 @@
 //! compilation unit. Static library tokens are cached per graph, but one parser
 //! still owns all syntax identities and constructed-type interning.
 
+mod dependencies;
+
+use dependencies::BodyDependencies;
+
 use crate::{
     Diagnostic,
     ast::{Expr, ExprKind, ManagedClassDecl, ManagedClassId, ManagedItemDecl, Program},
@@ -40,6 +44,7 @@ pub(super) struct RenderedLibraryBodies {
     pub(super) source: String,
     pub(super) body_ranges: Vec<(std::ops::Range<usize>, &'static str)>,
     tokens: Result<Vec<lexer::Token>, Diagnostic>,
+    dependencies: Option<BodyDependencies>,
 }
 
 fn body_source(
@@ -110,7 +115,43 @@ pub(crate) fn augment_program_with_library_bodies(
     user_program: &Program,
     library: &StandardLibrary,
 ) -> Result<Option<Program>, Vec<Diagnostic>> {
-    let rendered = library.rendered_library_bodies();
+    augment_program(
+        user_source,
+        user_program,
+        library,
+        library.source_body_operations_are_initialized(),
+    )
+}
+
+fn augment_program(
+    user_source: &str,
+    user_program: &Program,
+    library: &StandardLibrary,
+    select_dependencies: bool,
+) -> Result<Option<Program>, Vec<Diagnostic>> {
+    let generated =
+        selected_provider_preparation(user_source, user_program, library).map(|selected| {
+            managed_preparation_source(
+                user_program,
+                selected.function_name,
+                &selected.arguments.join(", "),
+                selected.managed_backend,
+                &selected.contexts,
+            )
+        });
+    let complete = library.rendered_library_bodies();
+    // Bootstrap checks every catalog body. Subsequent compilations retain a
+    // conservative dependency closure and still check every user declaration.
+    let selected = select_dependencies
+        .then(|| {
+            complete.dependencies.as_ref()?.select(
+                complete,
+                user_source,
+                generated.as_deref().unwrap_or(""),
+            )
+        })
+        .flatten();
+    let rendered = selected.as_ref().unwrap_or(complete);
     let mut combined = String::with_capacity(user_source.len() + rendered.source.len() + 2);
     combined.push_str(user_source);
     combined.push('\n');
@@ -130,14 +171,7 @@ pub(crate) fn augment_program_with_library_bodies(
         combined.push('\n');
     }
     let has_library_bodies = !rendered.source.is_empty();
-    if let Some(selected) = selected_provider_preparation(user_source, user_program, library) {
-        let source = managed_preparation_source(
-            user_program,
-            selected.function_name,
-            &selected.arguments.join(", "),
-            selected.managed_backend,
-            &selected.contexts,
-        );
+    if let Some(source) = generated {
         let start = combined.len();
         combined.push_str(&source);
         body_ranges.push((
@@ -308,11 +342,14 @@ pub(super) fn render_library_bodies(library: &StandardLibrary) -> RenderedLibrar
         source.pop();
     }
     let tokens = lex_tokens(&source);
-    RenderedLibraryBodies {
+    let mut rendered = RenderedLibraryBodies {
         source,
         body_ranges,
         tokens,
-    }
+        dependencies: None,
+    };
+    rendered.dependencies = BodyDependencies::build(library, &rendered);
+    rendered
 }
 
 fn lex_tokens(source: &str) -> Result<Vec<lexer::Token>, Diagnostic> {
@@ -1374,6 +1411,95 @@ mod tests {
 
     use super::*;
 
+    fn lower_with_all_bodies(source: &str) -> crate::LoweredProgram {
+        let mut lowered = crate::lower(crate::parse(source).unwrap());
+        let library = lowered.context.standard_library();
+        let program = augment_program(source, &lowered.source.syntax, &library, false)
+            .unwrap()
+            .unwrap();
+        let mut resolutions = crate::resolution::ProgramResolutions::default();
+        lowered.resolution_diagnostics =
+            crate::resolution::resolve_program(&program, &library, &mut resolutions);
+        lowered.compilation_syntax = Arc::new(program);
+        lowered.resolutions = Arc::new(resolutions);
+        lowered
+    }
+
+    #[test]
+    fn dependency_selection_preserves_real_autosplitter_analysis_and_valid_wasm() {
+        for source in [
+            include_str!("../../examples/minish_cap.split"),
+            include_str!("../../examples/lunistice.split"),
+            include_str!("../../examples/cancellation.split"),
+            include_str!("../../tests/set_runtime.split"),
+            include_str!("../../tests/map_runtime.split"),
+        ] {
+            let selected = crate::check(crate::lower(crate::parse(source).unwrap())).unwrap();
+            let complete = crate::check(lower_with_all_bodies(source)).unwrap();
+            assert_eq!(selected.diagnostics(), complete.diagnostics());
+            for function in &selected.syntax().functions {
+                assert_eq!(
+                    selected.effects().function(function.id),
+                    complete.effects().function(function.id),
+                    "effects of {}",
+                    function.name
+                );
+            }
+            for profile in [crate::BuildProfile::Debug, crate::BuildProfile::Release] {
+                let options = crate::CompilerOptions {
+                    profile,
+                    ..Default::default()
+                };
+                let (wasm, report) = crate::codegen::compile_with_report(
+                    crate::lower_wasm_with_options(&selected, options),
+                );
+                let (_, reference) = crate::codegen::compile_with_report(
+                    crate::lower_wasm_with_options(&complete, options),
+                );
+                assert_eq!(report.runtime_helpers, reference.runtime_helpers);
+                assert_eq!(report.scratch_bytes, reference.scratch_bytes);
+                assert_eq!(report.abi_read_capacity, reference.abi_read_capacity);
+                wasmparser::Validator::new_with_features(wasmparser::WasmFeatures::all())
+                    .validate_all(&wasm)
+                    .unwrap();
+            }
+        }
+    }
+
+    #[test]
+    fn minish_cap_omits_unused_library_work_and_preserves_token_spans() {
+        let library = StandardLibrary::new();
+        let source = include_str!("../../examples/minish_cap.split");
+        let complete = library.rendered_library_bodies();
+        let selected = complete
+            .dependencies
+            .as_ref()
+            .unwrap()
+            .select(complete, source, "")
+            .unwrap();
+        assert!(
+            selected.body_ranges.len() < complete.body_ranges.len() / 2,
+            "Minish Cap retained {} of {} library bodies",
+            selected.body_ranges.len(),
+            complete.body_ranges.len()
+        );
+        assert_eq!(
+            selected.tokens.as_ref().unwrap(),
+            &lex_tokens(&selected.source).unwrap()
+        );
+        assert_augmented_tokens_match_source(source, &selected, "");
+    }
+
+    #[test]
+    fn dependency_selection_preserves_unused_user_body_errors() {
+        let source = r#"state "game.exe" {}
+            fn unused() { return process.module(123) }
+        "#;
+        let selected = crate::check(crate::lower(crate::parse(source).unwrap())).unwrap_err();
+        let complete = crate::check(lower_with_all_bodies(source)).unwrap_err();
+        assert_eq!(selected, complete);
+    }
+
     fn assert_augmented_tokens_match_source(
         prefix: &str,
         rendered: &RenderedLibraryBodies,
@@ -1443,6 +1569,7 @@ mod tests {
                 tokens: lex_tokens(source),
                 source: source.to_owned(),
                 body_ranges: Vec::new(),
+                dependencies: None,
             };
             for prefix in [
                 "",

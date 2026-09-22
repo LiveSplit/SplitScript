@@ -26,7 +26,29 @@ are under ignored `target/performance-review`.
 
 ### Minish Cap is the primary latency target
 
-The latest investigation focuses on the real Minish Cap autosplitter, rather
+**Implemented: conservative library dependency selection.** Minish Cap warm
+compilation now takes **9.0–9.5 ms**, versus 66–68 ms in the paired baseline;
+its LSP edit-to-diagnostics latency is **4.8–5.0 ms**, versus 49–51 ms.
+Lunistice compilation improves from 122–125 to **82.8–83.2 ms**. Both run
+orders agree. Minish Cap lowers 55 function bodies instead of 412. A fresh
+Minish Cap CLI process, including full library initialization and file I/O,
+improves from 124–132 to **69–70 ms**; the warm result is not a cold-start claim.
+
+The selector follows all name-matched callable candidates transitively and
+retains constants, implicit capability implementations, and generated provider
+dependencies. Complete bootstrap validation and all user-body diagnostics
+remain. Debug and Release share the implementation. Compiler integration tests
+(694) and library tests (459, one manual benchmark ignored) pass. All nine
+output fixtures validate in both profiles, without size increases. Minish
+Cap release Wasm is now 35,326 bytes; explicit Lunistice remains 32,121 bytes.
+The maintained benchmark now includes both autosplitters. See
+[the implementation measurements](docs/BASELINES.md#2026-09-22-library-dependency-selection).
+
+Further latency work should measure remaining Lunistice work and cold library
+initialization. Keep Minish Cap as a primary regression fixture. The following
+diagnosis records the evidence that led to this implementation.
+
+The investigation focused on the real Minish Cap autosplitter, rather
 than synthetic edge cases. Its source is byte-for-byte unchanged from
 `40d72a0`, but warm ordinary-release compilation rose from about 23 ms to
 98 ms at `4720d69`. The fixes through `746243e` brought it to about 60 ms;
@@ -45,11 +67,11 @@ Unity/Mono/IL2CPP bodies after full library bootstrap reduces Minish Cap
 compilation from **59.7 to 19.6 ms**, and actual LSP edit-to-diagnostics from
 **43–45 to 12.9 ms**, confirmed in both run orders. Both Wasm modules validate,
 have the same size, and match after consistent type-index renumbering.
-This restores the historical latency range in the experiment; production
-still needs a correct, general implementation. See
+This restored the historical latency range in the experiment and motivated
+the general implementation above. See
 [the measurements and limitations](docs/BASELINES.md#2026-09-22-minish-cap-regression-diagnosis).
 
-The next architectural priority is to eliminate repeated work on unused
+The architectural priority was to eliminate repeated work on unused
 standard-library bodies **before** type checking and Wasm lowering. Final
 backend reachability already removes them from emitted Wasm, which is too
 late to avoid the compilation cost. Full bootstrap validation of the library
