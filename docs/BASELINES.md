@@ -46,6 +46,48 @@ compiler regression. Generated Wasm byte counts are deterministic, but should
 also be reviewed rather than frozen into brittle assertions because valid
 backend changes can alter them intentionally.
 
+## 2026-09-22 indexed HIR expression lookup
+
+The follow-up replaces repeated binary searches in `TypedProgram::expression`
+with a direct position table when expression IDs are nearly dense. Minimal
+input has 17,058 expressions in an ID range of 17,090. Holes retain missing-ID
+semantics. The table is bounded to twice the expression count; sparse generated
+IDs use the original sorted lookup. Debug, Release, and LSP share this path.
+
+Compared with the saved effect-summary-reuse compiler, using the same ordinary
+Cargo-release profile, frozen fixtures, CPU affinity, 20 warmups, and 50
+samples. No builds overlap measurements. Compilation medians:
+
+| Fixture | Before → indexed | Reverse-order before → indexed |
+| --- | ---: | ---: |
+| minimal | 66.70 → 61.02 ms | 68.28 → 65.64 ms |
+| Minish Cap | 73.00 → 65.88 ms | 72.55 → 66.83 ms |
+| cancellation | 65.97 → 61.38 ms | 67.03 → 61.15 ms |
+| settings | 65.75 → 62.22 ms | 66.15 → 61.75 ms |
+
+The additional median improvement is about 4–10%. Tail latency was noisy in
+this session, with some p95s above 100 ms; these are diagnostic comparisons,
+not performance thresholds. Actual stdio LSP medians:
+
+| Fixture | Before → indexed | Reverse-order before → indexed |
+| --- | ---: | ---: |
+| small | 55.13 → 50.57 ms | 54.35 → 50.08 ms |
+| Minish Cap | 55.46 → 48.43 ms | 51.97 → 49.62 ms |
+| 500 helpers | 76.52 → 75.60 ms | 77.77 → 71.68 ms |
+
+All nine Release and nine Debug size fixtures validate and retain their sizes.
+Release output is identical after normalizing the compiler revision. Debug
+differences are restricted to that revision and DWARF record ordering; repeated
+builds with the pre-change compiler also vary in `.debug_info` ordering.
+
+A separate prototype removed deep copies when lowering value-block prefixes.
+Its paired timings did not show a repeatable gain, so it was not retained.
+
+Focused validation passed: library Clippy, lookup parity across IDs and holes,
+sparse/empty lookup bounds, effect-summary equivalence, the typed-HIR snapshot,
+and nested value-block compilation. The extension packaging/browser gate was
+not rerun for this slice.
+
 ## 2026-09-22 effect-summary reuse
 
 Follow-up to the reassessment below: effect inference now records the function

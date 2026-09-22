@@ -647,6 +647,7 @@ pub struct TypedProgram {
     standard_library: StandardLibrary,
     declarations: Arc<DeclarationIndex>,
     expressions: Vec<TypedExpression>,
+    expression_positions: Vec<usize>,
     assignments: Vec<ResolvedAssignment>,
     patterns: Vec<ResolvedPattern>,
     function_bodies: Vec<FunctionBody>,
@@ -704,6 +705,7 @@ impl TypedProgram {
         builder.visit_program(syntax);
         let mut expressions = builder.expressions.into_values().collect::<Vec<_>>();
         expressions.sort_by_key(|expression| expression.id.index());
+        let expression_positions = expression_positions(&expressions);
         let mut assignments = builder.assignments.into_values().collect::<Vec<_>>();
         assignments.sort_by_key(|assignment| assignment.id.index());
         let mut patterns = builder.patterns.into_values().collect::<Vec<_>>();
@@ -846,6 +848,7 @@ impl TypedProgram {
             standard_library,
             declarations,
             expressions,
+            expression_positions,
             assignments,
             patterns,
             function_bodies,
@@ -898,6 +901,12 @@ impl TypedProgram {
     }
 
     pub fn expression(&self, id: ExprId) -> Option<&TypedExpression> {
+        if !self.expression_positions.is_empty() {
+            return self
+                .expression_positions
+                .get(id.index())
+                .and_then(|&position| self.expressions.get(position));
+        }
         self.expressions
             .binary_search_by_key(&id.index(), |expression| expression.id.index())
             .ok()
@@ -1035,6 +1044,64 @@ impl TypedProgram {
 
     pub fn setting_choice_option(&self, option: SettingChoiceOptionId) -> Option<EnumVariantId> {
         self.setting_choice_options.get(&option).copied()
+    }
+}
+
+fn expression_positions(expressions: &[TypedExpression]) -> Vec<usize> {
+    let Some(last) = expressions.last() else {
+        return Vec::new();
+    };
+    let Some(length) = last.id.index().checked_add(1) else {
+        return Vec::new();
+    };
+    // Parsed IDs are nearly dense. Keep the sorted lookup for sparse generated
+    // IDs instead of allocating an index proportional to an arbitrary ID.
+    if length > expressions.len().saturating_mul(2) {
+        return Vec::new();
+    }
+    let mut positions = vec![usize::MAX; length];
+    for (position, expression) in expressions.iter().enumerate() {
+        positions[expression.id.index()] = position;
+    }
+    positions
+}
+
+#[cfg(test)]
+mod lookup_tests {
+    use super::*;
+
+    #[test]
+    fn expression_index_preserves_ids_and_holes() {
+        let checked =
+            crate::check(crate::lower(crate::parse("state \"game.exe\" {}").unwrap())).unwrap();
+        let hir = checked.typed_hir();
+        assert!(!hir.expression_positions.is_empty());
+        for index in 0..hir.expression_positions.len() + 2 {
+            let id = ExprId::from_index(index as u32);
+            let expected = hir
+                .expressions
+                .binary_search_by_key(&index, |expression| expression.id.index())
+                .ok()
+                .map(|position| hir.expressions[position].id);
+            assert_eq!(hir.expression(id).map(|expression| expression.id), expected);
+        }
+    }
+
+    #[test]
+    fn sparse_and_empty_expression_arenas_keep_bounded_lookups() {
+        let checked =
+            crate::check(crate::lower(crate::parse("state \"game.exe\" {}").unwrap())).unwrap();
+        let mut hir = checked.typed_hir().clone();
+        hir.expressions.truncate(1);
+        let id = ExprId::from_index(u32::MAX);
+        hir.expressions[0].id = id;
+        hir.expression_positions = expression_positions(&hir.expressions);
+        assert!(hir.expression_positions.is_empty());
+        assert_eq!(hir.expression(id).map(|expression| expression.id), Some(id));
+        assert!(hir.expression(ExprId::from_index(0)).is_none());
+        hir.expressions.clear();
+        hir.expression_positions = expression_positions(&hir.expressions);
+        assert!(hir.expression(id).is_none());
     }
 }
 
