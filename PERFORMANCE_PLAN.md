@@ -26,6 +26,17 @@ are under ignored `target/performance-review`.
 
 ### Minish Cap is the primary latency target
 
+**Implemented: indexed Wasm expression lookup.** Reusing the bounded HIR index
+builder in Wasm IR improves paired Minish Cap medians from 7.9–8.0 to
+**7.3–7.4 ms**, and Lunistice from 67–68 to **57.6–58.5 ms**. Both profiles
+share the implementation. Output sizes and executable sections are unchanged;
+LSP diagnostics remain around 4 ms. All 1,155 compiler/library tests pass, with
+one manual benchmark ignored, and all 18 size fixtures validate. See
+[the backend measurements](docs/BASELINES.md#2026-09-22-indexed-wasm-expression-lookup).
+The next larger Lunistice target is the whole-program HIR/Wasm rebuild after
+pruning only generated preparation bindings. A syntax-based library-root
+prototype gave too little benefit for its complexity and was discarded.
+
 **Follow-up implemented: resolved library dependencies.** Library-to-library
 dependencies now reuse bootstrap semantic resolution, avoiding unrelated
 methods with matching names. In new paired runs, Minish Cap improves from

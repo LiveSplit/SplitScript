@@ -24,6 +24,7 @@ pub use documentation::{
 mod editorconfig;
 mod effects;
 mod equality;
+mod expression_index;
 mod formatter;
 mod highlight;
 mod hir;

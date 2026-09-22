@@ -46,6 +46,66 @@ compiler regression. Generated Wasm byte counts are deterministic, but should
 also be reviewed rather than frozen into brittle assertions because valid
 backend changes can alter them intentionally.
 
+## 2026-09-22 indexed Wasm expression lookup
+
+Wasm IR now uses the bounded expression-ID index already used by typed HIR,
+instead of performing a binary search on every expression lookup. Both stages
+share the index builder. Async lowering appends index entries as it creates
+temporary expressions, preserving source IDs, holes, and expression order.
+Sparse arenas retain the existing sorted lookup. Debug and Release use the
+same implementation; there is no new optimization pass.
+
+Paired measurements compare `6fb396d` with this change using ordinary Rust
+release builds, identical frozen autosplitters, CPU 0, 20 warmups, and 50
+samples, in both run orders:
+
+| Actual autosplitter | Before median, first / reverse | After median, first / reverse |
+| --- | ---: | ---: |
+| Minish Cap compilation | 8.03 / 7.86 ms | **7.25 / 7.44 ms** |
+| Lunistice compilation | 67.65 / 68.31 ms | **58.55 / 57.65 ms** |
+
+Minish Cap's median improves 5–10%, and Lunistice's 13–16%. Lunistice p95
+falls from 74.82/76.00 to 66.16/65.70 ms. Minish Cap p95 is 8.63/8.34 ms
+before and 8.28/8.39 ms after, so this does not claim consistent tail-latency
+improvement for that fixture.
+
+A separate stage run shows Lunistice Wasm lowering falling from 16.78 to
+11.70 ms and encoding/disposal from 26.99 to 24.22 ms. Analysis varies from
+23.03 to 23.88 ms; it is not improved by this backend change. Minish Cap
+lowering falls from 0.68 to 0.63 ms and encoding/disposal from 3.36 to
+3.09 ms. Minish Cap LSP edit-to-diagnostics remains around 4 ms
+(3.92/3.94 before, 4.12/4.00 after); no LSP improvement is claimed.
+
+All nine fixtures keep their exact Wasm sizes in both profiles. In particular,
+release Minish Cap remains 35,326 B and explicit Lunistice remains 32,121 B.
+All 18 modules validate. After normalizing the compiler revision stamp,
+release outputs are byte-identical; Debug differences are confined to
+`.debug_info`, with identical executable sections.
+
+Validation: 694 compiler integration tests and 461 library tests pass, with
+one manual benchmark ignored. The new regression test checks that generated
+async temporaries remain addressable through the index in both profiles.
+Existing HIR tests continue to cover holes and the bounded sparse fallback.
+Formatting and diff checks pass.
+
+An earlier prototype used syntax references instead of identifier tokens to
+select library roots. It removed ten Lunistice bodies, but only improved its
+median from 66.60/67.20 to 64.93/65.27 ms, with no consistent Minish Cap gain.
+It required an extra parse of generated provider source and additional root
+selection rules. That prototype was discarded; the production selector is
+unchanged by the Wasm-index implementation.
+
+The remaining schema path still rebuilds whole-program HIR and Wasm IR after
+pruning generated preparation bindings. Investigate reusing unaffected bodies
+through the existing lowering contracts, preserving generated expression and
+temporary IDs, closure captures, async states, and debug locations. This is a
+concrete follow-up for Lunistice rather than another lexical-selection tweak.
+
+Artifacts are under ignored `target/performance-review/2026-09-22`:
+`wasm-index-*` logs and binaries, paired `*-wasm-index-*` measurements, and
+the discarded `syntax-roots-*` experiment. Final validation is recorded in
+`wasm-index-{compiler,library}-tests.log` and `wasm-index-measurements.log`.
+
 ## 2026-09-22 resolved library dependencies
 
 The selector now reuses the calls resolved during the existing full-library

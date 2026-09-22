@@ -707,7 +707,8 @@ impl TypedProgram {
         let mut expressions = builder.expressions.into_values().collect::<Vec<_>>();
         // Sort compact keys first so comparisons do not repeatedly move large HIR records.
         expressions.sort_by_cached_key(|expression| expression.id.index());
-        let expression_positions = expression_positions(&expressions);
+        let expression_positions =
+            crate::expression_index::expression_positions(&expressions, |expression| expression.id);
         let mut assignments = builder.assignments.into_values().collect::<Vec<_>>();
         assignments.sort_by_key(|assignment| assignment.id.index());
         let mut patterns = builder.patterns.into_values().collect::<Vec<_>>();
@@ -1058,25 +1059,6 @@ impl TypedProgram {
     }
 }
 
-fn expression_positions(expressions: &[TypedExpression]) -> Vec<usize> {
-    let Some(last) = expressions.last() else {
-        return Vec::new();
-    };
-    let Some(length) = last.id.index().checked_add(1) else {
-        return Vec::new();
-    };
-    // Parsed IDs are nearly dense. Keep the sorted lookup for sparse generated
-    // IDs instead of allocating an index proportional to an arbitrary ID.
-    if length > expressions.len().saturating_mul(2) {
-        return Vec::new();
-    }
-    let mut positions = vec![usize::MAX; length];
-    for (position, expression) in expressions.iter().enumerate() {
-        positions[expression.id.index()] = position;
-    }
-    positions
-}
-
 #[cfg(test)]
 mod lookup_tests {
     use super::*;
@@ -1106,12 +1088,18 @@ mod lookup_tests {
         hir.expressions.truncate(1);
         let id = ExprId::from_index(u32::MAX);
         hir.expressions[0].id = id;
-        hir.expression_positions = expression_positions(&hir.expressions);
+        hir.expression_positions =
+            crate::expression_index::expression_positions(&hir.expressions, |expression| {
+                expression.id
+            });
         assert!(hir.expression_positions.is_empty());
         assert_eq!(hir.expression(id).map(|expression| expression.id), Some(id));
         assert!(hir.expression(ExprId::from_index(0)).is_none());
         hir.expressions.clear();
-        hir.expression_positions = expression_positions(&hir.expressions);
+        hir.expression_positions =
+            crate::expression_index::expression_positions(&hir.expressions, |expression| {
+                expression.id
+            });
         assert!(hir.expression(id).is_none());
     }
 }

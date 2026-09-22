@@ -940,6 +940,7 @@ pub struct Program {
     closure_captures: HashMap<ExprId, Vec<ClosureCapture>>,
     mutably_captured_values: HashSet<ValueId>,
     expressions: Vec<Expression>,
+    expression_positions: Vec<usize>,
     /// Source-defined constants are values in the language and hidden
     /// zero-argument functions only in the backend. Keep that lowering map in
     /// one place so value paths, including method receivers, share it.
@@ -962,6 +963,8 @@ impl Program {
             .all_expressions()
             .map(|expression| lower_expression(expression, typed_hir, semantics, profile))
             .collect::<Vec<_>>();
+        let expression_positions =
+            crate::expression_index::expression_positions(&expressions, |expression| expression.id);
         let constant_functions = typed_hir
             .standard_library()
             .all_items()
@@ -1017,6 +1020,7 @@ impl Program {
             closure_captures: HashMap::new(),
             mutably_captured_values: HashSet::new(),
             expressions,
+            expression_positions,
             constant_functions,
             temporary_types: std::collections::HashMap::new(),
             next_generated_expression,
@@ -1389,6 +1393,12 @@ impl Program {
     }
 
     pub fn expression(&self, id: ExprId) -> Option<&Expression> {
+        if !self.expression_positions.is_empty() {
+            return self
+                .expression_positions
+                .get(id.index())
+                .and_then(|&position| self.expressions.get(position));
+        }
         self.expressions
             .binary_search_by_key(&id.index(), |expression| expression.id.index())
             .ok()
@@ -1408,6 +1418,10 @@ impl Program {
     ) -> ExprId {
         let id = ExprId::from_index(self.next_generated_expression);
         self.next_generated_expression += 1;
+        if !self.expression_positions.is_empty() {
+            debug_assert_eq!(self.expression_positions.len(), id.index());
+            self.expression_positions.push(self.expressions.len());
+        }
         self.expressions.push(Expression {
             id,
             ty,
@@ -5839,6 +5853,46 @@ fn resolved_intrinsic(program: &Program, expression: ExprId) -> Option<Intrinsic
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn expression_index_includes_async_generated_temporaries() {
+        let source = r#"state "game.exe" {}
+            onAttach { print((await process.module("game.dll")).address) }
+        "#;
+        let checked = crate::check(crate::lower(crate::parse(source).unwrap())).unwrap();
+        let last_source = checked
+            .hir
+            .all_expressions()
+            .map(|expression| expression.id.index())
+            .max()
+            .unwrap();
+        for profile in [crate::BuildProfile::Debug, crate::BuildProfile::Release] {
+            let backend = crate::lower_wasm_with_options(
+                &checked,
+                crate::CompilerOptions {
+                    profile,
+                    ..Default::default()
+                },
+            );
+            let wasm = backend.wasm_ir();
+            assert!(!wasm.expression_positions.is_empty());
+            assert!(
+                wasm.expressions
+                    .iter()
+                    .any(|expression| expression.id.index() > last_source)
+            );
+            for expression in &wasm.expressions {
+                assert!(std::ptr::eq(
+                    wasm.expression(expression.id).unwrap(),
+                    expression
+                ));
+            }
+            assert!(
+                wasm.expression(ExprId::from_index(wasm.next_generated_expression))
+                    .is_none()
+            );
+        }
+    }
 
     #[test]
     fn async_function_bodies_use_a_typed_poll_contract() {
