@@ -22,6 +22,61 @@ The original review and measurements below are retained as the starting point.
 Implementation progress is tracked separately here; investigation artifacts
 are under ignored `target/performance-review`.
 
+## Current priorities after the September 22 reassessment
+
+Rebuilt `40d72a0` and `4720d69` with identical compatible fixtures. Ordinary
+Rust-release compilation is now roughly **4–5 times slower**: minimal
+19 → 92–94 ms, Minish Cap 23 → 98 ms. Actual stdio LSP diagnostics show the
+same fixed-cost increase: small 15 → 78–80 ms, 500 helpers 39 → 102–104 ms.
+Reverse-order repeats confirm the difference. These are fresh measurements;
+the older `max-opt` timings below are historical, not today's baseline.
+
+Generated Release size moved in the other direction. Minish Cap is now 35,334
+bytes (previously 45,636), and all seven compatible size fixtures shrank.
+Current explicit/automatic Lunistice remains at the accepted 32,121/142,234
+bytes. Binaryen 132, used only as an offline reference, reaches 26,604 and
+104,123 bytes respectively with `-Oz --closed-world`. This is evidence of
+remaining opportunity, not a proposal to ship Binaryen or a promised result
+from one native pass. See [the complete measurements](docs/BASELINES.md#2026-09-22-performance-reassessment).
+
+The next implementation order is:
+
+1. **Reduce repeated effect-analysis work.** Temporary profiling of minimal
+   compilation attributes about 36 ms to `effects::polymorphic::infer`: nine
+   rounds reevaluate all 408 function bodies. First prototype dependency-driven
+   reevaluation or per-body summary reuse within one analysis. Track every
+   summary read, including higher-order calls and nested closures, and preserve
+   the existing fixed-point semantics, ordering, and iteration bound. Validate
+   against full reevaluation on recursive calls, returned closures, iterator
+   effects, source-defined capabilities, and the bundled library. Do not skip
+   validation of uncalled bodies or cache compilation-owned IDs across programs.
+2. **Investigate typed-HIR construction before adding a large cache.** It costs
+   about 13 ms even for minimal input. Separate syntax visiting, expression
+   materialization, and function-body construction; look for repeated tree
+   walks and index lookups. Keep improvements shared by compiler and LSP and by
+   Debug and Release. Type checking itself is another 16 ms, mainly body work.
+3. **Revisit library-product reuse with the new floor.** The standard-library
+   source grew from 308,872 to 600,330 bytes. Minimal compilation analyzes
+   17,058 expressions, and frontend-only time rose from 2.27 to 8.62 ms.
+   The design constraints in order 8 still apply, but the previous 2–3 ms
+   argument for indefinite deferral is no longer current. Measure the benefit
+   after the smaller effect/HIR changes before choosing parsed versus typed
+   template reuse. Wasm lowering also rose from 2.67 to 11.06 ms; revisit demand
+   driven lowering only through the existing dependency contracts.
+4. **Then resume native Release size passes.** Follow the constant-folding,
+   size-driven inlining, and reachability sequence already in `TODO.md`.
+   Measure minimal/native, async, explicit Unity, automatic Unity, and managed
+   collection cases. Preserve the Unity runtime checks accepted at closeout.
+   Cheap encoding improvements should continue to share Debug/Release code;
+   only costly optimization passes need a Release-only path.
+
+For every compiler slice, repeat the same-input latency comparison in both
+orders, check actual LSP diagnostics with `scripts/lsp_baseline.mjs`, validate
+output and runtime behavior, and then measure the packaged `max-opt` binaries.
+Keep normal `release` unchanged. No production compiler changes or temporary
+tracing are included in this reassessment; it adds a reusable LSP benchmark and
+updates the evidence and priorities.
+
 ## First implementation batch
 
 Implemented on 2026-09-04:
@@ -935,11 +990,11 @@ existing query/recovery tests and explicitly cover warning-policy changes.
 
 ## 8. Reuse standard-library templates across compilations
 
-**Reprioritized after delimiter-scan removal:** the current frontend baseline is
-2.2–2.7 ms. Defer the parsed-template prototype below until fresh profiling
-justifies its complexity. First identify the dominant work after lowering;
-the design and correctness constraints here remain applicable if reuse is
-still the best measured option.
+**Reprioritized September 22:** the former 2.2–2.7 ms frontend baseline has
+grown to 6.8–9.4 ms, while checking/validation remain the larger costs. First
+address the measured effect-analysis and typed-HIR work described above, then
+reassess this prototype. The design and correctness constraints below still
+apply; growth in the bundled library makes reuse more relevant again.
 
 The initial working-tree change cached rendered source and name indexes. The
 token-reuse batch above also caches lexed library tokens, but still does **not**

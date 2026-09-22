@@ -46,6 +46,151 @@ compiler regression. Generated Wasm byte counts are deterministic, but should
 also be reviewed rather than frozen into brittle assertions because valid
 backend changes can alter them intentionally.
 
+## 2026-09-22 performance reassessment
+
+Compared freshly built `40d72a0` (September 12) with `4720d69` (the committed
+inspect workflow). These measurements supersede the older timings for current
+prioritization. Compiler and editor latency have regressed substantially;
+generated Release Wasm has become smaller on every compatible fixture tested.
+
+Windows x86-64, Rust 1.98.1, Node 24.14.0. Both compiler revisions use Cargo's
+ordinary `release` profile, unchanged; these are **not new `max-opt` or embedded
+compiler measurements**. Each revision was extracted with `git archive` and
+built in a separate target directory. Reusing a target directory initially
+retained an incompatible old local dependency; that failed build was discarded.
+`SPLITSCRIPT_GIT_REVISION` was explicitly set for each archive build. No timings
+come from pre-existing executables or the instrumented profiling build.
+
+All timing runs are serial, at ordinary priority, pinned to logical CPU 0
+(affinity mask 1), with 20 warmups and 50 measured samples per fixture. Rust
+builds ran under `scripts/run_limited.py` with a 1,536 MiB process-tree limit;
+measurements and script compilation used 768 MiB. Builds did not overlap
+measurements. Executable compilation and startup are outside the latency timers.
+
+The same September 12 fixture bytes are used on both sides. The common
+`compiler_baseline.rs` runner substitutes `minish_cap.split` for Lunistice and
+is linked using `rustc -O` against each freshly built library. The other three
+rows are unchanged. Lunistice's old Unity API is incompatible with the new
+compiler, so it is measured separately for current output size, not silently
+ported and presented as identical input.
+
+End-to-end one-shot compilation, in milliseconds:
+
+| Fixture | Source bytes | Old → current median | Reverse-order old → current | Old → current p95, first pair |
+| --- | ---: | ---: | ---: | ---: |
+| minimal | 19 | 19.13 → 91.64 | 19.02 → 94.28 | 20.85 → 97.28 |
+| Minish Cap | 15,128 | 23.20 → 98.45 | 22.84 → 98.35 | 24.37 → 104.49 |
+| cancellation | 507 | 17.48 → 90.93 | 17.40 → 91.34 | 18.83 → 93.14 |
+| settings | 4,269 | 18.20 → 91.60 | 17.87 → 93.90 | 19.62 → 95.97 |
+
+The public stage runner localizes most of the increase to analysis. Stage
+medians come from separate runs and need not sum to the end-to-end median:
+
+| Fixture | Analysis old → current | Wasm lowering old → current | Encoding old → current |
+| --- | ---: | ---: | ---: |
+| minimal | 14.34 → 79.77 ms | 2.67 → 11.06 ms | 1.72 → 6.66 ms |
+| Minish Cap | 16.26 → 78.62 ms | 2.97 → 11.09 ms | 3.93 → 9.35 ms |
+| cancellation | 13.57 → 75.24 ms | 2.59 → 10.55 ms | 1.60 → 5.55 ms |
+| settings | 14.07 → 75.26 ms | 2.65 → 10.56 ms | 1.68 → 5.70 ms |
+
+Frontend-only medians (parse, augmentation, resolution, and disposal) rose
+from 2.27 to 8.62 ms for minimal, 3.08 to 9.42 ms for Minish Cap, 2.29 to
+8.30 ms for cancellation, and 1.93 to 6.76 ms for settings.
+
+A separate temporary instrumented build attributes the current analysis cost.
+It uses five warmups and ten measured samples per fixture on the same pinned
+CPU. These diagnostic timings are not mixed into the uninstrumented comparisons:
+
+| Current analysis component | Minimal | Minish Cap | Current Lunistice |
+| --- | ---: | ---: | ---: |
+| type checking, total | 16.18 ms | 16.76 ms | 17.70 ms |
+| type-checking bodies, included above | 13.24 ms | 14.03 ms | 14.75 ms |
+| typed-HIR construction | 12.94 ms | 13.70 ms | 14.42 ms |
+| validation, total | 40.41 ms | 42.03 ms | 44.73 ms |
+| effect inference, included above | 36.38 ms | 37.75 ms | 39.94 ms |
+
+Effect inference performs nine full-program rounds on all three fixtures.
+Minimal input alone has 408 function bodies and 17,058 typed expressions;
+Minish Cap has 412/17,634 and Lunistice 413/19,002. The bundled catalog source
+grew from 308,872 to 600,330 bytes between the two commits. This makes repeated
+library work a concrete target. The measurements do not isolate a single
+culprit commit or establish that any runtime validation should be removed.
+All tracing was confined to the ignored profiling snapshot.
+
+The new `scripts/lsp_baseline.mjs` measures the actual stdio language server
+with its normal allocator. It waits for versioned diagnostics after alternating
+full-text edits and fails on error diagnostics, protocol errors, premature exit,
+or timeout. It records SHA-256 hashes of its input sources. It does not measure
+completion, hover, startup, invalid-source recovery, or browser-worker latency.
+
+| Fixture | Old → current median | Reverse-order old → current | Old → current p95, first pair |
+| --- | ---: | ---: | ---: |
+| small, 171 bytes | 15.46 → 79.50 ms | 15.33 → 78.26 ms | 16.43 → 83.83 ms |
+| Minish Cap, 15,128 bytes | 17.11 → 80.53 ms | 16.85 → 80.91 ms | 19.03 → 90.60 ms |
+| 500 helpers, 29,990 bytes | 38.68 → 102.09 ms | 38.67 → 104.02 ms | 42.91 → 107.37 ms |
+
+Run this benchmark against an already-built executable and an explicit frozen
+fixture. For a comparison, use the same file, CPU affinity, and sample count,
+then reverse the executable order. On Windows, wrap the run in the resource
+guard; the following command alone does not set CPU affinity:
+
+```console
+python scripts/run_limited.py --memory-mib 768 --seconds 240 --log target/lsp-baseline.log -- node scripts/lsp_baseline.mjs target/max-opt/splitls.exe examples/minish_cap.split 50
+```
+
+Raw generated Release modules, without Binaryen:
+
+| Identical fixture | Old bytes | Current bytes | Change |
+| --- | ---: | ---: | ---: |
+| minimal | 1,007 | 597 | −410 |
+| Minish Cap | 45,636 | 35,334 | −10,302 |
+| cancellation | 2,701 | 2,241 | −460 |
+| settings | 8,772 | 7,987 | −785 |
+| debug-profile fixture, compiled as Release | 1,590 | 1,170 | −420 |
+| set runtime | 3,569 | 3,106 | −463 |
+| map runtime | 4,976 | 4,779 | −197 |
+
+Section sizes include their framing. Minish Cap's code section falls from
+39,715 to 29,843 bytes, accounting for 9,872 bytes of its total reduction.
+Cancellation's code section stays at 1,584 bytes; its savings come from types
+(543 → 150) and data (104 → 37). Map's code section actually grows from 3,796
+to 4,015 bytes while its smaller types/data still reduce the complete module.
+Do not infer code simplification from total size alone.
+
+Today's Lunistice remains **32,121 bytes** with an explicit IL2CPP profile and
+**142,234 bytes** with automatic Unity selection, matching the accepted Unity
+closeout sizes. All 16 freshly emitted modules passed `wasm-tools validate
+--features all`. This audit does not remove recent runtime validation features
+to recover historical size figures.
+
+Binaryen 132 reference results on current artifacts:
+
+| Fixture | Raw bytes | `-O4` bytes | `-Oz` bytes |
+| --- | ---: | ---: | ---: |
+| minimal | 597 | 460 | 459 |
+| Minish Cap | 35,334 | 28,850 | 29,288 |
+| Lunistice, explicit profile | 32,121 | 27,210 | 26,604 |
+| Lunistice, automatic Unity | 142,234 | 106,739 | 104,123 |
+
+Both optimizer modes used `--closed-world` and explicitly enabled GC,
+reference types, multivalue, bulk memory, sign extension, nontrapping float
+conversion, and mutable globals. A preliminary `--all-features` run emitted
+an encoding the installed `wasm-tools 1.201.0` could not validate, so those
+results were discarded; the table uses the narrower feature set. All eight
+listed optimized modules validate. Lunistice's raw, O4, and Oz modules each
+pass the maintained base-game and DLC runtime scenarios (six runs). Recorded
+host traces are identical across raw/O4/Oz for each scenario. This does not
+claim runtime coverage of automatic Unity attachment or general equivalence
+of every Binaryen transformation. Binaryen remains an offline comparison tool.
+
+Raw logs, source snapshots, fixture hashes, section breakdowns, and saved
+uninstrumented executables are under ignored
+`target/performance-review/2026-09-22`. The LSP harness is retained in the
+repository so the protocol measurement can be repeated after future changes.
+The harness passed `node --check`, four complete server runs (both comparison
+orders), and a missing-executable failure check. No Rust implementation changed,
+so this reassessment did not rerun the full compiler conformance suite.
+
 ## Unity migration gate
 
 Run the gate after each Unity implementation step:
