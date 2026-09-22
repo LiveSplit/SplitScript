@@ -26,6 +26,19 @@ are under ignored `target/performance-review`.
 
 ### Minish Cap is the primary latency target
 
+**Implemented: reuse typed code after managed binding pruning.** Pruning
+generated preparation bindings now rebuilds only that function's typed HIR.
+Paired Lunistice warm compile medians improve from 55.4–55.9 to
+**52.3–52.7 ms** (5.5–5.7%). Minish Cap remains around **7 ms**, and LSP
+diagnostics around **4 ms**; this managed-provider change does not target
+either path. Debug and Release share the implementation. All 18 output
+fixtures validate, with unchanged sizes and executable sections. See
+[the pruning measurements](docs/BASELINES.md#2026-09-22-reuse-typed-code-after-managed-binding-pruning).
+All 1,156 compiler/library tests pass, with one manual benchmark ignored.
+The whole-program Wasm rebuild still remains after pruning; safely reusing
+generated expression IDs, temporaries, closures, and async plans is a larger
+follow-up. Fresh-process library initialization also remains separate work.
+
 **Implemented: indexed Wasm expression lookup.** Reusing the bounded HIR index
 builder in Wasm IR improves paired Minish Cap medians from 7.9–8.0 to
 **7.3–7.4 ms**, and Lunistice from 67–68 to **57.6–58.5 ms**. Both profiles
@@ -33,9 +46,8 @@ share the implementation. Output sizes and executable sections are unchanged;
 LSP diagnostics remain around 4 ms. All 1,155 compiler/library tests pass, with
 one manual benchmark ignored, and all 18 size fixtures validate. See
 [the backend measurements](docs/BASELINES.md#2026-09-22-indexed-wasm-expression-lookup).
-The next larger Lunistice target is the whole-program HIR/Wasm rebuild after
-pruning only generated preparation bindings. A syntax-based library-root
-prototype gave too little benefit for its complexity and was discarded.
+A syntax-based library-root prototype gave too little benefit for its
+complexity and was discarded.
 
 **Follow-up implemented: resolved library dependencies.** Library-to-library
 dependencies now reuse bootstrap semantic resolution, avoiding unrelated

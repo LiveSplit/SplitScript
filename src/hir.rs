@@ -686,6 +686,81 @@ pub(crate) fn visible_expression_count(program: &SyntaxProgram) -> usize {
 }
 
 impl TypedProgram {
+    /// Rebuild a pruned function while retaining the checked HIR outside it.
+    /// The rewrite must preserve surviving node IDs, parameter declarations,
+    /// and semantic resolutions outside this function.
+    pub(crate) fn rebuild_pruned_function(
+        &self,
+        original: &crate::ast::FunctionDecl,
+        replacement: &crate::ast::FunctionDecl,
+        syntax: &SyntaxProgram,
+        semantics: &SemanticModel,
+    ) -> Self {
+        assert_eq!(original.id, replacement.id);
+        let mut owned = FunctionNodeIds::default();
+        owned.visit_function(original);
+        let mut builder = TypedBodyBuilder {
+            semantics,
+            syntax,
+            standard_library: &self.standard_library,
+            expressions: HashMap::new(),
+            assignments: HashMap::new(),
+            patterns: HashMap::new(),
+        };
+        builder.visit_function(replacement);
+        let mut result = self.clone();
+        // Pruning does not introduce IDs, so replacing surviving entries in
+        // place also preserves their sorted order. Removed closures and their
+        // nested expressions/patterns disappear along with the old subtree.
+        result.expressions.retain_mut(|expression| {
+            if !owned.expressions.contains(&expression.id) {
+                return true;
+            }
+            if let Some(updated) = builder.expressions.remove(&expression.id) {
+                *expression = updated;
+                true
+            } else {
+                false
+            }
+        });
+        result.assignments.retain_mut(|assignment| {
+            if !owned.assignments.contains(&assignment.id) {
+                return true;
+            }
+            if let Some(updated) = builder.assignments.remove(&assignment.id) {
+                *assignment = updated;
+                true
+            } else {
+                false
+            }
+        });
+        result.patterns.retain_mut(|pattern| {
+            if !owned.patterns.contains(&pattern.id) {
+                return true;
+            }
+            if let Some(updated) = builder.patterns.remove(&pattern.id) {
+                *pattern = updated;
+                true
+            } else {
+                false
+            }
+        });
+        assert!(builder.expressions.is_empty());
+        assert!(builder.assignments.is_empty());
+        assert!(builder.patterns.is_empty());
+        result.expression_positions =
+            crate::expression_index::expression_positions(&result.expressions, |expression| {
+                expression.id
+            });
+        result
+            .function_bodies
+            .iter_mut()
+            .find(|body| body.function.function == replacement.id)
+            .expect("pruned function belongs to checked HIR")
+            .body = lower_block(&replacement.body, semantics, syntax, &self.standard_library);
+        result
+    }
+
     pub(crate) fn build(
         declarations: Arc<DeclarationIndex>,
         syntax: &SyntaxProgram,
@@ -1101,6 +1176,69 @@ mod lookup_tests {
                 expression.id
             });
         assert!(hir.expression(id).is_none());
+    }
+}
+
+#[derive(Default)]
+struct FunctionNodeIds {
+    expressions: HashSet<ExprId>,
+    assignments: HashSet<AssignmentId>,
+    patterns: HashSet<PatternId>,
+}
+
+impl<'ast> SyntaxVisitor<'ast> for FunctionNodeIds {
+    fn visit_expr(&mut self, expression: &'ast Expr) {
+        self.expressions.insert(expression.id);
+        if let ExprKind::Is { pattern, .. } = &expression.kind {
+            self.patterns.insert(pattern.id);
+        }
+        visit::walk_expr(self, expression);
+    }
+
+    fn visit_stmt(&mut self, statement: &'ast Stmt) {
+        if let Stmt::Assign { id, .. } | Stmt::StateAssign { id, .. } = statement {
+            self.assignments.insert(*id);
+        }
+        visit::walk_stmt(self, statement);
+    }
+
+    fn visit_binding_pattern(&mut self, binding: &'ast crate::ast::BindingPattern) {
+        self.patterns.insert(binding.pattern.id);
+        visit::walk_binding_pattern(self, binding);
+    }
+
+    fn visit_match_arm(&mut self, arm: &'ast MatchArm) {
+        self.patterns.insert(arm.pattern_id);
+        visit::walk_match_arm(self, arm);
+    }
+
+    fn visit_pattern(&mut self, pattern: &'ast MatchPattern) {
+        match pattern {
+            MatchPattern::Struct { fields, .. } => {
+                self.patterns
+                    .extend(fields.iter().map(|field| field.pattern.id));
+            }
+            MatchPattern::Enum {
+                payload: Some(payload),
+                ..
+            }
+            | MatchPattern::OptionSome(payload)
+            | MatchPattern::IteratorItem(payload)
+            | MatchPattern::ResultSuccess(payload)
+            | MatchPattern::ResultError(payload) => {
+                self.patterns.insert(payload.id);
+            }
+            MatchPattern::Array(array) => {
+                self.patterns
+                    .extend(array.elements().map(|element| element.id));
+            }
+            MatchPattern::Alternation(elements) => {
+                self.patterns
+                    .extend(elements.iter().map(|element| element.id));
+            }
+            _ => {}
+        }
+        visit::walk_pattern(self, pattern);
     }
 }
 

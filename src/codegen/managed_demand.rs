@@ -414,3 +414,70 @@ fn prune_expression(
         _ => {}
     }
 }
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn reused_hir_matches_full_rebuild_after_managed_pruning() {
+        for provider in [
+            "Unity.il2cpp(Il2CppProfile.unity2022_3_0f1X64())",
+            "Unity.mono(MonoVersion.V2)",
+            "Unity",
+        ] {
+            let source = format!(
+                r#"
+                enum Edition {{ Base, Extras }}
+                let edition: Edition
+                image "Assembly-CSharp" {{ class Probe {{
+                    static i32 value;
+                    if edition == Edition.Extras {{
+                        static Map<String, [String]> unobserved;
+                        static i32 second; static i32 third; static i32 fourth;
+                    }}
+                }} }}
+                state {provider} ["game.exe"] {{
+                    value = Probe.value?;
+                    second = if edition == Edition.Extras {{ Probe.second? }} else {{ 0 }};
+                    third = if edition == Edition.Extras {{ Probe.third? }} else {{ 0 }};
+                    fourth = if edition == Edition.Extras {{ Probe.fourth? }} else {{ 0 }};
+                }}
+                onAttach {{ edition = Edition.Extras }}
+                "#
+            );
+            let checked = crate::check(crate::lower(crate::parse(&source).unwrap())).unwrap();
+            for profile in [crate::BuildProfile::Debug, crate::BuildProfile::Release] {
+                let options = crate::CompilerOptions {
+                    profile,
+                    ..Default::default()
+                };
+                let backend = crate::lower_wasm_with_options(&checked, options);
+                assert!(matches!(backend.program, std::borrow::Cow::Owned(_)));
+                let hir = crate::hir::TypedProgram::build(
+                    checked.hir.declarations_arc(),
+                    &backend.program,
+                    &backend.semantics,
+                    checked.context.standard_library(),
+                    true,
+                    checked.hir.visible_expression_count(),
+                    checked.hir.visible_function_count(),
+                );
+                let reference = crate::wasm_ir::Program::lower(
+                    &hir,
+                    &backend.semantics,
+                    &checked.effects,
+                    &checked.capabilities,
+                    &checked.scoped_globals,
+                    profile,
+                );
+                let actual = crate::codegen::compile(backend);
+                let mut backend = crate::lower_wasm_with_options(&checked, options);
+                backend.wasm_ir = reference;
+                let expected = crate::codegen::compile(backend);
+                assert!(
+                    actual == expected,
+                    "full rebuild differs for {provider} {profile:?}"
+                );
+            }
+        }
+    }
+}

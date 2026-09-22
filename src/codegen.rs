@@ -332,15 +332,21 @@ impl<'a> BackendProgram<'a> {
             // Rebuild control flow after pruning so discarded awaits never
             // acquire frame slots or async states. Checked tooling products
             // retain the complete schema and original generated declarations.
-            let hir = crate::hir::TypedProgram::build(
-                checked.hir.declarations_arc(),
-                &program,
-                &semantics,
-                checked.context.standard_library(),
-                true,
-                checked.hir.visible_expression_count(),
-                checked.hir.visible_function_count(),
-            );
+            let original = checked
+                .compilation_syntax
+                .functions
+                .iter()
+                .find(|function| function.name == crate::stdlib::PROVIDER_PREPARATION_FUNCTION)
+                .expect("pruned bindings have a preparation function");
+            let replacement = program
+                .functions
+                .iter()
+                .find(|function| function.id == original.id)
+                .unwrap();
+            let hir =
+                checked
+                    .hir
+                    .rebuild_pruned_function(original, replacement, &program, &semantics);
             wasm_ir = wasm_ir::Program::lower(
                 &hir,
                 &semantics,

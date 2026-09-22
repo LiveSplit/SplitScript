@@ -46,6 +46,55 @@ compiler regression. Generated Wasm byte counts are deterministic, but should
 also be reviewed rather than frozen into brittle assertions because valid
 backend changes can alter them intentionally.
 
+## 2026-09-22 reuse typed code after managed binding pruning
+
+Managed metadata pruning changes the generated preparation function, but used
+to rebuild typed HIR for the entire program. It now rebuilds that function's
+typed expressions and body, removing discarded expressions, assignments, and
+patterns by their original node IDs. Unaffected checked HIR is reused. Wasm
+control-flow lowering still runs after pruning, so removed awaits cannot keep
+obsolete frame slots or async states. Debug and Release share this path, and
+the original checked products remain available to tooling.
+
+Paired measurements compare `e1c497d` with this change using ordinary Rust
+release builds, the same frozen real autosplitters, CPU 0, 20 warmups, and 50
+samples. Run order is before/after/after/before:
+
+| Workload | Before, first / reverse | After, first / reverse |
+| --- | ---: | ---: |
+| Minish Cap warm compile | 7.1119 / 7.1501 ms | 6.9307 / 7.0668 ms |
+| Lunistice warm compile | 55.8939 / 55.4043 ms | 52.7252 / 52.3409 ms |
+| Minish Cap LSP diagnostics | 3.9134 / 3.9291 ms | 3.9563 / 3.9163 ms |
+
+Lunistice improves by 5.5–5.7% in both orders. Minish Cap does not use this
+managed-pruning path; its small timing movement is not attributed to the
+change. LSP diagnostics are unchanged. The earlier binary also runs faster
+than in the previous session, so the improvement uses these paired results,
+not the previous session's absolute numbers. These are warm compilations,
+not fresh-process startup measurements.
+
+Lunistice's stage medians are 22.39 → 22.37 ms for analysis, 11.08 → 10.86 ms
+for initial Wasm lowering, and 22.08 → 19.86 ms for backend preparation,
+encoding, and disposal. The latter includes managed pruning and its rebuild.
+The remaining whole-program Wasm rebuild is still a possible follow-up;
+reusing it requires preserving generated expression IDs, temporaries, closure
+captures, and async plans, so this change stops at typed-HIR reuse.
+
+All nine release and nine debug output fixtures validate. Release bytes match
+the preceding compiler after build-stamp normalization. Debug executable
+sections also match; some DWARF `.debug_info` sections differ. Sizes remain
+35,326 bytes for Minish Cap, 32,121 for Lunistice, and 142,220 for automatic
+Unity Lunistice. No output-size improvement is claimed.
+
+A differential test compares emitted bytes with the previous full-HIR rebuild
+for Mono, IL2CPP, and automatic Unity selection in both profiles, including
+unused composite fields and conditional batched bindings. All 694 compiler
+tests and 462 library tests pass, with one manual benchmark ignored.
+
+Local artifacts are under `target/performance-review/2026-09-22/`, using the
+`wasm-index-release-*` and `prune-reuse-release-*` binaries, the
+`prune-reuse-measurements.log` report, and `prune_reuse_final.py` driver.
+
 ## 2026-09-22 indexed Wasm expression lookup
 
 Wasm IR now uses the bounded expression-ID index already used by typed HIR,
