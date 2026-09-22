@@ -46,6 +46,68 @@ compiler regression. Generated Wasm byte counts are deterministic, but should
 also be reviewed rather than frozen into brittle assertions because valid
 backend changes can alter them intentionally.
 
+## 2026-09-22 resolved library dependencies
+
+The selector now reuses the calls resolved during the existing full-library
+bootstrap. User and generated-provider source still retain all candidates
+with a matching name, but library-to-library edges use resolved catalog items
+and function references. This avoids pulling in unrelated receiver methods
+through common names such as `classAny`. Overload families, implicit capability
+and formatting roots, constants, and generated provider dependencies remain
+conservative. The cache stores only immutable catalog body indices, never
+compilation-owned function, expression, or type IDs. Both build profiles share
+the change; bootstrap validation still checks every library body. Parser-
+generated file-version constructor calls are explicitly rooted by the `v`
+literal prefix, rather than relying on unrelated same-name library calls.
+
+Compared with `0d6d9f3`, the number of lowered function bodies falls from 55 to
+**41 for Minish Cap**, and from 256 to **219 for Lunistice**. Measurements use
+ordinary Rust release binaries, identical frozen autosplitters, CPU 0, 20
+warmups, and 50 samples, sequentially in both run orders. The earlier baseline
+has also become faster in this session, so use these paired results rather
+than comparing directly with the previous section's timings.
+
+| Actual autosplitter / measurement | Before median, first / reverse | After median, first / reverse |
+| --- | ---: | ---: |
+| Minish Cap compilation | 8.51 / 8.92 ms | **7.70 / 7.62 ms** |
+| Lunistice compilation | 75.62 / 78.25 ms | **65.79 / 66.30 ms** |
+| Minish Cap LSP edit → diagnostics | 4.88 / 4.98 ms | **3.93 / 4.04 ms** |
+
+This is an additional 9–15% compile-time improvement for Minish Cap, 13–15%
+for Lunistice, and about 19% for Minish Cap diagnostics. Compilation p95 changes
+from 9.23/9.84 to 8.44/8.42 ms for Minish Cap and from 79.54/83.62 to
+69.47/69.45 ms for Lunistice. The LSP harness measures complete revision
+rebuilding after alternating a trailing newline.
+
+A separate stage run attributes Lunistice's remaining warm work to analysis
+(22.33 ms), Wasm lowering (16.44 ms), and encoding plus disposal (25.99 ms).
+Minish Cap measures 3.42, 0.69, and 3.34 ms respectively. These independently
+timed phase medians are diagnostic; they need not sum to end-to-end medians.
+
+Fresh Minish Cap CLI processes still take about 68–72 ms: before medians are
+71.54/68.98 ms and after medians are 71.16/67.69 ms, with 15 launches per pair
+after three warmups. These filesystem-warm measurements include full library
+initialization and I/O. Startup outliers are substantial; this change makes
+no material cold-start improvement claim.
+
+All nine release fixtures keep their sizes, including Minish Cap at 35,326 B,
+explicit-profile Lunistice at 32,121 B, and automatic-discovery Lunistice at
+142,220 B. Debug sizes also remain unchanged except explicit Lunistice,
+which falls from 44,516 to 44,512 B. All 18 modules pass `wasm-tools validate
+--features all`.
+
+Validation: all 694 compiler integration tests and 460 library tests pass
+(one manual benchmark remains ignored). A new dependency-selection test
+distinguishes the same-named Unity and Mono class discovery methods. The
+full-library comparison also covers parser-generated file-version calls,
+alongside the real autosplitters and collection fixtures. Existing runtime
+tests cover the constructor, formatting, providers, and managed schemas.
+
+Artifacts are under ignored `target/performance-review/2026-09-22`, with the
+`typed-deps-*` prefix. Final paired measurements use `*-typed-deps-final-*`,
+and `typed-deps-final-measurements.log` records sizes and process-start timings.
+The final test logs are `typed-deps-literal-{compiler,library}-tests.log`.
+
 ## 2026-09-22 library dependency selection
 
 Ordinary compilations now inject a conservative dependency closure of the

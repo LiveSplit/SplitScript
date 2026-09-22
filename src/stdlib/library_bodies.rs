@@ -47,6 +47,18 @@ pub(super) struct RenderedLibraryBodies {
     dependencies: Option<BodyDependencies>,
 }
 
+impl RenderedLibraryBodies {
+    pub(super) fn record_resolved_dependencies(
+        &self,
+        program: &Program,
+        semantics: &crate::semantic::SemanticModel,
+    ) {
+        if let Some(dependencies) = &self.dependencies {
+            dependencies.record_resolved(program, semantics);
+        }
+    }
+}
+
 fn body_source(
     item: &StdlibItem,
     signature: Signature,
@@ -1433,6 +1445,7 @@ mod tests {
             include_str!("../../examples/cancellation.split"),
             include_str!("../../tests/set_runtime.split"),
             include_str!("../../tests/map_runtime.split"),
+            r#"state "game.exe" {} onAttach { print(v"1.2.3.4") }"#,
         ] {
             let selected = crate::check(crate::lower(crate::parse(source).unwrap())).unwrap();
             let complete = crate::check(lower_with_all_bodies(source)).unwrap();
@@ -1488,6 +1501,31 @@ mod tests {
             &lex_tokens(&selected.source).unwrap()
         );
         assert_augmented_tokens_match_source(source, &selected, "");
+    }
+
+    #[test]
+    fn resolved_library_dependencies_distinguish_same_named_methods() {
+        let library = StandardLibrary::new();
+        let complete = library.rendered_library_bodies();
+        for (owner, unrelated) in [("UnityImage", "MonoImage"), ("MonoImage", "UnityImage")] {
+            let item = library
+                .item_by_name_including_private(&format!("{owner}.class"))
+                .unwrap();
+            let Implementation::LibraryBody { function_name, .. } = item.implementation else {
+                panic!("class discovery must have a source body");
+            };
+            let selected = complete
+                .dependencies
+                .as_ref()
+                .unwrap()
+                .select(complete, function_name, "")
+                .unwrap();
+            let includes = |name: &str| selected.body_ranges.iter().any(|(_, body)| *body == name);
+            // Both implementations call `self.classAny`, but each must retain
+            // only its resolved receiver's discovery implementation.
+            assert!(includes(&format!("{owner}.classAny")));
+            assert!(!includes(&format!("{unrelated}.classAny")));
+        }
     }
 
     #[test]

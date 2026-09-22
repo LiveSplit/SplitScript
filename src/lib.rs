@@ -288,6 +288,8 @@ fn derive_standard_library_operation_metadata(
         );
         operations.insert(item.id, metadata);
     }
+    standard_library
+        .record_source_body_dependencies(&checked.compilation_syntax, &checked.semantics);
     Ok(operations)
 }
 

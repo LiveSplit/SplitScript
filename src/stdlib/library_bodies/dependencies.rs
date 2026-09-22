@@ -1,22 +1,31 @@
-//! Conservative source-body dependencies, before receiver types are known.
+//! Conservative source-body selection before user receiver types are known.
 //!
-//! Every identifier retains all callable candidates with that name. This
+//! User identifiers retain all callable candidates with that name. This
 //! includes function values, calls inside closures/interpolations, and bodies
 //! of unused user functions. Extra candidates cost time but preserve ordinary
-//! inference and diagnostics. Hidden compiler calls are rooted separately.
+//! inference and diagnostics. Within the library, bootstrap-resolved calls
+//! select precise dependencies. Hidden compiler calls are rooted separately.
 
-use std::collections::{HashMap, HashSet};
+use std::{
+    collections::{HashMap, HashSet},
+    sync::OnceLock,
+};
 
 use super::{RenderedLibraryBodies, lex_tokens};
 use crate::{
+    ast::{Expr, FunctionId, Program},
     lexer::{Token, TokenKind},
+    semantic::{ResolvedCall, ResolvedValue, SemanticModel},
     stdlib::{Implementation, ItemKind, StandardLibrary, StateProviderAttachment, StdlibItemId},
+    visit::{self, Visitor},
 };
 
 #[derive(Debug)]
 pub(super) struct BodyDependencies {
     names: HashMap<&'static str, Vec<usize>>,
-    edges: Vec<Vec<usize>>,
+    items: HashMap<StdlibItemId, Vec<usize>>,
+    generated_edges: Vec<Vec<usize>>,
+    resolved_edges: OnceLock<Vec<Vec<usize>>>,
     roots: Vec<usize>,
     token_ranges: Vec<std::ops::Range<usize>>,
 }
@@ -107,30 +116,79 @@ impl BodyDependencies {
                 .flatten()
                 .copied(),
         );
+        // The parser expands `v"1.2.3.4"` to FileVersion.fromParts; its
+        // constructor name is absent from the authored token stream.
+        names.entry("v").or_default().extend(
+            items
+                .get(&StdlibItemId::FileVersionFromParts)
+                .into_iter()
+                .flatten()
+                .copied(),
+        );
         let mut result = Self {
             names,
-            edges: Vec::new(),
+            generated_edges: vec![Vec::new(); token_ranges.len()],
+            resolved_edges: OnceLock::new(),
+            items,
             roots,
             token_ranges,
         };
-        result.edges = result
-            .token_ranges
-            .iter()
-            .map(|range| result.references(&tokens[range.clone()]))
-            .collect();
         // Provider specialization rewrites the generic preparation call after
         // parsing. Keep both possible replacements in its dependency closure.
         if let Some(generic) = library.item_by_name_including_private("Unity.providerIl2cpp") {
             for name in ["Unity.providerIl2cpp32", "Unity.providerIl2cpp64"] {
                 if let Some(specialized) = library.item_by_name_including_private(name) {
-                    for &body in items.get(&generic.id).into_iter().flatten() {
-                        result.edges[body]
-                            .extend(items.get(&specialized.id).into_iter().flatten().copied());
+                    for &body in result.items.get(&generic.id).into_iter().flatten() {
+                        result.generated_edges[body].extend(
+                            result
+                                .items
+                                .get(&specialized.id)
+                                .into_iter()
+                                .flatten()
+                                .copied(),
+                        );
                     }
                 }
             }
         }
         Some(result)
+    }
+
+    /// The bootstrap already resolved the library in isolation. Cache only
+    /// catalog body indices, never its compilation-owned expression/type IDs.
+    pub(super) fn record_resolved(&self, program: &Program, semantics: &SemanticModel) {
+        self.resolved_edges.get_or_init(|| {
+            let functions = program
+                .functions
+                .iter()
+                .filter_map(|function| {
+                    self.names
+                        .get(function.name.as_str())
+                        .map(|bodies| (function.id, bodies.as_slice()))
+                })
+                .collect::<HashMap<_, _>>();
+            let mut edges = self.generated_edges.clone();
+            for function in &program.functions {
+                let Some(owners) = functions.get(&function.id) else {
+                    continue;
+                };
+                let mut collector = ResolvedDependencies {
+                    index: self,
+                    semantics,
+                    functions: &functions,
+                    bodies: Vec::new(),
+                };
+                collector.visit_function(function);
+                for &owner in *owners {
+                    edges[owner].extend(&collector.bodies);
+                }
+            }
+            for dependencies in &mut edges {
+                dependencies.sort_unstable();
+                dependencies.dedup();
+            }
+            edges
+        });
     }
 
     fn references(&self, tokens: &[Token]) -> Vec<usize> {
@@ -151,16 +209,17 @@ impl BodyDependencies {
         user: &str,
         generated: &str,
     ) -> Option<RenderedLibraryBodies> {
+        let edges = self.resolved_edges.get()?;
         // Preserve the ordinary recovery path when a fragment is malformed.
         let mut pending = self.references(&lex_tokens(user).ok()?);
         pending.extend(self.references(&lex_tokens(generated).ok()?));
         pending.extend(&self.roots);
-        let mut selected = vec![false; self.edges.len()];
+        let mut selected = vec![false; edges.len()];
         while let Some(index) = pending.pop() {
             if std::mem::replace(&mut selected[index], true) {
                 continue;
             }
-            pending.extend(&self.edges[index]);
+            pending.extend(&edges[index]);
         }
         let original_tokens = rendered.tokens.as_ref().ok()?;
         let mut source = String::new();
@@ -198,5 +257,61 @@ impl BodyDependencies {
             tokens: Ok(tokens),
             dependencies: None,
         })
+    }
+}
+
+struct ResolvedDependencies<'a> {
+    index: &'a BodyDependencies,
+    semantics: &'a SemanticModel,
+    functions: &'a HashMap<FunctionId, &'a [usize]>,
+    bodies: Vec<usize>,
+}
+
+impl ResolvedDependencies<'_> {
+    fn item(&mut self, item: StdlibItemId) {
+        self.bodies
+            .extend(self.index.items.get(&item).into_iter().flatten().copied());
+    }
+
+    fn function(&mut self, function: FunctionId) {
+        self.bodies.extend(
+            self.functions
+                .get(&function)
+                .into_iter()
+                .flat_map(|bodies| bodies.iter())
+                .copied(),
+        );
+    }
+}
+
+impl<'ast> Visitor<'ast> for ResolvedDependencies<'_> {
+    fn visit_expr(&mut self, expression: &'ast Expr) {
+        if let Some(call) = self.semantics.call(expression.id) {
+            match call {
+                ResolvedCall::StandardLibrary { item, .. } => self.item(*item),
+                ResolvedCall::UserFunction { function, .. }
+                | ResolvedCall::UserMethod { function, .. } => self.function(*function),
+                ResolvedCall::ManagedComponent { .. } => {
+                    self.item(StdlibItemId::UnityGameObjectComponentAddress)
+                }
+                ResolvedCall::ManagedSnapshot { .. }
+                | ResolvedCall::ManagedInstances { .. }
+                | ResolvedCall::ResultError { .. }
+                | ResolvedCall::OptionSome { .. }
+                | ResolvedCall::IteratorItem { .. }
+                | ResolvedCall::ResultSuccess { .. } => {}
+            }
+        }
+        if let Some(function) = self.semantics.function_value(expression.id) {
+            self.function(function.function);
+        }
+        if let Some(ResolvedValue::StandardLibraryConstant(item)) =
+            self.semantics.value(expression.id)
+        {
+            self.item(item);
+        }
+        // Includes nested closures and interpolation expressions. Implicit
+        // capability/formatting implementations remain unconditional roots.
+        visit::walk_expr(self, expression);
     }
 }

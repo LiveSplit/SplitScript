@@ -204,6 +204,15 @@ impl StandardLibrary {
         self.graph.source_body_operations_are_initialized()
     }
 
+    pub(crate) fn record_source_body_dependencies(
+        &self,
+        program: &crate::ast::Program,
+        semantics: &crate::semantic::SemanticModel,
+    ) {
+        self.rendered_library_bodies()
+            .record_resolved_dependencies(program, semantics);
+    }
+
     pub fn core_types(&self) -> &'static [CoreType] {
         CORE_TYPES
     }

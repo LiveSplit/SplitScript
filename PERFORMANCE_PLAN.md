@@ -26,6 +26,19 @@ are under ignored `target/performance-review`.
 
 ### Minish Cap is the primary latency target
 
+**Follow-up implemented: resolved library dependencies.** Library-to-library
+dependencies now reuse bootstrap semantic resolution, avoiding unrelated
+methods with matching names. In new paired runs, Minish Cap improves from
+8.5–8.9 to **7.6–7.7 ms**, Lunistice from 76–78 to **65.8–66.3 ms**, and Minish
+Cap LSP diagnostics from 4.9–5.0 to **3.9–4.0 ms**. The earlier compiler also runs
+faster in this session, so these gains use the immediate paired baseline.
+Lowered function counts fall from 55 to 41 and from 256 to 219 respectively.
+User-source roots remain conservative and full bootstrap validation remains.
+All 1,154 compiler/library tests pass, with one manual benchmark ignored.
+All nine release output sizes stay unchanged; all 18 Debug/Release modules
+validate. Fresh-process Minish Cap compilation still takes about 68–72 ms.
+See [the follow-up measurements](docs/BASELINES.md#2026-09-22-resolved-library-dependencies).
+
 **Implemented: conservative library dependency selection.** Minish Cap warm
 compilation now takes **9.0–9.5 ms**, versus 66–68 ms in the paired baseline;
 its LSP edit-to-diagnostics latency is **4.8–5.0 ms**, versus 49–51 ms.
