@@ -24,6 +24,47 @@ are under ignored `target/performance-review`.
 
 ## Current priorities after the September 22 reassessment
 
+### Minish Cap is the primary latency target
+
+The latest investigation focuses on the real Minish Cap autosplitter, rather
+than synthetic edge cases. Its source is byte-for-byte unchanged from
+`40d72a0`, but warm ordinary-release compilation rose from about 23 ms to
+98 ms at `4720d69`. The fixes through `746243e` brought it to about 60 ms;
+they have **not** restored the original performance.
+
+A fresh stage comparison attributes the remaining increase to analysis
+(15.82 → 42.54 ms), Wasm lowering (2.85 → 10.22 ms), and encoding including
+intermediate-product disposal (3.78 → 9.78 ms). An empty autosplitter pays
+nearly the same analysis/lowering cost. The compiler processes 412 function
+bodies for Minish Cap, of which only four are authored by the autosplitter.
+The bundled catalog grew from 308,872 to 600,330 source bytes while the Unity
+implementation expanded. Every compilation still injects all those bodies.
+
+A controlled, unshipped probe now isolates this cost: omitting unused
+Unity/Mono/IL2CPP bodies after full library bootstrap reduces Minish Cap
+compilation from **59.7 to 19.6 ms**, and actual LSP edit-to-diagnostics from
+**43–45 to 12.9 ms**, confirmed in both run orders. Both Wasm modules validate,
+have the same size, and match after consistent type-index renumbering.
+This restores the historical latency range in the experiment; production
+still needs a correct, general implementation. See
+[the measurements and limitations](docs/BASELINES.md#2026-09-22-minish-cap-regression-diagnosis).
+
+The next architectural priority is to eliminate repeated work on unused
+standard-library bodies **before** type checking and Wasm lowering. Final
+backend reachability already removes them from emitted Wasm, which is too
+late to avoid the compilation cost. Full bootstrap validation of the library
+must remain, as must diagnostics for all user-authored bodies. Reuse must
+preserve higher-order effects, generic specialization, implicit capability
+calls, and generated provider helpers. Simply omitting bodies and falling
+back to coarse catalog effects is not an equivalent implementation.
+
+Judge the next implementation by Minish Cap compilation and edit-to-diagnostics
+latency, with Lunistice as the other real-autosplitter check. Use the same
+source, build profile, and paired run orders, and validate emitted Wasm.
+Prioritize avoiding entire unused-library stages over further reductions in
+small inference, pattern, or sorting costs. The earlier implementation history
+below explains the changes already made; it does not supersede this priority.
+
 Rebuilt `40d72a0` and `4720d69` with identical compatible fixtures. Ordinary
 Rust-release compilation is now roughly **4–5 times slower**: minimal
 19 → 92–94 ms, Minish Cap 23 → 98 ms. Actual stdio LSP diagnostics show the
@@ -39,7 +80,7 @@ bytes. Binaryen 132, used only as an offline reference, reaches 26,604 and
 remaining opportunity, not a proposal to ship Binaryen or a promised result
 from one native pass. See [the complete measurements](docs/BASELINES.md#2026-09-22-performance-reassessment).
 
-The next implementation order is:
+The reassessment's earlier implementation sequence and findings were:
 
 1. **Reduce repeated effect-analysis work (implemented September 22).** Temporary profiling of minimal
    compilation attributes about 36 ms to `effects::polymorphic::infer`: nine
@@ -56,7 +97,8 @@ The next implementation order is:
    body is still analyzed initially, and reuse ends with the current analysis.
    Ordinary-release compilation improves by 28–33% in paired measurements;
    minimal compilation drops from 93–96 to 65–66 ms. The remaining latency is
-   still well above September 12, so typed-HIR work is the next priority.
+   still well above September 12; the following typed-HIR changes addressed
+   part of that remaining cost.
 2. **Investigate typed-HIR construction before adding a large cache.** It costs
    about 13 ms even for minimal input. Separate syntax visiting, expression
    materialization, and function-body construction; look for repeated tree

@@ -46,6 +46,99 @@ compiler regression. Generated Wasm byte counts are deterministic, but should
 also be reviewed rather than frozen into brittle assertions because valid
 backend changes can alter them intentionally.
 
+## 2026-09-22 Minish Cap regression diagnosis
+
+Minish Cap is the primary latency target for the next architectural change.
+Its 15,128-byte source is identical at `40d72a0` and `746243e` (SHA-256
+`4fad141c14e762910b1cbb61142d7ee5ee206cfa6476c140acd2d5415adef328`). The earlier
+paired measurements put warm ordinary-release compilation at about 23 ms
+before the regression, 98 ms at `4720d69`, and 60 ms after the performance
+fixes through `746243e`.
+
+A fresh comparison of the saved binaries separates the remaining regression:
+
+| Minish Cap phase | `40d72a0` median | `746243e` median |
+| --- | ---: | ---: |
+| Analysis | 15.82 ms | 42.54 ms |
+| Wasm lowering | 2.85 ms | 10.22 ms |
+| Encoding, including intermediate disposal | 3.78 ms | 9.78 ms |
+
+The empty fixture still costs 41.36 ms for analysis and 10.00 ms for lowering
+in the current compiler. Minish Cap's own code is therefore not the main
+source of the increase. The compiler processes 412 function bodies, only
+four of which belong to the autosplitter. The bundled catalog grew from
+308,872 to 600,330 source bytes; its current 408 source-defined function
+bodies contain 299,874 bytes of body text. Unity/Mono/IL2CPP families alone
+account for 293 bodies and 224,382 bytes (75% of body text).
+
+### Controlled unused-library experiment
+
+An **unshipped diagnostic probe**, based on `746243e`, retains full library
+bootstrap validation and catalog metadata, then omits Unity/Mono/IL2CPP
+implementation bodies from subsequent compilations. Constants remain
+injected. It permits those intentionally absent templates at the HIR and
+signature-validation boundaries. The filtered source/tokens are cached just
+like the complete library. This is a counterfactual for Minish Cap, not a
+general-purpose dependency selector or a production optimization.
+
+The same executable ran with the filter disabled/enabled, then in reverse
+order, pinned to CPU 0, with 20 warmups and 50 measured samples per run.
+Only the real Minish Cap fixture was timed. Rust used the ordinary release
+profile; emitted Wasm used the SplitScript release profile.
+
+| Measurement | All library bodies | Unused families omitted |
+| --- | ---: | ---: |
+| Compilation median, first pair | 59.75 ms | 19.58 ms |
+| Compilation p95, first pair | 63.74 ms | 21.55 ms |
+| Compilation median, reverse pair | 59.68 ms | 19.57 ms |
+| Compilation p95, reverse pair | 64.67 ms | 20.72 ms |
+| LSP edit → diagnostics median, first pair | 44.80 ms | 12.92 ms |
+| LSP edit → diagnostics p95, first pair | 47.89 ms | 13.27 ms |
+| LSP edit → diagnostics median, reverse pair | 42.68 ms | 12.92 ms |
+| LSP edit → diagnostics p95, reverse pair | 48.19 ms | 14.08 ms |
+
+The actual stdio LSP harness alternates a trailing newline, forcing a new
+document revision and analysis; this measures full revision rebuilding, not
+incremental semantic-edit performance. All responses were free of errors.
+Warmups exclude the complete, once-per-graph library bootstrap, so the
+experiment does not establish a cold-start improvement.
+
+| Minish Cap probe phase | All library bodies | Unused families omitted |
+| --- | ---: | ---: |
+| Analysis median | 40.07 ms | 11.88 ms |
+| Wasm lowering median | 9.53 ms | 2.84 ms |
+| Encoding, including intermediate disposal, median | 9.12 ms | 4.71 ms |
+
+Both probe outputs pass `wasm-tools validate --features all` and have the
+same size, 35,300 bytes. The probe uses a shortened compiler revision stamp,
+so this is not a size reduction from the production 35,334-byte module.
+The modules are not byte-identical because removing library declarations
+changes constructed-type numbering. Comparing the entire printed modules
+after a consistent bijective type-index renaming and reordering the type
+declarations produces an exact match; instructions, imports, exports, data,
+and function ordering are otherwise unchanged. This is a structural output
+check for the experiment, not a substitute for runtime coverage of a future
+production implementation.
+
+This accounts for roughly **40 ms, or 67%, of current Minish Cap compilation**
+and recovers the remembered 20 ms range. Backend reachability already keeps
+these unused implementations out of emitted Wasm, but runs after parsing,
+type checking, HIR/effect analysis, and Wasm lowering have paid for them.
+The next fix must avoid or reuse those earlier library stages. Preserve full
+library validation, diagnostics for every user function, precise higher-order
+effects, and implicit/provider dependencies. A hardcoded Unity exclusion is
+not an acceptable implementation, and this investigation does not change
+production compiler behavior.
+
+Local probe sources and logs remain under ignored
+`target/performance-review/2026-09-22`: `0758-profile` contains the disposable
+snapshot updated to current sources, `minish-probe.log` and
+`minish-lsp-probe.log` contain the paired results, `library-groups.log` contains
+the catalog breakdown, and `minish-probe-type-renaming.txt` records the output
+comparison. The stage comparisons are
+`coverage-release-stages-minish-current.txt` and
+`old-release-stages-minish-now.txt`.
+
 ## 2026-09-22 exhaustiveness checks for catch-all patterns
 
 `missing_patterns` now returns immediately when a checked, unguarded binding
