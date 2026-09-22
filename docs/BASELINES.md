@@ -46,6 +46,52 @@ compiler regression. Generated Wasm byte counts are deterministic, but should
 also be reviewed rather than frozen into brittle assertions because valid
 backend changes can alter them intentionally.
 
+## 2026-09-22 compact-key HIR sorting
+
+Profiling `0758c7c` separates minimal-input HIR construction into visiting
+(7.04 ms), collecting hash-map entries (1.11 ms), sorting (3.44 ms), and body
+construction (0.38 ms). Each typed expression occupies 248 bytes in this native
+build. Sorting compact cached keys avoids repeatedly moving these large
+records during comparisons, while retaining the same stable ID ordering.
+This changes one shared HIR path used by Debug, Release, and the LSP.
+
+An isolated probe sorts the same 17,058 complete expression records with a
+fixed shuffle. With five warmups and 25 samples, ordinary sorting takes
+3.22 ms median; cached-key sorting takes 0.62 ms. This is a local diagnostic,
+not the claimed end-to-end speedup. No profiling instrumentation is retained.
+
+The saved `0758c7c` compiler and this change use ordinary Cargo release,
+identical frozen sources, CPU affinity, 20 warmups, and 50 measured samples.
+Builds and measurements run serially. End-to-end compilation medians:
+
+| Fixture | Before → cached keys | Reverse-order before → cached keys |
+| --- | ---: | ---: |
+| minimal | 60.95 → 60.16 ms | 56.69 → 57.82 ms |
+| Minish Cap | 66.74 → 67.76 ms | 65.32 → 61.13 ms |
+| cancellation | 60.81 → 57.75 ms | 59.93 → 54.20 ms |
+| settings | 61.55 → 58.87 ms | 61.76 → 55.23 ms |
+
+Cancellation and settings improve in both orders; minimal and Minish Cap
+remain mixed. Actual stdio LSP diagnostics improve in both orders, by about
+3–9% across the three fixtures:
+
+| Fixture | Before → cached keys | Reverse-order before → cached keys |
+| --- | ---: | ---: |
+| small | 48.92 → 45.35 ms | 45.73 → 44.25 ms |
+| Minish Cap | 48.30 → 45.83 ms | 46.20 → 42.38 ms |
+| 500 helpers | 70.63 → 64.10 ms | 67.98 → 63.10 ms |
+
+All nine Release and nine Debug fixtures validate with unchanged sizes.
+Release bytes match after normalizing the embedded compiler revision; Debug
+differences are limited to that revision and the previously observed DWARF
+record ordering. This is a compiler-latency improvement, not a Wasm-size pass.
+Focused checks passed: both expression-index tests, both effect-summary
+equivalence tests, the typed-HIR snapshot, and nested value-block compilation.
+Measurements and the isolated probe are under ignored
+`target/performance-review/2026-09-22` (`sort-release-*`, `hir-profile-*`).
+The packaged `max-opt` profile and extension packaging were not rebuilt for
+this small shared-path change.
+
 ## 2026-09-22 indexed HIR expression lookup
 
 The follow-up replaces repeated binary searches in `TypedProgram::expression`

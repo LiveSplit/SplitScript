@@ -72,6 +72,12 @@ The next implementation order is:
    median compilation improvement). Sparse IDs retain the existing lookup.
    Removing value-block prefix copies did not produce a repeatable gain and
    was not retained. See [the lookup measurements](docs/BASELINES.md#2026-09-22-indexed-hir-expression-lookup).
+   Construction profiling then isolated 3.44 ms of sorting 248-byte expression
+   records. Sorting compact cached keys reduces that step to 0.62 ms in an
+   isolated probe, with a one-line shared-path change. Actual LSP diagnostics
+   improve by 3–9% in both run orders; compilation improves consistently for
+   cancellation/settings, while minimal/Minish Cap results remain mixed.
+   Output sizes are unchanged. See [the sorting measurements](docs/BASELINES.md#2026-09-22-compact-key-hir-sorting).
 3. **Revisit library-product reuse with the new floor.** The standard-library
    source grew from 308,872 to 600,330 bytes. Minimal compilation analyzes
    17,058 expressions, and frontend-only time rose from 2.27 to 8.62 ms.

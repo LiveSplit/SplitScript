@@ -704,7 +704,8 @@ impl TypedProgram {
         };
         builder.visit_program(syntax);
         let mut expressions = builder.expressions.into_values().collect::<Vec<_>>();
-        expressions.sort_by_key(|expression| expression.id.index());
+        // Sort compact keys first so comparisons do not repeatedly move large HIR records.
+        expressions.sort_by_cached_key(|expression| expression.id.index());
         let expression_positions = expression_positions(&expressions);
         let mut assignments = builder.assignments.into_values().collect::<Vec<_>>();
         assignments.sort_by_key(|assignment| assignment.id.index());
