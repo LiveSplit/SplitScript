@@ -1,6 +1,10 @@
 import * as vscode from 'vscode';
 import { CompilerTaskController } from './compilerTasks';
 import { DocumentationReferenceController } from './documentationReference';
+import {
+    RESTORE_CODE_ACTION_SELECTION,
+    restoreCodeActionSelection,
+} from './codeActionSelection';
 
 export interface LanguageClientLifecycle extends vscode.Disposable {
     start(): Promise<void>;
@@ -22,6 +26,10 @@ export class ExtensionRuntime {
             this.compilerTasks,
             this.languageClient,
             documentation,
+            vscode.commands.registerCommand(
+                RESTORE_CODE_ACTION_SELECTION,
+                restoreCodeActionSelection,
+            ),
             vscode.commands.registerCommand(
                 'splitscript.restartLanguageServer',
                 async () => this.languageClient.restart(),

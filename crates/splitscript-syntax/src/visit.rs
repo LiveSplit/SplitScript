@@ -436,6 +436,7 @@ pub fn walk_expr<'ast, V: Visitor<'ast>>(visitor: &mut V, expression: &'ast Expr
         ExprKind::Break(Some(value))
         | ExprKind::Return(Some(value))
         | ExprKind::Throw(value)
+        | ExprKind::Inspect { value, .. }
         | ExprKind::Suspend { value, .. }
         | ExprKind::Propagate(value) => visitor.visit_expr(value),
         ExprKind::Member { receiver, .. } => visitor.visit_expr(receiver),
@@ -937,6 +938,7 @@ pub fn walk_expr_mut<F: Folder>(folder: &mut F, expression: &mut Expr) {
         ExprKind::Break(Some(value))
         | ExprKind::Return(Some(value))
         | ExprKind::Throw(value)
+        | ExprKind::Inspect { value, .. }
         | ExprKind::Suspend { value, .. }
         | ExprKind::Propagate(value) => folder.fold_expr(value),
         ExprKind::Member { receiver, .. } => folder.fold_expr(receiver),

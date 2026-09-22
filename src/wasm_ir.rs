@@ -226,6 +226,16 @@ pub enum ExpressionKind {
         error: ExprId,
         target: FailureTarget,
     },
+    Inspect {
+        label: String,
+        value: ExprId,
+    },
+    /// A source expression whose wrapper has no release-runtime behavior.
+    /// Keeping the source expression identity while forwarding its operand
+    /// preserves conversions, control flow, and editor/debug metadata.
+    Transparent {
+        value: ExprId,
+    },
     Suspend {
         mode: SuspensionMode,
         destination: ValueId,
@@ -950,7 +960,7 @@ impl Program {
     ) -> Self {
         let expressions = typed_hir
             .all_expressions()
-            .map(|expression| lower_expression(expression, typed_hir, semantics))
+            .map(|expression| lower_expression(expression, typed_hir, semantics, profile))
             .collect::<Vec<_>>();
         let constant_functions = typed_hir
             .standard_library()
@@ -1435,7 +1445,7 @@ impl Program {
         (temporary, expression)
     }
 
-    fn effective_expression_type(&self, expression: ExprId) -> TypeId {
+    pub(crate) fn effective_expression_type(&self, expression: ExprId) -> TypeId {
         let expression = self
             .expression(expression)
             .expect("lowered expression belongs to Wasm IR");
@@ -1578,6 +1588,7 @@ fn lower_expression(
     expression: &TypedExpression,
     typed_hir: &TypedProgram,
     semantics: &SemanticModel,
+    profile: crate::BuildProfile,
 ) -> Expression {
     let kind = match &expression.kind {
         TypedExpressionKind::None => ExpressionKind::None,
@@ -1769,6 +1780,16 @@ fn lower_expression(
             error: *error,
             target: *target,
         },
+        TypedExpressionKind::Inspect { label, value } => {
+            if profile == crate::BuildProfile::Debug {
+                ExpressionKind::Inspect {
+                    label: label.clone(),
+                    value: *value,
+                }
+            } else {
+                ExpressionKind::Transparent { value: *value }
+            }
+        }
         TypedExpressionKind::Suspend {
             mode,
             destination,
@@ -3898,6 +3919,11 @@ fn map_expression_children(
             error: map(error),
             target,
         },
+        ExpressionKind::Inspect { label, value } => ExpressionKind::Inspect {
+            label,
+            value: map(value),
+        },
+        ExpressionKind::Transparent { value } => ExpressionKind::Transparent { value: map(value) },
         ExpressionKind::Suspend {
             mode,
             destination,
@@ -5606,6 +5632,15 @@ impl Visitor for LocalPlanner<'_> {
     }
 
     fn visit_expression(&mut self, expression: &Expression, program: &Program) {
+        if let ExpressionKind::Inspect { value, .. } = &expression.kind {
+            self.push(
+                program.effective_expression_type(*value),
+                LocalPurpose::IntrinsicScratch {
+                    expression: expression.id,
+                    slot: 0,
+                },
+            );
+        }
         if let ExpressionKind::Invoke { callee, .. } = &expression.kind {
             let callee_type = match callee {
                 crate::semantic::DynamicCallCallee::Expression(callee) => {

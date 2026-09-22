@@ -1283,7 +1283,7 @@ fn familiar_unique_and_key_value_collection_types_have_canonical_fixes() {
     let source = r#"
         state "game.exe" {}
 
-        fn inspect(
+        fn observe(
             seen: HashSet<String>,
             routes: Dictionary<String, u32>,
             interface: IDictionary<String, u32>,
@@ -1298,7 +1298,7 @@ fn familiar_unique_and_key_value_collection_types_have_canonical_fixes() {
         whileAttached {
             let seen = HashSet.new<String>()
             let routes = Dictionary.new<String, u32>()
-            inspect(seen, routes, routes, routes)
+            observe(seen, routes, routes, routes)
         }
     "#;
     let recovered = splitscript::parse_recovering(source).unwrap();
@@ -3184,7 +3184,7 @@ fn legacy_unity_traversal_points_to_managed_schemas() {
         "#,
         r#"
             state "game.exe" {}
-            fn inspect(runtime: MonoModule) { print(runtime) }
+            fn observe(runtime: MonoModule) { print(runtime) }
         "#,
         r#"
             state "game.exe" {}

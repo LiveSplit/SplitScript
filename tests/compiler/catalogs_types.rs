@@ -1190,6 +1190,10 @@ fn named_state_provider_alternatives_compile() {
                 StateProvider.Advance => current.value == 2 && current.advanceOnly == 3,
             }
         }
+
+        whileAttached {
+            print(current)
+        }
     "#;
     Validator::new_with_features(WasmFeatures::all())
         .validate_all(&splitscript::compile(source).unwrap())
@@ -3637,7 +3641,7 @@ fn option_and_result_annotations_are_distinct_interned_semantic_types() {
             attempt: String!
         }
 
-        fn inspect(maybe: i32?, attempt: String!) {}
+        fn observe(maybe: i32?, attempt: String!) {}
     "#;
     let checked = splitscript::check(splitscript::parse(source).unwrap()).unwrap();
     let syntax = checked.syntax();

@@ -1835,6 +1835,7 @@ fn add_expression_bindings(builder: &mut CompletionBuilder, expression: &Expr, o
         ExprKind::Break(Some(value))
         | ExprKind::Return(Some(value))
         | ExprKind::Throw(value)
+        | ExprKind::Inspect { value, .. }
         | ExprKind::Suspend { value, .. }
         | ExprKind::Propagate(value)
         | ExprKind::Member {
@@ -1942,6 +1943,7 @@ fn completion_condition_flow(condition: &Expr) -> CompletionConditionFlow {
         when_false: Some(BTreeSet::new()),
     };
     match &condition.kind {
+        ExprKind::Inspect { value, .. } => completion_condition_flow(value),
         ExprKind::Bool(value) => CompletionConditionFlow {
             when_true: value.then(BTreeSet::new),
             when_false: (!value).then(BTreeSet::new),
@@ -2393,6 +2395,7 @@ fn shape_condition_value(
     condition: &Expr,
 ) -> Option<bool> {
     match &condition.kind {
+        ExprKind::Inspect { value, .. } => shape_condition_value(syntax, active, value),
         ExprKind::Bool(value) => Some(*value),
         ExprKind::Unary {
             op: crate::ast::UnaryOp::Not,
@@ -2464,6 +2467,9 @@ fn collect_attachment_shape_facts(
     output: &mut Vec<(CompletionShapeDimension, crate::ast::EnumVariantId)>,
 ) {
     match &expression.kind {
+        ExprKind::Inspect { value, .. } => {
+            collect_attachment_shape_facts(syntax, value, output);
+        }
         ExprKind::Binary {
             op: crate::ast::BinaryOp::And,
             left,
@@ -2497,7 +2503,9 @@ fn collect_attachment_shape_falsy_facts(
     expression: &Expr,
     output: &mut Vec<(CompletionShapeDimension, crate::ast::EnumVariantId)>,
 ) {
-    if let ExprKind::Binary {
+    if let ExprKind::Inspect { value, .. } = &expression.kind {
+        collect_attachment_shape_falsy_facts(syntax, value, output);
+    } else if let ExprKind::Binary {
         op: crate::ast::BinaryOp::Or,
         left,
         right,
@@ -2514,6 +2522,9 @@ fn inverse_attachment_shape_fact(
     syntax: &Program,
     expression: &Expr,
 ) -> Option<(CompletionShapeDimension, crate::ast::EnumVariantId)> {
+    if let ExprKind::Inspect { value, .. } = &expression.kind {
+        return inverse_attachment_shape_fact(syntax, value);
+    }
     if let ExprKind::Is { value, pattern, .. } = &expression.kind {
         return inverse_shape_fact(syntax, pattern_shape_fact(syntax, value, &pattern.kind)?);
     }
@@ -2697,6 +2708,7 @@ fn fallback_shape_match_fact(
 
 fn completion_expression_path(expression: &Expr) -> Option<Vec<&str>> {
     match &expression.kind {
+        ExprKind::Inspect { value, .. } => completion_expression_path(value),
         ExprKind::Path(path) => Some(path.iter().map(String::as_str).collect()),
         ExprKind::Member { receiver, name, .. } => {
             let mut path = completion_expression_path(receiver)?;
@@ -3716,11 +3728,11 @@ enum Mode {
 "#;
         let cases = [
             (
-                format!("{declarations}\nfn inspect(value: ) {{}}\nstate \"game.exe\" {{}}"),
+                format!("{declarations}\nfn observe(value: ) {{}}\nstate \"game.exe\" {{}}"),
                 "value: ",
             ),
             (
-                format!("{declarations}\nfn inspect() ->  {{}}\nstate \"game.exe\" {{}}"),
+                format!("{declarations}\nfn observe() ->  {{}}\nstate \"game.exe\" {{}}"),
                 "-> ",
             ),
             (
@@ -3729,13 +3741,13 @@ enum Mode {
             ),
             (
                 format!(
-                    "{declarations}\nfn inspect() {{ let localValue:  = None }}\nstate \"game.exe\" {{}}"
+                    "{declarations}\nfn observe() {{ let localValue:  = None }}\nstate \"game.exe\" {{}}"
                 ),
                 "localValue: ",
             ),
             (
                 format!(
-                    "{declarations}\nfn inspect(value) {{ let cast = value as  }}\nstate \"game.exe\" {{}}"
+                    "{declarations}\nfn observe(value) {{ let cast = value as  }}\nstate \"game.exe\" {{}}"
                 ),
                 "value as ",
             ),
@@ -3843,7 +3855,7 @@ struct Position {
     x: i32,
 }
 state "game.exe" {}
-fn inspect() {
+fn observe() {
     let position = Position { x: pri }
 }
 "#;
@@ -3941,6 +3953,14 @@ fn inspect() {
         assert_eq!(
             labels(&mut process_body, "state [\"game.exe\", \"demo.exe\"] "),
             vec!["{"]
+        );
+
+        let mut selector_argument =
+            CompilerDatabase::new("state Unity.il2cpp(Il2CppProfile.) [\"game.exe\"] {}");
+        let candidates = labels(&mut selector_argument, "Il2CppProfile.");
+        assert!(
+            candidates.contains(&"unity2022_3_0f1X64".to_owned()),
+            "{candidates:#?}"
         );
     }
 
@@ -4187,7 +4207,7 @@ fn selectedLayout(layout: Layout) {
     return layout
 }
 
-fn inspect(layout: Layout) {
+fn observe(layout: Layout) {
     selectedLayout(layout).isLoading.resolve()
 }
 
@@ -4403,7 +4423,7 @@ fn smaller(value, other) {
 struct Point { x: i32, y: i32 }
 let Point { x: globalX, y: globalY } = Point { x: 1, y: 2 }
 state "game.exe" {}
-fn inspect(Point { x, y }: Point) {
+fn observe(Point { x, y }: Point) {
     let Point { x: localX, y: localY } = Point { x, y }
     for Point { x: itemX, y: itemY } in [Point { x, y }] {
 
@@ -4845,7 +4865,7 @@ whileAttached {
         let source = r#"
 state "game.exe" {}
 
-fn inspect(parameter: i32) {
+fn observe(parameter: i32) {
     let localValue = parameter
     loc
 }
@@ -4938,7 +4958,7 @@ whileAttached {
     fn conditional_pattern_bindings_complete_only_on_proven_paths() {
         let source = r#"
 state "game.exe" {}
-fn inspect(value: u32?) {
+fn observe(value: u32?) {
     if value is Some(number) && num {
         number
     } else {
@@ -4953,7 +4973,7 @@ fn inspect(value: u32?) {
 
         let source = r#"
 state "game.exe" {}
-fn inspect(value: u32?) {
+fn observe(value: u32?) {
     if !(value is Some(number)) {
         missing
     } else {

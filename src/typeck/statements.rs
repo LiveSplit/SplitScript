@@ -779,7 +779,19 @@ impl Checker {
                 self.expr(value, Some(item));
             }
             Stmt::Expression(expr) => {
-                self.expr(expr, None);
+                if statement.is_implicitly_debug_only() {
+                    if contains_control_flow_expression(statement) {
+                        self.error(
+                            "`inspect(...)` used as a statement cannot contain `throw`, `return`, `break`, or `continue` because it is erased from release builds",
+                            expr.span,
+                        );
+                    }
+                    self.with_debug_context(DebugContext::DebugOnly, |checker| {
+                        checker.expr(expr, None);
+                    });
+                } else {
+                    self.expr(expr, None);
+                }
             }
         }
     }

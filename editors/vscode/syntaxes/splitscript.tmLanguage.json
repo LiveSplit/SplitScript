@@ -173,7 +173,7 @@
       "patterns": [
         {
           "name": "keyword.control.splitscript",
-          "match": "\\b(if|else|while|loop|for|in|break|continue|match|is|return|throw|async|iterator|await|retry|yield|as|debug|self)\\b"
+          "match": "\\b(if|else|while|loop|for|in|break|continue|match|is|return|throw|inspect|async|iterator|await|retry|yield|as|debug|self)\\b"
         },
         {
           "name": "keyword.declaration.splitscript",

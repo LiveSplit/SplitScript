@@ -5,6 +5,10 @@ import type {
     SettingValueSnapshot,
     SettingWidgetSnapshot,
 } from './runtimeProtocol';
+import {
+    presentVariableValue,
+    type VariableValueLine,
+} from './variableValueTree';
 
 interface WidgetNode {
     kind: 'widget';
@@ -28,7 +32,29 @@ interface ProcessNode {
     process: import('./runtimeProtocol').ProcessSnapshot;
 }
 
-type DebugTreeNode = WidgetNode | ValueNode | PlainNode | ProcessNode;
+interface VariableNode {
+    kind: 'variable';
+    name: string;
+    value: string;
+    summary: string;
+    path: readonly number[];
+    children: readonly VariableValueLine[];
+}
+
+interface VariableLineNode {
+    kind: 'variableLine';
+    variableName: string;
+    line: VariableValueLine;
+    path: readonly number[];
+}
+
+type DebugTreeNode =
+    | WidgetNode
+    | ValueNode
+    | PlainNode
+    | ProcessNode
+    | VariableNode
+    | VariableLineNode;
 
 abstract class SnapshotTreeProvider implements
     vscode.TreeDataProvider<DebugTreeNode>,
@@ -151,19 +177,74 @@ export class SettingsMapViewProvider extends SnapshotTreeProvider {
 
 export class VariablesViewProvider extends SnapshotTreeProvider {
     public getTreeItem(element: DebugTreeNode): vscode.TreeItem {
-        return element.kind === 'plain' ? element.item : new vscode.TreeItem('');
+        if (element.kind === 'plain') return element.item;
+        if (element.kind === 'variable') {
+            const item = new vscode.TreeItem(
+                element.name,
+                element.children.length === 0
+                    ? vscode.TreeItemCollapsibleState.None
+                    : vscode.TreeItemCollapsibleState.Collapsed,
+            );
+            item.id = variableItemId(element.name, element.path);
+            item.description = element.summary;
+            item.tooltip = `${element.name}:\n${element.value}`;
+            item.iconPath = new vscode.ThemeIcon('symbol-variable');
+            return item;
+        }
+        if (element.kind === 'variableLine') {
+            const item = new vscode.TreeItem(
+                element.line.text,
+                element.line.children.length === 0
+                    ? vscode.TreeItemCollapsibleState.None
+                    : vscode.TreeItemCollapsibleState.Collapsed,
+            );
+            item.id = variableItemId(element.variableName, element.path);
+            item.tooltip = element.line.text;
+            item.iconPath = new vscode.ThemeIcon(
+                element.line.children.length === 0 ? 'symbol-value' : 'symbol-field',
+            );
+            return item;
+        }
+        return new vscode.TreeItem('');
     }
 
     public getChildren(element?: DebugTreeNode): DebugTreeNode[] {
+        if (element?.kind === 'variable') {
+            return variableLineNodes(element.name, element.children, element.path);
+        }
+        if (element?.kind === 'variableLine') {
+            return variableLineNodes(element.variableName, element.line.children, element.path);
+        }
         if (element !== undefined) return [];
         return Object.entries(this.snapshot?.timer.variables ?? {}).map(([name, value]) => {
-            const item = new vscode.TreeItem(name, vscode.TreeItemCollapsibleState.None);
-            item.description = value;
-            item.tooltip = `${name}: ${value}`;
-            item.iconPath = new vscode.ThemeIcon('symbol-variable');
-            return { kind: 'plain', item };
+            const presentation = presentVariableValue(value);
+            return {
+                kind: 'variable',
+                name,
+                value,
+                summary: presentation.summary,
+                path: [],
+                children: presentation.children,
+            };
         });
     }
+}
+
+function variableLineNodes(
+    variableName: string,
+    lines: readonly VariableValueLine[],
+    parentPath: readonly number[],
+): VariableLineNode[] {
+    return lines.map((line, index) => ({
+        kind: 'variableLine',
+        variableName,
+        line,
+        path: [...parentPath, index],
+    }));
+}
+
+function variableItemId(name: string, path: readonly number[]): string {
+    return `variable:${JSON.stringify([name, ...path])}`;
 }
 
 export class ProcessesViewProvider extends SnapshotTreeProvider {

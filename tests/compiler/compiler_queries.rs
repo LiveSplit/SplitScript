@@ -97,6 +97,56 @@ fn compiler_database_publishes_non_fatal_warnings() {
 }
 
 #[test]
+fn inspect_is_a_documented_highlighted_expression_keyword() {
+    use splitscript::tooling::{
+        database::{CompilerDatabase, DefinitionTarget},
+        highlight::SemanticTokenKind,
+        language::LanguageItemId,
+    };
+
+    let source = "state \"game.exe\" {}\nwhileAttached {\n    let value = inspect(40 + 2)\n    print(value)\n}";
+    let inspect = source.find("inspect").unwrap();
+    let mut database = CompilerDatabase::new(source);
+    database
+        .check()
+        .expect("inspect should type check as an expression");
+
+    assert_eq!(
+        database.definition_at(inspect).unwrap(),
+        Some(DefinitionTarget::Language(LanguageItemId::Inspect))
+    );
+    assert!(
+        database
+            .hover(inspect)
+            .unwrap()
+            .expect("inspect should expose its language documentation")
+            .markdown
+            .contains("evaluates its operand exactly once")
+    );
+    assert!(
+        database
+            .semantic_highlights()
+            .unwrap()
+            .highlights()
+            .iter()
+            .any(|highlight| highlight.span.start == inspect
+                && highlight.kind == SemanticTokenKind::Keyword)
+    );
+
+    let completion_source = "state \"game.exe\" {}\nwhileAttached {\n    let value = ins\n}";
+    let mut completion_database = CompilerDatabase::new(completion_source);
+    assert!(
+        completion_database
+            .completions(completion_source.find("ins").unwrap() + 3)
+            .unwrap()
+            .items
+            .iter()
+            .any(|item| item.label == "inspect"),
+        "inspect should be offered wherever an expression can start"
+    );
+}
+
+#[test]
 fn represented_enum_hovers_explain_memory_layout_and_effective_discriminants() {
     use splitscript::tooling::database::CompilerDatabase;
 
@@ -1112,7 +1162,7 @@ fn source_reference_queries_cover_all_declaration_kinds() {
             point: Point = process.read(0)
         }
         settings { "General" { "Enabled" => enabled: true } }
-        fn inspect(point: Point, mode: Mode) {
+        fn observe(point: Point, mode: Mode) {
             total += point.x
             if mode == Mode.Active && settings.enabled {
                 print(total as String)
@@ -1120,7 +1170,7 @@ fn source_reference_queries_cover_all_declaration_kinds() {
         }
         whileAttached {
             let point = Point { x: 1 }
-            inspect(point, Mode.Active)
+            observe(point, Mode.Active)
             if current.point.x == 1 {}
         }
     "#;
@@ -1134,7 +1184,7 @@ fn source_reference_queries_cover_all_declaration_kinds() {
         ("Active }", "Active", 3),
         ("let total", "total", 3),
         ("=> enabled", "enabled", 2),
-        ("fn inspect", "inspect", 2),
+        ("fn observe", "observe", 2),
         ("current.point", "point", 2),
     ] {
         let offset = source.find(needle).unwrap() + needle.rfind(expected).unwrap();
@@ -1151,10 +1201,10 @@ fn source_reference_queries_cover_all_declaration_kinds() {
         spellings(&mut database, source, parameter),
         ["point", "point"]
     );
-    let local = source.find("inspect(point").unwrap() + "inspect(".len();
+    let local = source.find("observe(point").unwrap() + "observe(".len();
     assert_eq!(spellings(&mut database, source, local), ["point", "point"]);
 
-    let call = source.rfind("inspect").unwrap();
+    let call = source.rfind("observe").unwrap();
     assert_eq!(
         database.references_at(call, false).unwrap().len(),
         1,
@@ -1178,7 +1228,7 @@ fn managed_class_types_use_the_source_symbol_graph() {
                 i32 points;
             }
         }
-        fn inspect(player: Player.Ref) {}
+        fn observe(player: Player.Ref) {}
         fn inspectSnapshot(manager: GameManager) -> i32 { return manager.points }
     "#;
     let mut database = CompilerDatabase::new(source);
@@ -1241,7 +1291,7 @@ fn managed_schema_owners_share_source_identity_hover_and_rename() {
                 }
             }
         }
-        fn inspect(player: Player) -> u32 { return player.health }
+        fn observe(player: Player) -> u32 { return player.health }
     "#;
     let mut database = CompilerDatabase::new(source);
     database
@@ -1667,7 +1717,7 @@ fn struct_pattern_tooling_preserves_field_and_binding_identities() {
     let source = r#"
         struct Point { x: u32, y: u32 }
         state "game.exe" {}
-        fn inspect(point: Point) -> u32 {
+        fn observe(point: Point) -> u32 {
             return match point {
                 Point { x, y: 4 } => x,
                 _ => 0,
@@ -1745,7 +1795,7 @@ fn anonymous_struct_pattern_tooling_resolves_contextual_field_identities() {
     let source = r#"
         struct Point { x: u32, y: u32 }
         state "game.exe" {}
-        fn inspect({ x, y: _ }: Point) -> u32 {
+        fn observe({ x, y: _ }: Point) -> u32 {
             return x
         }
     "#;
@@ -1867,8 +1917,8 @@ fn unrelated_renames_preserve_both_identities_of_unchanged_struct_shorthand() {
         struct Point { x: u32, y: u32 }
         state "game.exe" {}
         fn point(x: u32) -> Point { return Point { x, y: 0 } }
-        fn inspect(point: Point) { print(point.x) }
-        whileAttached { inspect(point(1)) }
+        fn observe(point: Point) { print(point.x) }
+        whileAttached { observe(point(1)) }
     "#;
     let y_declaration = source.find("y: u32").unwrap();
 
@@ -1894,25 +1944,25 @@ fn semantic_queries_use_exact_tokens_before_end_of_word_fallbacks() {
 
     let source = concat!(
         "state \"game.exe\" {}\n",
-        "fn inspect(value: i32) { print(value) }\n",
+        "fn observe(value: i32) { print(value) }\n",
         "whileAttached {\n",
-        "    inspect(1)\n",
-        "    inspect (2)\n",
+        "    observe(1)\n",
+        "    observe (2)\n",
         "}\n",
     );
     let mut database = CompilerDatabase::new(source);
     database.check().expect("navigation fixture should check");
 
-    let declaration = source.find("inspect").unwrap();
-    let adjacent = source.find("inspect(1)").unwrap();
-    let adjacent_boundary = adjacent + "inspect".len();
+    let declaration = source.find("observe").unwrap();
+    let adjacent = source.find("observe(1)").unwrap();
+    let adjacent_boundary = adjacent + "observe".len();
 
     let hover = database
         .hover(adjacent_boundary)
         .unwrap()
         .expect("call punctuation should expose the enclosing expression type");
     assert_eq!(hover.markdown, "```splitscript\nNone\n```");
-    assert_eq!(&source[hover.span.start..hover.span.end], "inspect(1)");
+    assert_eq!(&source[hover.span.start..hover.span.end], "observe(1)");
     assert!(matches!(
         database.definition_at(adjacent_boundary).unwrap(),
         Some(DefinitionTarget::Source(definition)) if definition.span.start == declaration
@@ -1940,7 +1990,7 @@ fn semantic_queries_use_exact_tokens_before_end_of_word_fallbacks() {
     assert_eq!(database.references_at(inside, true).unwrap().len(), 3);
     assert!(database.rename_target_at(inside).unwrap().is_some());
 
-    let gap_boundary = source.rfind("inspect").unwrap() + "inspect".len();
+    let gap_boundary = source.rfind("observe").unwrap() + "observe".len();
     assert!(database.hover(gap_boundary).unwrap().is_some());
     assert!(matches!(
         database.definition_at(gap_boundary).unwrap(),
@@ -1955,7 +2005,7 @@ fn semantic_queries_use_exact_tokens_before_end_of_word_fallbacks() {
         .unwrap()
         .expect("separated call punctuation should expose the expression type");
     assert_eq!(hover.markdown, "```splitscript\nNone\n```");
-    assert_eq!(&source[hover.span.start..hover.span.end], "inspect (2)");
+    assert_eq!(&source[hover.span.start..hover.span.end], "observe (2)");
     assert!(
         database
             .definition_at(opening_parenthesis)

@@ -24,6 +24,47 @@ export async function run(): Promise<void> {
     await vscode.commands.executeCommand('splitscript.restartLanguageServer');
     await hoverAt(script, hoverPosition);
 
+    const inspectedText = 'double(21)';
+    const inspectedStart = document.getText().indexOf(inspectedText);
+    const inspectedRange = new vscode.Range(
+        document.positionAt(inspectedStart),
+        document.positionAt(inspectedStart + inspectedText.length),
+    );
+    sourceEditor.selection = new vscode.Selection(inspectedRange.start, inspectedRange.end);
+    const inspectAction = await waitFor(async () => {
+        const actions = await vscode.commands.executeCommand<readonly vscode.CodeAction[]>(
+            'vscode.executeCodeActionProvider',
+            script,
+            inspectedRange,
+            vscode.CodeActionKind.RefactorRewrite.value,
+        );
+        return actions?.find(action =>
+            action.kind?.value === 'refactor.rewrite.inspect.add'
+        );
+    }, 'the language server returned no inspect refactoring');
+    assert(inspectAction.edit !== undefined, 'the inspect refactoring has no workspace edit');
+    assert(inspectAction.command !== undefined, 'the inspect refactoring cannot restore selection');
+    assert(await vscode.workspace.applyEdit(inspectAction.edit), 'could not apply inspect refactoring');
+    await vscode.commands.executeCommand(
+        inspectAction.command.command,
+        ...(inspectAction.command.arguments ?? []),
+    );
+    assert(
+        document.getText(sourceEditor.selection) === inspectedText,
+        'the inspect refactoring did not preserve the selected expression',
+    );
+    const restore = new vscode.WorkspaceEdit();
+    const rewrittenStart = document.getText().indexOf('inspect(double(21))');
+    restore.replace(
+        script,
+        new vscode.Range(
+            document.positionAt(rewrittenStart),
+            document.positionAt(rewrittenStart + 'inspect(double(21))'.length),
+        ),
+        inspectedText,
+    );
+    assert(await vscode.workspace.applyEdit(restore), 'could not restore inspect test source');
+
     const printPosition = document.positionAt(document.getText().indexOf('print') + 1);
     const printHovers = await hoverAt(script, printPosition);
     const printMarkdown = printHovers.flatMap(hover => hover.contents)

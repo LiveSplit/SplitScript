@@ -371,7 +371,7 @@ mod tests {
         let snapshot = reference_snapshot(&reference);
         assert_eq!(
             (snapshot.page_count, snapshot.fingerprint),
-            (570, 10_876_366_804_201_666_907)
+            (574, 3_488_168_167_094_681_170)
         );
     }
 

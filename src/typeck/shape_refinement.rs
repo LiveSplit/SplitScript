@@ -232,6 +232,7 @@ impl Checker {
         output: &mut Vec<ShapeConstraint>,
     ) -> Option<()> {
         match &expression.kind {
+            ExprKind::Inspect { value, .. } => self.collect_shape_constraints(value, output),
             ExprKind::Binary {
                 op: BinaryOp::And,
                 left,
@@ -261,6 +262,9 @@ impl Checker {
         output: &mut Vec<ShapeConstraint>,
     ) {
         match &expression.kind {
+            ExprKind::Inspect { value, .. } => {
+                self.collect_truthy_shape_constraints(value, output);
+            }
             ExprKind::Binary {
                 op: BinaryOp::And,
                 left,
@@ -295,7 +299,9 @@ impl Checker {
         expression: &Expr,
         output: &mut Vec<ShapeConstraint>,
     ) {
-        if let ExprKind::Binary {
+        if let ExprKind::Inspect { value, .. } = &expression.kind {
+            self.collect_falsy_shape_constraints(value, output);
+        } else if let ExprKind::Binary {
             op: BinaryOp::Or,
             left,
             right,
@@ -490,6 +496,7 @@ impl Checker {
         assignment: &[ShapeConstraint],
     ) -> Option<bool> {
         match &expression.kind {
+            ExprKind::Inspect { value, .. } => self.evaluate_shape_condition(value, assignment),
             ExprKind::Bool(value) => Some(*value),
             ExprKind::Unary {
                 op: UnaryOp::Not,
@@ -564,6 +571,7 @@ fn predicate_matches_assignment(
 
 fn collect_expression_paths<'a>(expression: &'a Expr, output: &mut Vec<Vec<&'a str>>) {
     match &expression.kind {
+        ExprKind::Inspect { value, .. } => collect_expression_paths(value, output),
         ExprKind::Unary { expr, .. } => collect_expression_paths(expr, output),
         ExprKind::Binary { left, right, .. } => {
             collect_expression_paths(left, output);
@@ -589,6 +597,7 @@ fn assignment_satisfies_constraints(
 
 fn expression_path(expression: &Expr) -> Option<Vec<&str>> {
     match &expression.kind {
+        ExprKind::Inspect { value, .. } => expression_path(value),
         ExprKind::Path(path) => Some(path.iter().map(String::as_str).collect()),
         ExprKind::Member { receiver, name, .. } => {
             let mut path = expression_path(receiver)?;

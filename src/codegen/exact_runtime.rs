@@ -1122,11 +1122,11 @@ mod tests {
                 state "game.exe" {}
 
                 fn first() -> iterator u32 { yield 1 }
-                fn inspect(values: iterator u32) { print(values.next()) }
+                fn observe(values: iterator u32) { print(values.next()) }
 
                 whileAttached {
                     let values = first()
-                    inspect(values)
+                    observe(values)
                 }
             "#,
         );
@@ -1145,11 +1145,11 @@ mod tests {
 
                 fn first() -> iterator u32 { yield 1 }
                 fn second() -> iterator u32 { yield 2 }
-                fn inspect(values: iterator u32) { print(values.next()) }
+                fn observe(values: iterator u32) { print(values.next()) }
 
                 whileAttached {
-                    inspect(first())
-                    inspect(second())
+                    observe(first())
+                    observe(second())
                 }
             "#,
         );

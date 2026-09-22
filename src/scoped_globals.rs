@@ -1916,6 +1916,7 @@ fn expression_children(kind: &TypedExpressionKind) -> Vec<crate::ast::ExprId> {
             value.iter().copied().collect()
         }
         TypedExpressionKind::Throw { error, .. }
+        | TypedExpressionKind::Inspect { value: error, .. }
         | TypedExpressionKind::Suspend { value: error, .. }
         | TypedExpressionKind::Propagate { value: error, .. }
         | TypedExpressionKind::Unary {

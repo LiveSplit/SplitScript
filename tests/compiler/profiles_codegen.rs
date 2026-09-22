@@ -1219,7 +1219,7 @@ fn managed_reference_snapshot_reads_the_complete_layout_refined_shape() {
         onAttach { edition = Edition.Base }
 
         whileAttached {
-            print(current.manager)
+            inspect(current)
             print(current.manager.points)
             let player = current.manager.player
             let health = player.health
@@ -1248,6 +1248,12 @@ fn managed_reference_snapshot_reads_the_complete_layout_refined_shape() {
         names
             .iter()
             .any(|(_, name)| { name == "__splitscript::managed::GameManager::snapshot" })
+    );
+    assert!(
+        names
+            .iter()
+            .any(|(_, name)| name == "__splitscript::debug::StateSnapshot"),
+        "inspecting the complete state should materialize its structural formatter"
     );
     assert!(
         names
@@ -2399,6 +2405,98 @@ fn debug_statements_are_checked_but_erased_from_release_lowering() {
     };
     assert_eq!(count_globals(&debug), count_globals(&release) + 1);
     assert!(release.len() < debug.len());
+}
+
+#[test]
+fn inspect_publishes_only_in_debug_but_preserves_its_release_operand() {
+    use splitscript::{BuildProfile, CompilerOptions};
+
+    let source = r#"
+        state "game.exe" {}
+        fn inspectedValue() -> i32 {
+            return inspect({
+                print("inspected operand")
+                40
+            })
+        }
+        whileAttached { print(inspectedValue()) }
+    "#;
+    let compile = |profile| {
+        splitscript::compile_with_options(
+            source,
+            CompilerOptions {
+                profile,
+                ..CompilerOptions::default()
+            },
+        )
+        .unwrap()
+    };
+    let debug = compile(BuildProfile::Debug);
+    let release = compile(BuildProfile::Release);
+    let imports = |wasm: &[u8]| {
+        Parser::new(0)
+            .parse_all(wasm)
+            .filter_map(|payload| match payload.unwrap() {
+                Payload::ImportSection(section) => Some(
+                    section
+                        .into_imports()
+                        .map(|import| import.unwrap().name.to_owned())
+                        .collect::<Vec<_>>(),
+                ),
+                _ => None,
+            })
+            .flatten()
+            .collect::<Vec<_>>()
+    };
+    let debug_imports = imports(&debug);
+    let release_imports = imports(&release);
+    assert!(
+        debug_imports
+            .iter()
+            .any(|name| name == "timer_set_variable")
+    );
+    assert!(
+        !release_imports
+            .iter()
+            .any(|name| name == "timer_set_variable")
+    );
+    assert!(
+        release_imports
+            .iter()
+            .any(|name| name == "runtime_print_message"),
+        "the inspected operand must remain evaluated in Release"
+    );
+    assert!(contains_string_literal(&release, b"inspected operand"));
+}
+
+#[test]
+fn standalone_inspection_and_its_operand_are_erased_from_release() {
+    use splitscript::{BuildProfile, CompilerOptions};
+
+    let source = r#"
+        state "game.exe" {}
+        whileAttached { inspect(print("standalone inspected operand")) }
+    "#;
+    let compile = |profile| {
+        splitscript::compile_with_options(
+            source,
+            CompilerOptions {
+                profile,
+                ..CompilerOptions::default()
+            },
+        )
+        .unwrap()
+    };
+    let debug = compile(BuildProfile::Debug);
+    let release = compile(BuildProfile::Release);
+    assert!(contains_string_literal(
+        &debug,
+        b"standalone inspected operand"
+    ));
+    assert!(
+        !contains_string_literal(&release, b"standalone inspected operand"),
+        "a discarded inspection must not evaluate its operand in Release"
+    );
 }
 
 #[test]

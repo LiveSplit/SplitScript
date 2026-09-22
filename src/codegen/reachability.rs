@@ -430,6 +430,12 @@ impl Reachability {
                         }
                     }));
                 }
+                wasm_ir::ExpressionKind::Inspect { value, .. } => {
+                    display_sources.push((
+                        wasm_ir.effective_expression_type(*value),
+                        wasm_ir::FormattingMode::Display,
+                    ));
+                }
                 wasm_ir::ExpressionKind::Call { target, arguments } => {
                     let target = reachable.resolved_call_target(owner.as_ref(), id, target);
                     let converted = match target {

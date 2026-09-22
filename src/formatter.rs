@@ -2801,13 +2801,13 @@ fn decode(values: [u8?; 2]) -> u8 {
     fn formats_recursive_struct_match_patterns() {
         let source = r#"struct Point{x:u32,y:u32}
 state "game.exe"{}
-fn inspect(point:Point)->u32{return match point{Point{x:0,y}|Point{x:1,y:y}=>y,_=>0}}"#;
+fn observe(point:Point)->u32{return match point{Point{x:0,y}|Point{x:1,y:y}=>y,_=>0}}"#;
         let expected = r#"struct Point {
     x: u32,
     y: u32,
 }
 state "game.exe" {}
-fn inspect(point: Point) -> u32 {
+fn observe(point: Point) -> u32 {
     return match point {
         Point { x: 0, y } | Point { x: 1, y: y } => y,
         _ => 0,
@@ -2823,7 +2823,7 @@ fn inspect(point: Point) -> u32 {
     fn keeps_short_struct_values_and_patterns_inline() {
         let source = r#"struct Pos{x:u16,y:u16}
 state "game.exe"{}
-fn inspect(value:Pos)->u16{let Pos{x,y}=Pos{x:1,y:2}
+fn observe(value:Pos)->u16{let Pos{x,y}=Pos{x:1,y:2}
 let{x:left,y:right}=value
 return x+y+left+right}"#;
         let expected = r#"struct Pos {
@@ -2831,7 +2831,7 @@ return x+y+left+right}"#;
     y: u16,
 }
 state "game.exe" {}
-fn inspect(value: Pos) -> u16 {
+fn observe(value: Pos) -> u16 {
     let Pos { x, y } = Pos { x: 1, y: 2 }
     let { x: left, y: right } = value
     return x + y + left + right
@@ -2850,7 +2850,7 @@ fn inspect(value: Pos) -> u16 {
     y: u16,
 }
 state "game.exe" {}
-fn inspect(value: Pos) -> u16 {
+fn observe(value: Pos) -> u16 {
     let Pos {
         x,
         y,
@@ -3009,6 +3009,22 @@ onAttach {
         process.read<i32>(player)?
     }
     print(health)
+}
+"#;
+
+        let formatted = format_source(source).unwrap();
+        assert_eq!(formatted, expected);
+        assert_eq!(format_source(&formatted).unwrap(), formatted);
+    }
+
+    #[test]
+    fn formats_inspect_as_an_ordinary_prefix_expression() {
+        let source =
+            "state \"game.exe\"{}\nwhileAttached{let value=inspect(40+2)\ninspect(!false)}";
+        let expected = r#"state "game.exe" {}
+whileAttached {
+    let value = inspect(40 + 2)
+    inspect(!false)
 }
 "#;
 

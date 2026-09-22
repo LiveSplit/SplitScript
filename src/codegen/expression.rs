@@ -3434,6 +3434,44 @@ fn compile_expr_unconverted(
             }
         }
         wasm_ir::ExpressionKind::String(value) => emit_string_literal(function, value, context.gc),
+        wasm_ir::ExpressionKind::Inspect { label, value } => {
+            let source_type = context.type_id(context.wasm_ir.effective_expression_type(*value));
+            let source = semantic_type(source_type, context.semantics);
+            compile_expr(function, *value, context);
+            if source == Type::Never {
+                return;
+            }
+
+            if source.has_runtime_value() {
+                let value_local = context.matches.intrinsic_temps[&expression][0];
+                function.instruction(&Instruction::LocalTee(value_local));
+            }
+
+            emit_string_literal(function, label, context.gc);
+            if source == Type::None {
+                emit_string_literal(function, "None", context.gc);
+            } else {
+                let value_local = context.matches.intrinsic_temps[&expression][0];
+                function.instruction(&Instruction::LocalGet(value_local));
+                if source != Type::Standard(StdlibTypeId::String) {
+                    emit_formatted_value(
+                        function,
+                        source,
+                        source_type,
+                        wasm_ir::FormattingMode::Display,
+                        context,
+                    );
+                }
+            }
+            function.instruction(&Instruction::Call(
+                context
+                    .runtime_helpers
+                    .function(RuntimeHelperId::TimerSetVariable),
+            ));
+        }
+        wasm_ir::ExpressionKind::Transparent { value } => {
+            compile_expr(function, *value, context);
+        }
         wasm_ir::ExpressionKind::InterpolatedString(parts) => {
             for part in parts {
                 match part {

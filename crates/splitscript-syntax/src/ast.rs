@@ -1441,6 +1441,26 @@ pub enum Stmt {
     Expression(Expr),
 }
 
+impl Stmt {
+    /// Whether this source form is development-only without an explicit
+    /// `debug` modifier.
+    ///
+    /// A root `inspect(...)` whose result is discarded has no release-visible
+    /// purpose. Treating that exact statement like `debug inspect(...)` lets
+    /// profile-aware usage analysis erase its complete dependency chain. An
+    /// inspection nested in another expression remains release-visible
+    /// because its value is consumed there.
+    pub fn is_implicitly_debug_only(&self) -> bool {
+        matches!(
+            self,
+            Self::Expression(Expr {
+                kind: ExprKind::Inspect { .. },
+                ..
+            })
+        )
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SuspensionMode {
     Await,
@@ -1554,6 +1574,13 @@ pub enum ExprKind {
     /// Transfers an error to the nearest failure boundary and has type
     /// `Never`.
     Throw(Box<Expr>),
+    /// Publishes the value under the operand's source spelling and then
+    /// produces that same value. The operand is evaluated exactly once.
+    Inspect {
+        label: String,
+        value: Box<Expr>,
+        keyword_span: Span,
+    },
     Suspend {
         mode: SuspensionMode,
         /// Compiler-owned storage for the completed value. This gives an

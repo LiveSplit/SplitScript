@@ -987,6 +987,20 @@ impl Checker {
                 let never = self.core_type(crate::stdlib::CoreTypeId::Never);
                 self.expect_expression(expr.id, never, expected, expr.span)?
             }
+            ExprKind::Inspect { value, .. } => {
+                // The inspected value is formatted before any wrapper lift
+                // required by the surrounding expression. Still pass the
+                // expected value type inward so literals retain ordinary
+                // bidirectional inference.
+                let operand_hint = expected.map(|ty| self.expected_value_type(ty));
+                let value_type = self.expr(value, operand_hint)?;
+                self.require(
+                    value_type,
+                    Requirements::capability(StdlibCapabilityId::Display),
+                    value.span,
+                )?;
+                self.expect_expression(expr.id, value_type, expected, expr.span)?
+            }
             ExprKind::Suspend {
                 mode,
                 destination,
@@ -1502,6 +1516,14 @@ impl Checker {
                     .cloned()
                     .unwrap_or_else(ConditionFlow::unknown)
                     .negated();
+                self.condition_flows.insert(expr.id, flow);
+            }
+            ExprKind::Inspect { value, .. } => {
+                let flow = self
+                    .condition_flows
+                    .get(&value.id)
+                    .cloned()
+                    .unwrap_or_else(ConditionFlow::unknown);
                 self.condition_flows.insert(expr.id, flow);
             }
             _ => {}

@@ -504,6 +504,9 @@ fn snapshot_expression_kind(
             error.index(),
             render_failure_target(*target)
         ),
+        TypedExpressionKind::Inspect { label, value } => {
+            format!("inspect {label:?} e{}", value.index())
+        }
         TypedExpressionKind::Suspend { mode, value, .. } => {
             format!("{mode:?} e{}", value.index())
         }

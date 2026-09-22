@@ -394,7 +394,7 @@ fn calculate(value: i32) -> i32 {
     #[test]
     fn is_patterns_expand_through_nested_pattern_and_condition_nodes() {
         let source = r#"state "game.exe" {}
-fn inspect(value: u32?) {
+fn observe(value: u32?) {
     if value is Some(number) && number > 0 {
         print(number)
     }
@@ -409,6 +409,32 @@ fn inspect(value: u32?) {
             "Some(number)",
             "value is Some(number)",
             "value is Some(number) && number > 0",
+        ] {
+            assert!(text.contains(&expected), "missing `{expected}` in {text:?}");
+        }
+    }
+
+    #[test]
+    fn inspection_has_an_explicit_selection_boundary_before_binary_operators() {
+        let source = r#"enum Edition { BaseGame, Demo }
+let edition: Edition
+state "game.exe" {}
+onAttach { edition = Edition.BaseGame }
+whileAttached {
+    if inspect(edition) == Edition.BaseGame {
+        print("base")
+    }
+}"#;
+        let mut database = CompilerDatabase::new(source);
+        let parsed = database.recovering_parse().unwrap();
+        let offset = source.find("edition) ==").unwrap();
+        let ranges = selection_ranges(parsed.source_document(), parsed.syntax(), offset);
+        let text = selected_text(source, &ranges);
+
+        for expected in [
+            "edition",
+            "inspect(edition)",
+            "inspect(edition) == Edition.BaseGame",
         ] {
             assert!(text.contains(&expected), "missing `{expected}` in {text:?}");
         }

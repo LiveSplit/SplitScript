@@ -2332,7 +2332,7 @@ whileAttached {
     #[test]
     fn is_patterns_share_hover_navigation_references_and_rename_identity() {
         let source = r#"state "game.exe" {}
-fn inspect(value: u32?) {
+fn observe(value: u32?) {
     if value is Some(number) && number > 0 {
         print(number)
     }
@@ -2868,7 +2868,7 @@ settings {
         "Enabled" => enabled: true
     }
 }
-fn inspect(point) {
+fn observe(point) {
     let local = point.x + global
     if settings.enabled { print(local as String) }
 }
@@ -2878,7 +2878,7 @@ whileAttached {
     for item in inventory {
         print(item as String)
     }
-    inspect(current.point)
+    observe(current.point)
 }
 "#;
         let mut database = CompilerDatabase::new(source);
@@ -2934,8 +2934,8 @@ whileAttached {
                 "Controls the optional behavior.",
             ),
             (
-                source.rfind("inspect").unwrap(),
-                "fn inspect(point: Point) -> None",
+                source.rfind("observe").unwrap(),
+                "fn observe(point: Point) -> None",
                 "Function",
             ),
         ] {
@@ -3454,13 +3454,13 @@ state "game.exe" {
 /// Inspects the current state.
 ///
 /// This is safe to call every tick.
-fn inspect(point: Point, mode: Mode) {
+fn observe(point: Point, mode: Mode) {
     if mode == Mode.Active {
         print(point.x as String)
     }
 }
 whileAttached {
-    inspect(current.point, Mode.Active)
+    observe(current.point, Mode.Active)
     print(total as String)
 }
 "#;
@@ -3473,7 +3473,7 @@ whileAttached {
             ("total as", "Accumulated collectible count."),
             ("current.point", "Latest player position."),
             (
-                "inspect(current",
+                "observe(current",
                 "Inspects the current state.\n\nThis is safe to call every tick.",
             ),
         ] {

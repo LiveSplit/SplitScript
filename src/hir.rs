@@ -444,6 +444,10 @@ pub enum TypedExpressionKind {
         error: ExprId,
         target: FailureTarget,
     },
+    Inspect {
+        label: String,
+        value: ExprId,
+    },
     Suspend {
         mode: SuspensionMode,
         destination: ValueId,
@@ -1394,6 +1398,7 @@ pub fn walk_typed_expression<V: TypedVisitor>(
         TypedExpressionKind::Break(Some(value))
         | TypedExpressionKind::Return(Some(value))
         | TypedExpressionKind::Throw { error: value, .. }
+        | TypedExpressionKind::Inspect { value, .. }
         | TypedExpressionKind::Suspend { value, .. }
         | TypedExpressionKind::Propagate { value, .. } => visit_expression(*value),
         TypedExpressionKind::Member { receiver, .. } => visit_expression(*receiver),
@@ -1477,6 +1482,14 @@ pub(crate) fn implicit_display_types(
                 program
                     .expression(*value)
                     .expect("cast operands belong to typed HIR")
+                    .ty,
+            );
+        }
+        TypedExpressionKind::Inspect { value, .. } => {
+            types.push(
+                program
+                    .expression(*value)
+                    .expect("inspect operands belong to typed HIR")
                     .ty,
             );
         }
@@ -1834,6 +1847,10 @@ fn lower_expression_kind(
             error: error.id,
             target: failure_target_for_propagation(semantics, expression.id),
         },
+        ExprKind::Inspect { label, value, .. } => TypedExpressionKind::Inspect {
+            label: label.clone(),
+            value: value.id,
+        },
         ExprKind::Suspend {
             mode,
             destination,
@@ -1961,7 +1978,7 @@ fn lower_block(
                                 unreachable!("nested debug modifiers are rejected during checking")
                             }
                         };
-                        (statement, false, span)
+                        (statement, statement.is_implicitly_debug_only(), span)
                     }
                 };
                 TypedStatement {

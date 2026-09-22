@@ -2,6 +2,8 @@
 
 use std::collections::{HashMap, HashSet};
 
+use splitscript_syntax::{SyntaxMode, TokenKind, lex};
+
 use crate::{
     TextEdit,
     ast::{Block, Expr, ExprId, ExprKind, MatchPattern, Program, Span, Stmt, ValueId},
@@ -16,6 +18,8 @@ use crate::{
 pub enum RefactoringKind {
     ExtractVariable,
     ExtractFunction,
+    InspectExpression,
+    RemoveInspection,
 }
 
 impl RefactoringKind {
@@ -23,6 +27,8 @@ impl RefactoringKind {
         match self {
             Self::ExtractVariable => "refactor.extract.variable",
             Self::ExtractFunction => "refactor.extract.function",
+            Self::InspectExpression => "refactor.rewrite.inspect.add",
+            Self::RemoveInspection => "refactor.rewrite.inspect.remove",
         }
     }
 }
@@ -40,9 +46,7 @@ pub(crate) fn extract_refactorings(
 ) -> SemanticQueryResult<Vec<Refactoring>> {
     let source = database.source().to_owned();
     let selection = trim_selection(&source, selection);
-    if selection.start == selection.end {
-        return Ok(Vec::new());
-    }
+    let is_cursor = selection.start == selection.end;
 
     // These edits are advertised as machine-applicable. A recovered syntax
     // tree may have missing nodes that change scope or control flow, so only
@@ -51,7 +55,21 @@ pub(crate) fn extract_refactorings(
     let snapshot = SemanticSnapshot::Checked(checked);
     let context = database.context();
     let mut refactorings = Vec::new();
-    if let Some(expression) = exact_expression(snapshot.syntax(), selection) {
+    let selected_expression = if is_cursor {
+        expression_at_cursor(snapshot.syntax(), selection.start)
+    } else {
+        exact_expression(snapshot.syntax(), selection)
+    };
+    if let Some(expression) = selected_expression {
+        if is_cursor {
+            let expression =
+                enclosing_inspection(snapshot.syntax(), selection.start).unwrap_or(expression);
+            let refactoring = inspection_refactoring(&source, expression);
+            if validates(&context, &source, &refactoring.edits) {
+                refactorings.push(refactoring);
+            }
+            return Ok(refactorings);
+        }
         if let Some(refactoring) = extract_variable(&source, snapshot.syntax(), expression)
             && validates(&context, &source, &refactoring.edits)
         {
@@ -60,6 +78,10 @@ pub(crate) fn extract_refactorings(
         if let Some(refactoring) = extract_function(&source, &snapshot, expression)
             && validates(&context, &source, &refactoring.edits)
         {
+            refactorings.push(refactoring);
+        }
+        let refactoring = inspection_refactoring(&source, expression);
+        if validates(&context, &source, &refactoring.edits) {
             refactorings.push(refactoring);
         }
     }
@@ -73,6 +95,117 @@ pub(crate) fn extract_refactorings(
         refactorings.push(refactoring);
     }
     Ok(refactorings)
+}
+
+fn inspection_refactoring(source: &str, expression: &Expr) -> Refactoring {
+    if let ExprKind::Inspect {
+        value,
+        keyword_span,
+        ..
+    } = &expression.kind
+    {
+        let inner = inspection_inner_source(source, expression, *keyword_span);
+        let replacement = if inspection_parentheses_are_redundant(value) {
+            inner.to_owned()
+        } else {
+            format!("({inner})")
+        };
+        return Refactoring {
+            title: "Remove inspection".to_owned(),
+            kind: RefactoringKind::RemoveInspection,
+            edits: vec![TextEdit {
+                span: expression.span,
+                replacement,
+            }],
+        };
+    }
+
+    Refactoring {
+        title: "Inspect expression".to_owned(),
+        kind: RefactoringKind::InspectExpression,
+        edits: vec![TextEdit {
+            span: expression.span,
+            replacement: format!(
+                "inspect({})",
+                strip_redundant_outer_parentheses(
+                    &source[expression.span.start..expression.span.end]
+                )
+            ),
+        }],
+    }
+}
+
+fn strip_redundant_outer_parentheses(mut source: &str) -> &str {
+    source = source.trim();
+    loop {
+        let Ok(tokens) = lex(source, SyntaxMode::Program) else {
+            return source;
+        };
+        let tokens = tokens
+            .iter()
+            .filter(|token| !matches!(token.kind, TokenKind::Eof))
+            .collect::<Vec<_>>();
+        let (Some(first), Some(last)) = (tokens.first(), tokens.last()) else {
+            return source;
+        };
+        if !matches!(first.kind, TokenKind::LParen) || !matches!(last.kind, TokenKind::RParen) {
+            return source;
+        }
+
+        let mut depth = 0usize;
+        let mut closes_at_end = false;
+        for (index, token) in tokens.iter().enumerate() {
+            match token.kind {
+                TokenKind::LParen => depth += 1,
+                TokenKind::RParen => {
+                    depth = depth.saturating_sub(1);
+                    if depth == 0 {
+                        closes_at_end = index + 1 == tokens.len();
+                        break;
+                    }
+                }
+                _ => {}
+            }
+        }
+        if !closes_at_end {
+            return source;
+        }
+        source = source[first.span.end..last.span.start].trim();
+    }
+}
+
+fn inspection_inner_source<'a>(source: &'a str, expression: &Expr, keyword_span: Span) -> &'a str {
+    let after_keyword = &source[keyword_span.end..expression.span.end];
+    let opening = after_keyword.find('(').unwrap_or(0) + keyword_span.end;
+    let closing = source[opening + 1..expression.span.end]
+        .rfind(')')
+        .map_or(expression.span.end, |offset| opening + 1 + offset);
+    source[opening + 1..closing].trim()
+}
+
+/// These expressions bind at least as tightly as the postfix-shaped
+/// `inspect(...)` expression in every surrounding expression context. More
+/// involved operands deliberately retain parentheses when inspection is
+/// removed so a refactoring can never silently change precedence.
+fn inspection_parentheses_are_redundant(value: &Expr) -> bool {
+    matches!(
+        value.kind,
+        ExprKind::None
+            | ExprKind::IteratorEnd
+            | ExprKind::Bool(_)
+            | ExprKind::Char(_)
+            | ExprKind::Int { .. }
+            | ExprKind::Float(_)
+            | ExprKind::String(_)
+            | ExprKind::InterpolatedString(_)
+            | ExprKind::Signature(_)
+            | ExprKind::Array(_)
+            | ExprKind::Path(_)
+            | ExprKind::Member { .. }
+            | ExprKind::Index { .. }
+            | ExprKind::Call { .. }
+            | ExprKind::Invoke { .. }
+    )
 }
 
 fn trim_selection(source: &str, mut span: Span) -> Span {
@@ -102,6 +235,59 @@ fn exact_expression(program: &Program, selection: Span) -> Option<&Expr> {
     }
     let mut finder = Finder {
         selection,
+        found: None,
+    };
+    finder.visit_program(program);
+    finder.found
+}
+
+fn expression_at_cursor(program: &Program, cursor: usize) -> Option<&Expr> {
+    struct Finder<'ast> {
+        cursor: usize,
+        found: Option<&'ast Expr>,
+    }
+    impl<'ast> Visitor<'ast> for Finder<'ast> {
+        fn visit_expr(&mut self, expression: &'ast Expr) {
+            if expression.span.start <= self.cursor && self.cursor <= expression.span.end {
+                if self.found.is_none_or(|found| {
+                    expression.span.end - expression.span.start < found.span.end - found.span.start
+                }) {
+                    self.found = Some(expression);
+                }
+                visit::walk_expr(self, expression);
+            }
+        }
+    }
+    let mut finder = Finder {
+        cursor,
+        found: None,
+    };
+    finder.visit_program(program);
+    finder.found
+}
+
+fn enclosing_inspection(program: &Program, cursor: usize) -> Option<&Expr> {
+    struct Finder<'ast> {
+        cursor: usize,
+        found: Option<&'ast Expr>,
+    }
+    impl<'ast> Visitor<'ast> for Finder<'ast> {
+        fn visit_expr(&mut self, expression: &'ast Expr) {
+            if expression.span.start <= self.cursor && self.cursor <= expression.span.end {
+                if matches!(expression.kind, ExprKind::Inspect { .. })
+                    && self.found.is_none_or(|found| {
+                        expression.span.end - expression.span.start
+                            < found.span.end - found.span.start
+                    })
+                {
+                    self.found = Some(expression);
+                }
+                visit::walk_expr(self, expression);
+            }
+        }
+    }
+    let mut finder = Finder {
+        cursor,
         found: None,
     };
     finder.visit_program(program);
@@ -1081,6 +1267,85 @@ mod tests {
         assert_eq!(
             apply(source, action),
             "state \"game.exe\" {}\nfn score(x: i32) {\n    let value = x + 1\n    return value\n}\n"
+        );
+    }
+
+    #[test]
+    fn adds_and_removes_inspection_without_changing_expression_grouping() {
+        let source = "state \"game.exe\" {}\nfn score(x: i32) { return x + 1 }\n";
+        let mut database = CompilerDatabase::new(source);
+        let actions = database.refactorings(selection(source, "x + 1")).unwrap();
+        let inspect = actions
+            .iter()
+            .find(|action| action.kind == RefactoringKind::InspectExpression)
+            .unwrap();
+        let inspected = apply(source, inspect);
+        assert_eq!(
+            inspected,
+            "state \"game.exe\" {}\nfn score(x: i32) { return inspect(x + 1) }\n"
+        );
+
+        let mut database = CompilerDatabase::new(&inspected);
+        let actions = database
+            .refactorings(selection(&inspected, "inspect(x + 1)"))
+            .unwrap();
+        let remove = actions
+            .iter()
+            .find(|action| action.kind == RefactoringKind::RemoveInspection)
+            .unwrap();
+        assert_eq!(
+            apply(&inspected, remove),
+            "state \"game.exe\" {}\nfn score(x: i32) { return (x + 1) }\n"
+        );
+
+        let atomic = "state \"game.exe\" {}\nfn score(x: i32) { return inspect(x) }\n";
+        let cursor = atomic.find("inspect").unwrap() + 2;
+        let mut database = CompilerDatabase::new(atomic);
+        let actions = database
+            .refactorings(Span {
+                start: cursor,
+                end: cursor,
+            })
+            .unwrap();
+        let remove = actions
+            .iter()
+            .find(|action| action.kind == RefactoringKind::RemoveInspection)
+            .unwrap();
+        assert_eq!(
+            apply(atomic, remove),
+            "state \"game.exe\" {}\nfn score(x: i32) { return x }\n"
+        );
+    }
+
+    #[test]
+    fn inspection_rewrites_target_the_expression_at_a_cursor_and_avoid_double_parentheses() {
+        let source = "state \"game.exe\" {}\nfn score(x: i32) { return (x + 1) }\n";
+        let mut database = CompilerDatabase::new(source);
+        let actions = database.refactorings(selection(source, "(x + 1)")).unwrap();
+        let inspect = actions
+            .iter()
+            .find(|action| action.kind == RefactoringKind::InspectExpression)
+            .unwrap();
+        assert_eq!(
+            apply(source, inspect),
+            "state \"game.exe\" {}\nfn score(x: i32) { return inspect(x + 1) }\n"
+        );
+
+        let cursor = source.find("x + 1").unwrap();
+        let mut database = CompilerDatabase::new(source);
+        let actions = database
+            .refactorings(Span {
+                start: cursor,
+                end: cursor,
+            })
+            .unwrap();
+        let inspect = actions
+            .iter()
+            .find(|action| action.kind == RefactoringKind::InspectExpression)
+            .unwrap();
+        assert_eq!(
+            apply(source, inspect),
+            "state \"game.exe\" {}\nfn score(x: i32) { return (inspect(x) + 1) }\n"
         );
     }
 

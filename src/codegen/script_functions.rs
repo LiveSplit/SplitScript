@@ -1609,11 +1609,22 @@ pub(super) fn plan_wasm_locals(
             }
             continue;
         }
-        if ty == Type::None
-            && let LocalPurpose::Value(value) = purpose
-        {
-            locals.insert(value, (u32::MAX, ty));
-            continue;
+        if ty == Type::None {
+            match purpose {
+                LocalPurpose::Value(value) => {
+                    locals.insert(value, (u32::MAX, ty));
+                    continue;
+                }
+                LocalPurpose::IntrinsicScratch { expression, .. } => {
+                    matches
+                        .intrinsic_temps
+                        .entry(expression)
+                        .or_default()
+                        .push(u32::MAX);
+                    continue;
+                }
+                _ => {}
+            }
         }
         let val_type = match purpose {
             LocalPurpose::Value(value) if options.wasm_ir.is_mutably_captured(value) => {

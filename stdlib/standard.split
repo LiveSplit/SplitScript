@@ -410,7 +410,12 @@ root {
 
     /// Prints a diagnostic message.
     ///
-    /// The message is forwarded to the autosplitting runtime.
+    /// The message is forwarded to the autosplitting runtime in both debug and
+    /// release builds. Use [`print`] for a chronological diagnostic log,
+    /// [`inspect`] for a temporary live expression value, or [`setVariable`]
+    /// for meaningful end-user-facing data displayed on the speedrun timer.
+    /// A standalone inspection is entirely removed from release builds;
+    /// inspection nested in a consumed expression retains its operand there.
     ///
     /// # Example
     ///
@@ -427,7 +432,12 @@ root {
 
     /// Sets a custom variable in the timer runtime.
     ///
-    /// The value is visible to layouts that display autosplitter variables.
+    /// The value is visible to layouts that display autosplitter variables in
+    /// both debug and release builds. It is intended for meaningful
+    /// end-user-facing information displayed on the speedrun timer. Use
+    /// [`inspect`] instead for temporary source-labelled developer
+    /// debugging that is published only in debug builds, or [`print`] for a
+    /// chronological diagnostic log.
     ///
     /// # Example
     ///
@@ -4030,7 +4040,7 @@ typeConstructor IteratorStep<T> {
 /// ```splitscript
 /// state "game.exe" {}
 ///
-/// fn inspect(iterator: ArrayIterator<u32>) {}
+/// fn observe(iterator: ArrayIterator<u32>) {}
 /// ```
 @capabilities(Iterator, Iterable)
 private typeConstructor ArrayIterator<T> {
@@ -4095,7 +4105,7 @@ private typeConstructor ArrayIterator<T> {
 /// ```splitscript
 /// state "game.exe" {}
 ///
-/// fn inspect(iterator: SetIterator<String>) {}
+/// fn observe(iterator: SetIterator<String>) {}
 /// ```
 @capabilities(Iterator, Iterable)
 private typeConstructor SetIterator<T: Equatable> {
@@ -4162,7 +4172,7 @@ private typeConstructor SetIterator<T: Equatable> {
 /// ```splitscript
 /// state "game.exe" {}
 ///
-/// fn inspect(iterator: ExclusiveRangeIterator<u16>) {}
+/// fn observe(iterator: ExclusiveRangeIterator<u16>) {}
 /// ```
 @capabilities(Iterator, Iterable)
 private typeConstructor ExclusiveRangeIterator<T: Integer> {
@@ -4225,7 +4235,7 @@ private typeConstructor ExclusiveRangeIterator<T: Integer> {
 /// ```splitscript
 /// state "game.exe" {}
 ///
-/// fn inspect(iterator: InclusiveRangeIterator<u16>) {}
+/// fn observe(iterator: InclusiveRangeIterator<u16>) {}
 /// ```
 @capabilities(Iterator, Iterable)
 private typeConstructor InclusiveRangeIterator<T: Integer> {

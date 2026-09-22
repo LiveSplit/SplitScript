@@ -1567,6 +1567,7 @@ impl<'ast> Visitor<'ast> for DefinitionCollector<'_> {
             | ExprKind::Continue
             | ExprKind::Return(_)
             | ExprKind::Throw(_)
+            | ExprKind::Inspect { .. }
             | ExprKind::Suspend { .. }
             | ExprKind::Propagate(_)
             | ExprKind::Index { .. }

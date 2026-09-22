@@ -575,6 +575,7 @@ fn is_reserved_declared_identifier(name: &str) -> bool {
             | "continue"
             | "return"
             | "throw"
+            | "inspect"
             | "await"
             | "retry"
             | "match"

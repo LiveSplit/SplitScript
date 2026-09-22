@@ -100,12 +100,12 @@ fn is_patterns_flow_bindings_only_along_proven_boolean_edges() {
 fn irrefutable_is_patterns_warn_without_rejecting_the_program() {
     let source = r#"
         state GBA {}
-        fn inspect(value: u32) {
+        fn observe(value: u32) {
             if value is _ {
                 print(value)
             }
         }
-        setup { inspect(7) }
+        setup { observe(7) }
     "#;
     let (wasm, warnings) = splitscript::compile_with_context_and_options_diagnostics(
         splitscript::CompilerContext::default(),
@@ -756,7 +756,7 @@ fn unused_bindings_warn_by_identity_and_support_intentional_underscores() {
     let source = r#"
         state "game.exe" {}
 
-        fn inspect(unusedParameter: i32, usedParameter: i32) {
+        fn observe(unusedParameter: i32, usedParameter: i32) {
             let unusedLocal = 1
             let _unusedLocal = 9
             let _intentional = 2
@@ -785,7 +785,7 @@ fn unused_bindings_warn_by_identity_and_support_intentional_underscores() {
         }
 
         whileAttached {
-            inspect(1, 2)
+            observe(1, 2)
         }
     "#;
     let checked = splitscript::check(splitscript::lower(splitscript::parse(source).unwrap()))
@@ -863,12 +863,12 @@ fn unused_analysis_tracks_each_destructured_leaf() {
         let Point { x: usedGlobal, y: unusedGlobal } = Point { x: 1, y: 2 }
         state "game.exe" {}
 
-        fn inspect(Point { x: usedParameter, y: unusedParameter }: Point) {
+        fn observe(Point { x: usedParameter, y: unusedParameter }: Point) {
             print(usedParameter + usedGlobal)
         }
 
         setup {
-            inspect(Point { x: 3, y: 4 })
+            observe(Point { x: 3, y: 4 })
         }
     "#;
     let checked = splitscript::check(splitscript::lower(splitscript::parse(source).unwrap()))
@@ -1194,6 +1194,63 @@ fn release_visible_consumers_keep_profile_aware_unused_analysis_quiet() {
             .iter()
             .all(|diagnostic| diagnostic.code != splitscript::DiagnosticCode::DebugOnlyUse),
         "release-visible reads must suppress debug-only-use warnings: {:#?}",
+        checked.diagnostics()
+    );
+}
+
+#[test]
+fn standalone_inspection_is_debug_only_for_usage_analysis() {
+    let source = r#"
+        state "game.exe" {}
+        whileAttached {
+            let inspected = 5
+            inspect(inspected)
+        }
+    "#;
+    let checked = splitscript::check(splitscript::parse(source).unwrap()).unwrap();
+    let warning = checked
+        .diagnostics()
+        .iter()
+        .find(|diagnostic| {
+            diagnostic.code == splitscript::DiagnosticCode::DebugOnlyUse
+                && diagnostic.message.contains("`inspected`")
+        })
+        .expect("a local consumed only by standalone inspection should be debug-only");
+    let [fix] = warning.fixes.as_slice() else {
+        panic!("the debug-only local should have one modifier fix: {warning:#?}");
+    };
+    assert_eq!(fix.edits[0].replacement, "debug ");
+
+    let mut fixed = source.to_owned();
+    for edit in fix.edits.iter().rev() {
+        fixed.replace_range(edit.span.start..edit.span.end, &edit.replacement);
+    }
+    splitscript::compile_with_options(
+        &fixed,
+        splitscript::CompilerOptions {
+            profile: splitscript::BuildProfile::Release,
+            ..splitscript::CompilerOptions::default()
+        },
+    )
+    .expect("the suggested debug declaration must compile after inspection is erased");
+
+    let consumed = r#"
+        state "game.exe" {}
+        whileAttached {
+            let inspected = 5
+            let retained = {
+                inspect(inspected)
+            }
+            print(retained)
+        }
+    "#;
+    let checked = splitscript::check(splitscript::parse(consumed).unwrap()).unwrap();
+    assert!(
+        checked
+            .diagnostics()
+            .iter()
+            .all(|diagnostic| diagnostic.code != splitscript::DiagnosticCode::DebugOnlyUse),
+        "a consumed inspection remains release-visible: {:#?}",
         checked.diagnostics()
     );
 }
@@ -2504,7 +2561,7 @@ fn wrapper_payload_patterns_are_recursive_and_preserve_exhaustiveness() {
             }
         }
 
-        fn inspect(message: Message) -> String {
+        fn observe(message: Message) -> String {
             return match message {
                 Message.Payload(["ok" | "ready", value]) => value,
                 Message.Payload(_) => "other",
@@ -2685,7 +2742,7 @@ fn struct_patterns_validate_fields_types_and_exhaustiveness() {
         r#"
             struct Point { x: u32 }
             state "game.exe" {}
-            fn inspect(point: Point) -> bool {
+            fn observe(point: Point) -> bool {
                 return match point { Point { y: _ } => true, _ => false }
             }
         "#,
@@ -2702,7 +2759,7 @@ fn struct_patterns_validate_fields_types_and_exhaustiveness() {
         r#"
             struct Point { x: u32 }
             state "game.exe" {}
-            fn inspect(point: Point) -> bool {
+            fn observe(point: Point) -> bool {
                 return match point { Point { x: _, x: _ } => true, _ => false }
             }
         "#,
@@ -2719,7 +2776,7 @@ fn struct_patterns_validate_fields_types_and_exhaustiveness() {
         r#"
             struct Point { x: u32 }
             state "game.exe" {}
-            fn inspect(point: Point) -> bool {
+            fn observe(point: Point) -> bool {
                 return match point { Point { x: "zero" } => true, _ => false }
             }
         "#,
@@ -2736,7 +2793,7 @@ fn struct_patterns_validate_fields_types_and_exhaustiveness() {
         r#"
             struct Point { x: u32 }
             state "game.exe" {}
-            fn inspect(point: Point) -> bool {
+            fn observe(point: Point) -> bool {
                 return match point { Point { x: 0 } => true }
             }
         "#,

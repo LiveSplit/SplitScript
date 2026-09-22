@@ -259,6 +259,8 @@ pub fn visit_expression_children(kind: &ExpressionKind, mut visit: impl FnMut(Ex
         ExpressionKind::Enum { payload, .. } => payload.iter().copied().for_each(&mut visit),
         ExpressionKind::Unary { operand, .. } => visit(*operand),
         ExpressionKind::Cast { value }
+        | ExpressionKind::Inspect { value, .. }
+        | ExpressionKind::Transparent { value }
         | ExpressionKind::Suspend { value, .. }
         | ExpressionKind::Propagate { value, .. } => visit(*value),
         ExpressionKind::Binary { left, right, .. } => {

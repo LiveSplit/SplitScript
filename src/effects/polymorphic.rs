@@ -600,6 +600,10 @@ impl<'a> Evaluator<'a> {
                 self.expression(*error);
                 SymbolicValue::Unknown
             }
+            TypedExpressionKind::Inspect { value, .. } => {
+                self.accumulator.effect(Effect::WritesRuntime);
+                self.expression(*value)
+            }
             TypedExpressionKind::Suspend { value, .. } => {
                 self.accumulator
                     .effects

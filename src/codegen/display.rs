@@ -15,7 +15,7 @@ use crate::{
 };
 
 use super::{
-    DisplayFunctions, GcLayout, RuntimeHelperPlan, Type, array_value, emit_array_get,
+    DisplayFunctions, GcLayout, RuntimeHelperPlan, STATE_TYPE, Type, array_value, emit_array_get,
     emit_string_literal, emit_typed_struct_get, enum_variant_payload,
     function_plan::UserFunctionPlan, managed_snapshot_field_type, semantic_type, struct_field_type,
     try_array_element_type,
@@ -31,6 +31,7 @@ pub(super) struct DisplayInputs<'a> {
     pub helpers: &'a RuntimeHelperPlan,
     pub debug_depth: u32,
     pub globals: &'a HashMap<ValueId, u32>,
+    pub selected_provider: Option<u32>,
     pub gc: &'a GcLayout,
 }
 
@@ -40,6 +41,9 @@ pub(super) fn compile(inputs: &DisplayInputs<'_>) -> Vec<Function> {
         .derived
         .iter()
         .map(|(&ty, derived)| {
+            if matches!(inputs.semantics.types().kind(ty), TypeKind::StateSnapshot) {
+                return compile_state_snapshot(inputs);
+            }
             if derived.kind == DerivedDebugKind::Opaque {
                 return compile_opaque(ty, inputs);
             }
@@ -91,6 +95,107 @@ pub(super) fn compile(inputs: &DisplayInputs<'_>) -> Vec<Function> {
             }
         })
         .collect()
+}
+
+fn compile_state_snapshot(inputs: &DisplayInputs<'_>) -> Function {
+    let mut function = Function::new([]);
+    begin_recursion_guard(&mut function, inputs);
+    emit_string_literal(&mut function, "StateSnapshot {\n", inputs.gc);
+
+    let state = inputs
+        .program
+        .state
+        .as_ref()
+        .expect("checked programs have a state declaration");
+    let fields = state.all_fields().collect::<Vec<_>>();
+    for field in &fields {
+        let conditional =
+            if let Some(predicate) = inputs.semantics.state_field_shape_predicate(field.id) {
+                super::update::emit_shape_predicate(
+                    &mut function,
+                    inputs.program,
+                    predicate,
+                    inputs.semantics,
+                    inputs.gc,
+                    inputs.globals,
+                    super::update::PredicateState::Local(0),
+                );
+                true
+            } else if let Some((provider_index, _)) = state
+                .provider_variant_fields()
+                .enumerate()
+                .find(|(_, (_, fields))| fields.iter().any(|candidate| candidate.id == field.id))
+            {
+                let selected = inputs
+                    .selected_provider
+                    .expect("provider alternatives have a selected-provider global");
+                let enumeration = state
+                    .provider_enum
+                    .as_ref()
+                    .expect("provider alternatives generate a typed enum");
+                function
+                    .instruction(&Instruction::GlobalGet(selected))
+                    .instruction(&Instruction::StructGet {
+                        struct_type_index: inputs.gc.index(Type::Enum(enumeration.id)),
+                        field_index: 0,
+                    })
+                    .instruction(&Instruction::I32Const(provider_index as i32))
+                    .instruction(&Instruction::I32Eq);
+                true
+            } else {
+                false
+            };
+
+        if conditional {
+            function.instruction(&Instruction::If(BlockType::Result(
+                inputs.gc.val_type(Type::Standard(StdlibTypeId::String)),
+            )));
+        }
+        emit_state_field_segment(&mut function, field, inputs);
+        if conditional {
+            function.instruction(&Instruction::Else);
+            emit_string_literal(&mut function, "", inputs.gc);
+            function.instruction(&Instruction::End);
+        }
+    }
+
+    emit_string_literal(&mut function, "}", inputs.gc);
+    join_pieces(&mut function, 2 + fields.len() as u32, inputs);
+    finish_recursion_guard(&mut function, inputs);
+    function
+}
+
+fn emit_state_field_segment(
+    function: &mut Function,
+    field: &crate::ast::StateField,
+    inputs: &DisplayInputs<'_>,
+) {
+    emit_string_literal(function, &format!("    {}: ", field.name), inputs.gc);
+    let storage = inputs
+        .semantics
+        .state_storage_field(field.id)
+        .expect("checked state fields have physical snapshot storage");
+    let field_index = inputs
+        .semantics
+        .state_storage_fields()
+        .iter()
+        .position(|candidate| *candidate == storage)
+        .expect("state field storage belongs to the snapshot") as u32;
+    let field_type_id = inputs
+        .semantics
+        .value_type(storage)
+        .expect("checked state fields have semantic types");
+    let field_type = semantic_type(field_type_id, inputs.semantics);
+    function
+        .instruction(&Instruction::LocalGet(0))
+        .instruction(&Instruction::RefAsNonNull);
+    emit_typed_struct_get(function, STATE_TYPE, field_index, field_type);
+    emit_value(function, field_type_id, field_type, inputs);
+    function.instruction(&Instruction::Call(
+        inputs.helpers.function(RuntimeHelperId::IndentDisplay),
+    ));
+    emit_string_literal(function, ",\n", inputs.gc);
+    join_pieces(function, 3, inputs);
 }
 
 fn compile_opaque(ty: TypeId, inputs: &DisplayInputs<'_>) -> Function {

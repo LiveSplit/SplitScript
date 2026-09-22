@@ -9,6 +9,7 @@ import { PortMessageReader, PortMessageWriter } from 'vscode-jsonrpc/node';
 import { errorMessage } from './paths';
 import { documentationMarkdownTrust } from './documentationMarkdown';
 import { provideDocumentFormattingEdits } from './formatting';
+import { provideCodeActionsWithMappedSelection } from './codeActionSelection';
 
 export class LanguageClientController implements vscode.Disposable {
     private client: LanguageClient | undefined;
@@ -30,6 +31,7 @@ export class LanguageClientController implements vscode.Disposable {
             documentSelector: [{ language: 'splitscript' }],
             markdown: documentationMarkdownTrust,
             middleware: {
+                provideCodeActions: provideCodeActionsWithMappedSelection,
                 provideDocumentFormattingEdits: (document, options, token) =>
                     provideDocumentFormattingEdits(
                         document,

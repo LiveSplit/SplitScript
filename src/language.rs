@@ -1031,6 +1031,12 @@ focused_example!(
     "debug print(`level: {current.level}`)",
     CONTROL_FLOW_SOURCE
 );
+focused_example!(
+    INSPECT_EXAMPLE,
+    "Publish and keep using a value",
+    "let level = inspect(current.level)",
+    "state \"game.exe\" { level: u32 at 0x1000; }\nwhileAttached {\n    let level = inspect(current.level)\n    print(level)\n}"
+);
 const MATCH_EXAMPLES: &[Example] = &[
     Example::checked(
         "Handle every enum variant",
@@ -1057,7 +1063,7 @@ const IS_EXAMPLES: &[Example] = &[
     Example::checked(
         "Bind a value on the matching path",
         "if value is Some(number) && number > 0 {\n    print(number)\n}",
-        "state \"game.exe\" {}\nfn inspect(value: u32?) {\n    if value is Some(number) && number > 0 {\n        print(number)\n    }\n}",
+        "state \"game.exe\" {}\nfn inspectValue(value: u32?) {\n    if value is Some(number) && number > 0 {\n        print(number)\n    }\n}",
     ),
     Example::checked(
         "Use the binding on a negated condition's else path",
@@ -1750,8 +1756,17 @@ define_language_catalog! {
         LanguageItemKind::Keyword,
         "debug statement",
         "Keeps a development-only statement in debug builds.",
-        "Debug statements, bindings, globals, and `debug fn` declarations are fully parsed and type-checked in every profile, then erased from release lowering before dependency and reachability discovery. Debug-only names may only be used from debug code. Terminating statements remain rejected.",
+        "Debug statements, bindings, globals, and `debug fn` declarations are fully parsed and type-checked in every profile, then erased from release lowering before dependency and reachability discovery. Debug-only names may only be used from debug code. Terminating statements remain rejected. A standalone [`inspect`] statement is implicitly debug-only; when its value is consumed, release builds retain the operand and erase only publication. Use [`print`](fn@print) for a chronological diagnostic log and [`setVariable`](fn@setVariable) for meaningful end-user-facing information displayed on the speedrun timer in both profiles.",
         DEBUG_EXAMPLE
+    ),
+    language_item!(
+        Inspect,
+        "inspect",
+        LanguageItemKind::Keyword,
+        "inspect(expression)",
+        "Publishes a live debug value and returns it unchanged.",
+        "[`inspect`] evaluates its operand once, temporarily reuses the variables panel to display the value under the operand's trimmed source spelling in debug builds, and produces that same typed value. When a surrounding expression consumes the result, release lowering keeps the operand but removes inspection formatting and its runtime dependency. A standalone `inspect(expression)` statement is implicitly debug-only: release builds omit the complete statement and do not evaluate `expression` or any of its side effects. Declarations reached only by standalone inspections receive `debug`-modifier guidance. The operand must implement [`Display`]. Use [`setVariable`](fn@setVariable) for intentional end-user-facing information displayed on the speedrun timer in both profiles and [`print`](fn@print) for a chronological diagnostic log.",
+        INSPECT_EXAMPLE
     ),
     language_item!(
         Match,
@@ -2316,6 +2331,11 @@ impl LanguageCatalog {
             LanguageItemId::Debug => (
                 LanguageCompletionSite::Statement,
                 "debug ${1:statement}",
+                true,
+            ),
+            LanguageItemId::Inspect => (
+                LanguageCompletionSite::Expression,
+                "inspect(${1:expression})",
                 true,
             ),
             LanguageItemId::Match => (

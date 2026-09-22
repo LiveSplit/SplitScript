@@ -399,9 +399,13 @@ pub(super) fn encode<'a>(
             DerivedDebugFunction {
                 function: declarations.declare(
                     || {
-                        let name = structural
-                            .get(ty)
-                            .map_or_else(|| format!("type#{}", ty.index()), |ty| ty.name.clone());
+                        let name = structural.get(ty).map_or_else(
+                            || match semantics.types().kind(ty) {
+                                crate::types::TypeKind::StateSnapshot => "StateSnapshot".to_owned(),
+                                _ => format!("type#{}", ty.index()),
+                            },
+                            |ty| ty.name.clone(),
+                        );
                         format!("__splitscript::debug::{name}")
                     },
                     vec![gc.val_type(source_type)],

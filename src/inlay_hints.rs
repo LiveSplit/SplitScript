@@ -429,7 +429,7 @@ whileAttached {
         let source = r#"
 struct Point { x: i32, y: i32 }
 state "game.exe" {}
-fn inspect(Point { x, y }) {
+fn observe(Point { x, y }) {
     let Point { x: localX, y: localY } = Point { x, y }
     for Point { x: itemX, y: itemY } in [Point { x, y }] {}
 }

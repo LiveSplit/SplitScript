@@ -80,7 +80,7 @@ impl LanguageServer {
                                 "documentFormattingProvider": true,
                                 "documentSymbolProvider": true,
                                 "codeActionProvider": {
-                                    "codeActionKinds": ["quickfix", "refactor.extract"],
+                                    "codeActionKinds": ["quickfix", "refactor.extract", "refactor.rewrite"],
                                     "resolveProvider": false
                                 },
                                 "completionProvider": {
@@ -388,7 +388,8 @@ impl LanguageServer {
         };
         let permits_quick_fixes = permits("quickfix");
         let permits_extractions = permits("refactor.extract");
-        if !permits_quick_fixes && !permits_extractions {
+        let permits_rewrites = permits("refactor.rewrite");
+        if !permits_quick_fixes && !permits_extractions && !permits_rewrites {
             return response(id, json!([]));
         }
         let Some(document) = self.documents.get_mut(&uri) else {
@@ -456,7 +457,7 @@ impl LanguageServer {
                 }
             }
         }
-        if permits_extractions
+        if (permits_extractions || permits_rewrites)
             && let Ok(refactorings) = document
                 .database
                 .refactorings(crate::ast::Span { start, end })

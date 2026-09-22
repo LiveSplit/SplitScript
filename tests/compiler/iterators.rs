@@ -344,7 +344,7 @@ fn iterator_methods_and_steps_are_available_to_editor_queries() {
 
     let patterns = r#"
         state "game.exe" {}
-        fn inspect(step: IteratorStep<u32>) {
+        fn observe(step: IteratorStep<u32>) {
             print(match step { Item(value) => value, End => 0 })
         }
     "#;
@@ -364,7 +364,7 @@ fn iterator_methods_and_steps_are_available_to_editor_queries() {
 
 #[test]
 fn concrete_iterator_implementations_are_not_public_language_types() {
-    let source = "state \"game.exe\" {}\nfn inspect(value: ArrayIterator<u32>) {}\n";
+    let source = "state \"game.exe\" {}\nfn observe(value: ArrayIterator<u32>) {}\n";
     let diagnostics = splitscript::compile(source)
         .expect_err("private iterator implementation types must not be nameable");
     assert!(
@@ -374,7 +374,7 @@ fn concrete_iterator_implementations_are_not_public_language_types() {
         "{diagnostics:#?}"
     );
 
-    let completion_source = "state \"game.exe\" {}\nfn inspect(value: Arr) {}\n";
+    let completion_source = "state \"game.exe\" {}\nfn observe(value: Arr) {}\n";
     let mut database = CompilerDatabase::new(completion_source);
     let offset = completion_source.find("Arr").unwrap() + "Arr".len();
     let labels = database
@@ -404,7 +404,7 @@ fn for_loop_parameters_infer_the_iterable_contract_and_associated_item() {
     let source = r#"
         state "game.exe" {}
 
-        fn inspect(values) {
+        fn observe(values) {
             for value in values {
                 print(value)
             }
@@ -413,10 +413,10 @@ fn for_loop_parameters_infer_the_iterable_contract_and_associated_item() {
         whileAttached {
             let exclusive: u32..<u32 = 0..<10
             let inclusive: u32..=u32 = 0..=10
-            inspect(exclusive)
-            inspect(inclusive)
-            inspect([1u32, 2])
-            inspect(["forest", "castle"])
+            observe(exclusive)
+            observe(inclusive)
+            observe([1u32, 2])
+            observe(["forest", "castle"])
         }
     "#;
     let checked = splitscript::check(splitscript::parse(source).unwrap())
@@ -444,13 +444,13 @@ fn for_loop_parameters_infer_the_iterable_contract_and_associated_item() {
     );
     let mut database = CompilerDatabase::new(source);
     let function_hover = database
-        .hover(source.find("inspect(values)").unwrap())
+        .hover(source.find("observe(values)").unwrap())
         .unwrap()
         .expect("inferred iterator function hover");
     assert!(
         function_hover
             .markdown
-            .contains("fn inspect(values: T) -> None where T: Iterable, T.Iterator: Iterator, T.Iterator.Item: Display"),
+            .contains("fn observe(values: T) -> None where T: Iterable, T.Iterator: Iterator, T.Iterator.Item: Display"),
         "{}",
         function_hover.markdown
     );
@@ -572,7 +572,7 @@ fn inferred_iterable_helpers_can_iterate_their_explicit_cursor() {
     let source = r#"
         state "game.exe" {}
 
-        fn inspect(values) {
+        fn observe(values) {
             print(values)
             for value in values.iterator().map(value => `{value}y`) {
                 print(value)
@@ -580,9 +580,9 @@ fn inferred_iterable_helpers_can_iterate_their_explicit_cursor() {
         }
 
         setup {
-            inspect(["a", "b", "c"])
-            inspect(0..<10)
-            inspect(10..=20)
+            observe(["a", "b", "c"])
+            observe(0..<10)
+            observe(10..=20)
         }
     "#;
     let checked = splitscript::check(splitscript::parse(source).unwrap())
@@ -597,16 +597,16 @@ fn inferred_iterable_helpers_accept_iterator_cursors_as_identity_iterables() {
     let source = r#"
         state "game.exe" {}
 
-        fn inspect(values) {
+        fn observe(values) {
             for value in values {
                 print(value)
             }
         }
 
         setup {
-            inspect(["a", "b", "c"].iterator())
-            inspect((0..<10).iterator())
-            inspect((10..=20).iterator())
+            observe(["a", "b", "c"].iterator())
+            observe((0..<10).iterator())
+            observe((10..=20).iterator())
         }
     "#;
     let mut database = CompilerDatabase::new(source);
@@ -615,7 +615,7 @@ fn inferred_iterable_helpers_accept_iterator_cursors_as_identity_iterables() {
         .expect("iterator cursors should satisfy Iterable through identity iteration");
     assert!(
         database
-            .hover(source.find("inspect(values)").unwrap())
+            .hover(source.find("observe(values)").unwrap())
             .unwrap()
             .is_some(),
         "invalid specializations must not poison editor analysis"
@@ -637,7 +637,7 @@ fn inferred_identity_iterators_compose_map_and_filter_with_reference_items() {
     let source = r#"
         state "game.exe" {}
 
-        fn inspect(values) {
+        fn observe(values) {
             print(values)
             for value in values
                 .iterator()
@@ -649,7 +649,7 @@ fn inferred_identity_iterators_compose_map_and_filter_with_reference_items() {
         }
 
         setup {
-            inspect(["1", "2"].iterator())
+            observe(["1", "2"].iterator())
         }
     "#;
     let checked = splitscript::check(splitscript::parse(source).unwrap())
@@ -661,12 +661,12 @@ fn inferred_identity_iterators_compose_map_and_filter_with_reference_items() {
 
 #[test]
 fn closures_satisfy_inferred_display_through_opaque_debug() {
-    for use_closure in ["inspect(closure)", "inspect([closure])"] {
+    for use_closure in ["observe(closure)", "observe([closure])"] {
         let source = format!(
             r#"
                 state "game.exe" {{}}
 
-                fn inspect(values) {{
+                fn observe(values) {{
                     print(values)
                 }}
 
@@ -692,7 +692,7 @@ fn every_iterator_kind_has_an_opaque_debug_fallback() {
     let source = r#"
         state "game.exe" {}
 
-        fn inspect(values) {
+        fn observe(values) {
             print(values)
         }
 
@@ -703,13 +703,13 @@ fn every_iterator_kind_has_an_opaque_debug_fallback() {
             let map = Map.new<String, u32>()
             map.insert("map", 1)
 
-            inspect(["array"].iterator())
-            inspect(set.iterator())
-            inspect(map.iterator())
-            inspect((0..<1).iterator())
-            inspect((0..=1).iterator())
-            inspect(["map adapter"].iterator().map(value => value))
-            inspect(["filter adapter"].iterator().filter(value => true))
+            observe(["array"].iterator())
+            observe(set.iterator())
+            observe(map.iterator())
+            observe((0..<1).iterator())
+            observe((0..=1).iterator())
+            observe(["map adapter"].iterator().map(value => value))
+            observe(["filter adapter"].iterator().filter(value => true))
         }
     "#;
     let checked = splitscript::check(splitscript::parse(source).unwrap())

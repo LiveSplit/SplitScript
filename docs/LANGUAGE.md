@@ -759,6 +759,42 @@ The `debug` modifier accepts bindings, expression statements, assignments,
 `throw`, `break`, and `continue` because erasing a terminator would change the
 surrounding release control flow.
 
+## Inspecting live values
+
+`inspect(expression)` evaluates its operand exactly once, publishes its current
+display value in the variables panel under the expression's source spelling,
+and returns the same typed value:
+
+```text
+let doubled = inspect(current.level) * 2
+inspect(current.player)
+```
+
+In a debug build this publishes the same value as
+`setVariable("current.level", current.level)` while still producing
+`current.level` for the surrounding expression. When that value is consumed,
+a release build erases only the publication: `inspect(expression)` becomes
+`expression`, so the operand still runs exactly once with all of its ordinary
+side effects. The operand must implement [`Display`].
+
+A standalone `inspect(expression)` statement is different: because its result
+is discarded, the compiler treats the complete statement as debug-only and
+does not evaluate `expression` at all in a release build. This is intentionally
+convenient for temporary diagnostic calculations, but it also means side
+effects inside a standalone inspection disappear. Bind the result or use it in
+a surrounding expression when evaluation must remain part of the release
+autosplitter. Locals, globals, and helper functions reached only through
+standalone inspections receive the same `debug`-modifier guidance as code used
+only by an explicit `debug` statement.
+
+Use `inspect(expression)` for temporary, source-labelled developer debugging.
+Although it reuses the variables panel, it is not autosplitter output and is
+therefore compiled out of release builds. Use [`setVariable`] for meaningful
+end-user-facing information displayed on the speedrun timer in both profiles,
+and [`print`] for a chronological diagnostic log. Use [`debug`]
+around a complete statement when its operand and all of its side effects
+should also disappear from release builds.
+
 Blocks are expressions wherever an expression is expected. They may contain
 statements and yield their final expression, including inside an `if` branch.
 A state-field assignment is a failure boundary, so `?` can propagate a read
@@ -1043,7 +1079,7 @@ for { x, y: _ } in points {
 
 The anonymous `{ x, y }` form is available only when the surrounding context
 already supplies one concrete struct type. It is nominal shorthand, not a
-structural pattern: `fn inspect({ x, y }) {}` is ambiguous and needs either
+structural pattern: `fn usePoint({ x, y }) {}` is ambiguous and needs either
 `{ x, y }: Point` or the explicit `Point { x, y }` spelling. The same rule
 applies recursively inside wrapper and enum payloads, `match`, and `is`.
 

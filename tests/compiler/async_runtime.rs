@@ -63,7 +63,7 @@ fn conditional_pattern_bindings_survive_async_continuations() {
     let source = r#"
         state "game.exe" {}
 
-        fn inspect(value: u32?) -> async u32 {
+        fn observe(value: u32?) -> async u32 {
             if value is Some(number) && number > 0 {
                 await nextTick()
                 return number
@@ -72,7 +72,7 @@ fn conditional_pattern_bindings_survive_async_continuations() {
         }
 
         onAttach {
-            print(await inspect(Some(7)))
+            print(await observe(Some(7)))
         }
     "#;
 
@@ -89,7 +89,7 @@ fn destructured_bindings_survive_async_continuations() {
         struct Point { x: u32, y: u32 }
         state "game.exe" {}
 
-        fn inspect(Point { x, y }: Point) -> async u32 {
+        fn observe(Point { x, y }: Point) -> async u32 {
             let Point { x: localX, y: localY } = Point { x, y }
             await nextTick()
             for Point { x: itemX, y: itemY } in [Point { x: localX, y: localY }] {
@@ -100,7 +100,7 @@ fn destructured_bindings_survive_async_continuations() {
         }
 
         onAttach {
-            print(await inspect(Point { x: 3, y: 4 }))
+            print(await observe(Point { x: 3, y: 4 }))
         }
     "#;
 

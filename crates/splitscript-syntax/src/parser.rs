@@ -1691,7 +1691,7 @@ state {
     fn is_patterns_bind_more_tightly_than_short_circuit_operators() {
         let source = r#"
             state "game.exe" {}
-            fn inspect(value) {
+            fn observe(value) {
                 return value is Some(number) && number > 0
             }
         "#;
@@ -1712,7 +1712,7 @@ state {
             } if matches!(left.kind, ExprKind::Is { .. })
         ));
 
-        let source = "state \"game.exe\" {} fn inspect(value) { return !(value is Some(number)) }";
+        let source = "state \"game.exe\" {} fn observe(value) { return !(value is Some(number)) }";
         let program = parse(source, lex(source, SyntaxMode::Program).unwrap()).unwrap();
         let Stmt::Expression(Expr {
             kind: ExprKind::Return(Some(value)),
@@ -1734,7 +1734,7 @@ state {
     fn is_and_comparison_chains_require_parentheses() {
         for expression in ["value is Some(item) == true", "value == other is item"] {
             let source = format!(
-                "state \"game.exe\" {{}} fn inspect(value, other) {{ return {expression} }}"
+                "state \"game.exe\" {{}} fn observe(value, other) {{ return {expression} }}"
             );
             let error = parse(&source, lex(&source, SyntaxMode::Program).unwrap())
                 .expect_err("comparison-like operators must not chain implicitly");
@@ -2079,6 +2079,45 @@ state {
             panic!("expected the right-associated second fallback")
         };
         assert!(matches!(fallback.kind, ExprKind::Throw(_)));
+    }
+
+    #[test]
+    fn inspect_captures_the_complete_operand_source() {
+        let source = r#"
+            state "game.exe" {}
+            fn observed(left: i32, right: i32) -> i32 {
+                return inspect(left + right)
+            }
+        "#;
+        let program = parse(source, lex(source, SyntaxMode::Program).unwrap()).unwrap();
+        let Stmt::Expression(Expr {
+            kind: ExprKind::Return(Some(value)),
+            ..
+        }) = &program.functions[0].body.statements[0]
+        else {
+            panic!("expected an inspected return expression")
+        };
+        let ExprKind::Inspect {
+            label,
+            value: operand,
+            ..
+        } = &value.kind
+        else {
+            panic!("expected inspect to be an expression")
+        };
+        assert_eq!(label, "left + right");
+        assert!(matches!(operand.kind, ExprKind::Binary { .. }));
+    }
+
+    #[test]
+    fn inspect_requires_an_explicit_operand_boundary() {
+        let source = "state \"game.exe\" {} fn observed(value: i32) { inspect value }";
+        let error = parse(source, lex(source, SyntaxMode::Program).unwrap())
+            .expect_err("inspection without parentheses must be rejected");
+        assert!(
+            error.message.contains("expected `(` after `inspect`"),
+            "{error:#?}"
+        );
     }
 
     #[test]

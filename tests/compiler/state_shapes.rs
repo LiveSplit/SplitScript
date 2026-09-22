@@ -467,6 +467,10 @@ fn state_enum_fields_are_dynamic_schema_dimensions() {
             }
             return false
         }
+
+        whileAttached {
+            print(current)
+        }
     "#;
     let wasm = splitscript::compile(source)
         .expect("a state enum should select dynamically conditional state fields");
@@ -637,7 +641,7 @@ fn managed_fields_share_the_attachment_shape_refinement_model() {
 
         whileAttached {
             let manager = GameManager.instance else return
-            if edition == Edition.BaseGame {
+            if inspect(edition) == Edition.BaseGame {
                 print(manager.level else 0)
             } else {
                 print(manager.scene else 0)
@@ -651,7 +655,7 @@ fn managed_fields_share_the_attachment_shape_refinement_model() {
         .expect("conditional managed bindings should produce valid Wasm GC");
 
     let unrefined = source.replace(
-        "if edition == Edition.BaseGame {\n                print(manager.level else 0)\n            }",
+        "if inspect(edition) == Edition.BaseGame {\n                print(manager.level else 0)\n            }",
         "print(manager.level else 0)",
     );
     let diagnostics =
@@ -1307,6 +1311,10 @@ fn attachment_scoped_globals_infer_from_on_attach_and_support_shape_specific_val
                 Build.Steam => steamBase != 0 && current.level != old.level,
                 Build.GOG => gogBase != 0 && current.level != old.level,
             }
+        }
+
+        whileAttached {
+            print(current)
         }
     "#;
 

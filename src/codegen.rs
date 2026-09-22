@@ -931,6 +931,7 @@ fn compile_internal(inputs: BackendProgram<'_>, report: Option<&mut CodegenRepor
         helpers: &runtime_helpers,
         debug_depth: runtime_globals.debug_depth,
         globals: &global_indices,
+        selected_provider: runtime_globals.selected_provider,
         gc: &gc,
     });
     let array_bodies = array_functions::compile(array_types, &array_functions, semantics, &gc);

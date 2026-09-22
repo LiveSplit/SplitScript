@@ -111,6 +111,13 @@ pub(super) fn complete_state_header(
     {
         return None;
     }
+    // Selector arguments are ordinary SplitScript expressions. Once the
+    // cursor enters them, let the shared expression/member completion paths
+    // handle types, constants, static methods, and nested calls instead of
+    // returning an empty state-header result.
+    if has_unclosed_parenthesis(&tail) {
+        return None;
+    }
 
     let prefix = source[replacement.start..offset].to_owned();
     let mut builder = CompletionBuilder::new(prefix, replacement);
@@ -233,6 +240,18 @@ pub(super) fn complete_state_header(
         );
     }
     Some(builder.finish())
+}
+
+fn has_unclosed_parenthesis(tokens: &[&crate::lexer::Token]) -> bool {
+    let mut depth = 0usize;
+    for token in tokens {
+        match token.kind {
+            TokenKind::LParen => depth += 1,
+            TokenKind::RParen => depth = depth.saturating_sub(1),
+            _ => {}
+        }
+    }
+    depth > 0
 }
 
 fn top_level_state_header(tokens: &[&crate::lexer::Token], offset: usize) -> Option<usize> {

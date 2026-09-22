@@ -258,6 +258,15 @@ impl BackendDependencies {
                 _ => {}
             }
             match &expression.kind {
+                wasm_ir::ExpressionKind::Inspect { value, .. } => {
+                    dependencies.require(RuntimeHelperId::TimerSetVariable);
+                    dependencies.require_display_helpers(
+                        specialize(wasm_ir.effective_expression_type(*value)),
+                        semantics,
+                        reachability,
+                        capabilities,
+                    );
+                }
                 wasm_ir::ExpressionKind::Call { target, .. }
                     if matches!(
                         reachability.resolved_call_target(owner.as_ref(), expression.id, target),

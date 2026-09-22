@@ -1307,6 +1307,9 @@ impl<'ast> Visitor<'ast> for HighlightCollector<'_> {
 
     fn visit_expr(&mut self, expression: &'ast Expr) {
         match &expression.kind {
+            ExprKind::Inspect { keyword_span, .. } => {
+                self.insert_language_token(*keyword_span, "inspect", 0);
+            }
             ExprKind::Is {
                 pattern,
                 keyword_span,
@@ -1504,7 +1507,7 @@ fn Position.value() -> i32 {
         let source = r#"
 struct Point { x: i32, y: i32 }
 state "game.exe" {}
-fn inspect(Point { x: parameterX, y: parameterY }: Point) {
+fn observe(Point { x: parameterX, y: parameterY }: Point) {
     let Point { x: localX, y: localY } = Point { x: parameterX, y: parameterY }
     for Point { x: itemX, y: itemY } in [Point { x: localX, y: localY }] {}
 }
@@ -1556,7 +1559,7 @@ setup {
     #[test]
     fn is_keywords_and_pattern_bindings_have_canonical_semantic_roles() {
         let source = r#"state "game.exe" {}
-fn inspect(value: u32?) {
+fn observe(value: u32?) {
     if value is Some(number) && number > 0 {
         print(number)
     }
@@ -1888,7 +1891,7 @@ settings {
     }
 }
 
-debug fn inspect(mode: Mode) {
+debug fn observe(mode: Mode) {
     debug print(mode as String)
 }
 
@@ -1903,7 +1906,7 @@ whileAttached {
     let marker = await process.scan(0, 1, sig"48 ??")
     let version = v"1.2.3.4"
     if current.level == 1 {
-        inspect(mode)
+        observe(mode)
     }
 }
 "#;
@@ -2175,7 +2178,7 @@ whileAttached {
     address: i32
 }
 state "game.exe" {}
-fn inspect(module: Module, marker: Marker) {
+fn observe(module: Module, marker: Marker) {
     if module.address == 0x1000 && marker.address == 1 {
         print("found")
     }
@@ -2310,7 +2313,7 @@ fn point(value: u32) -> Point {
     fn struct_pattern_shorthand_is_highlighted_as_the_matched_field() {
         let source = r#"struct Point { x: u32 }
 state "game.exe" {}
-fn inspect(point: Point) -> u32 {
+fn observe(point: Point) -> u32 {
     return match point { Point { x } => x }
 }"#;
         let shorthand = source.rfind("{ x }").unwrap() + 2;

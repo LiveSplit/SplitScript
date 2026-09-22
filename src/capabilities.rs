@@ -52,12 +52,12 @@ pub(crate) enum CapabilityMethodImplementation {
 
 /// Compiler-provided `Debug` representation for a concrete runtime type.
 ///
-/// Source aggregates and standard-library containers that explicitly opt into
-/// `Debug` expose their value shape recursively. All other concrete runtime
-/// representations receive a stable opaque spelling. Keeping this decision in
-/// capability analysis makes semantic checking, reachability, and codegen use
-/// one policy instead of teaching each consumer about individual library
-/// types.
+/// Source aggregates, state snapshots, and standard-library containers that
+/// explicitly opt into `Debug` expose their value shape recursively. All other
+/// concrete runtime representations receive a stable opaque spelling. Keeping
+/// this decision in capability analysis makes semantic checking, reachability,
+/// and codegen use one policy instead of teaching each consumer about
+/// individual library types.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum DerivedDebugKind {
     Structural,
@@ -572,6 +572,9 @@ impl CapabilityAnalysis {
         if self.structural.get(ty).is_some() {
             return Some(DerivedDebugKind::Structural);
         }
+        if matches!(semantics.types().kind(ty), TypeKind::StateSnapshot) {
+            return Some(DerivedDebugKind::Structural);
+        }
         let structural = match semantics.types().kind(ty) {
             TypeKind::Array { .. } => self.standard_library.type_constructor_has_capability(
                 StdlibTypeConstructorId::Array,
@@ -617,7 +620,6 @@ impl CapabilityAnalysis {
                 None
             }
             TypeKind::Standard(_)
-            | TypeKind::StateSnapshot
             | TypeKind::SettingsView
             | TypeKind::ManagedReference(_)
             | TypeKind::Array { .. }
@@ -629,8 +631,11 @@ impl CapabilityAnalysis {
             | TypeKind::Range { .. }
             | TypeKind::Set { .. }
             | TypeKind::Application { .. } => Some(DerivedDebugKind::Opaque),
-            TypeKind::Struct(_) | TypeKind::Enum(_) | TypeKind::ManagedClass(_) => {
-                unreachable!("source aggregates were classified above")
+            TypeKind::StateSnapshot
+            | TypeKind::Struct(_)
+            | TypeKind::Enum(_)
+            | TypeKind::ManagedClass(_) => {
+                unreachable!("structural values were classified above")
             }
         }
     }
@@ -648,6 +653,15 @@ impl CapabilityAnalysis {
                 .collect();
         }
         match semantics.types().kind(ty) {
+            TypeKind::StateSnapshot => semantics
+                .state_storage_fields()
+                .iter()
+                .map(|field| {
+                    semantics
+                        .value_type(*field)
+                        .expect("checked state fields have semantic types")
+                })
+                .collect(),
             TypeKind::Array { element, .. } | TypeKind::Set { element, .. } => vec![*element],
             TypeKind::Option { value, .. } | TypeKind::Result { value, .. } => vec![*value],
             TypeKind::Range { bound, .. } => vec![*bound],

@@ -1,0 +1,23 @@
+state "game.exe" {
+    value: u32 at 0x1000;
+    active: bool at 0x1004;
+}
+
+let evaluations = 0
+
+fn measured() -> i32 {
+    evaluations += 1
+    return evaluations + 40
+}
+
+whileAttached {
+    inspect(current)
+
+    let returned = inspect(measured() + 1)
+    setVariable("Returned", returned)
+
+    let optional: i32? = inspect(evaluations)
+    setVariable("Optional", optional)
+
+    inspect(print("side effect"))
+}

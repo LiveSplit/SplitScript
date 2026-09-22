@@ -135,6 +135,10 @@ fn advertises_full_sync_diagnostics_formatting_and_semantic_tokens() {
         "refactor.extract"
     );
     assert_eq!(
+        response[0]["result"]["capabilities"]["codeActionProvider"]["codeActionKinds"][2],
+        "refactor.rewrite"
+    );
+    assert_eq!(
         response[0]["result"]["capabilities"]["semanticTokensProvider"]["full"],
         true
     );
@@ -958,10 +962,10 @@ fn semantic_tokens_cover_language_domains_and_use_utf16_deltas() {
         "enum Mode { Active }\n",
         "state \"game.exe\" { level = process.read<i32>(0) }\n",
         "settings { \"General\" { \"Enabled\" => enabled: true } }\n",
-        "debug fn inspect(mode: Mode) { debug print(mode as String) }\n",
+        "debug fn observe(mode: Mode) { debug print(mode as String) }\n",
         "whileAttached {\n",
         "    let marker = await process.scan(0, 1, sig\"48 ??\")\n",
-        "    if current.level == 1 { inspect(Mode.Active) }\n",
+        "    if current.level == 1 { observe(Mode.Active) }\n",
         "}\n"
     );
     let mut server = LanguageServer::default();
@@ -1555,10 +1559,10 @@ fn definition_and_references_use_source_identities_and_utf16_ranges() {
     let source = concat!(
         "// 🦊\n",
         "state \"game.exe\" {}\n",
-        "fn inspect(value: i32) { print(value as String) }\n",
+        "fn observe(value: i32) { print(value as String) }\n",
         "whileAttached {\n",
-        "    inspect(1)\n",
-        "    inspect (2)\n",
+        "    observe(1)\n",
+        "    observe (2)\n",
         "}\n"
     );
     let uri = "file:///navigation.split";
@@ -1576,7 +1580,7 @@ fn definition_and_references_use_source_identities_and_utf16_ranges() {
     ));
 
     // A token gap permits the editor-friendly end-of-word fallback.
-    let call = source.rfind("inspect").unwrap() + "inspect".len();
+    let call = source.rfind("observe").unwrap() + "observe".len();
     let (line, character) = position_parts(source, call);
     let definition = server.handle(json!({
         "jsonrpc": "2.0",
@@ -1587,7 +1591,7 @@ fn definition_and_references_use_source_identities_and_utf16_ranges() {
             "position": { "line": line, "character": character }
         }
     }));
-    let declaration = source.find("inspect").unwrap();
+    let declaration = source.find("observe").unwrap();
     assert_eq!(definition[0]["result"]["uri"], uri);
     assert_eq!(
         definition[0]["result"]["range"]["start"],
@@ -1595,7 +1599,7 @@ fn definition_and_references_use_source_identities_and_utf16_ranges() {
     );
     assert_eq!(
         definition[0]["result"]["range"]["end"],
-        position(source, declaration + "inspect".len())
+        position(source, declaration + "observe".len())
     );
 
     let references = server.handle(json!({
@@ -1611,7 +1615,7 @@ fn definition_and_references_use_source_identities_and_utf16_ranges() {
     assert_eq!(references[0]["result"].as_array().unwrap().len(), 2);
     assert_eq!(
         references[0]["result"][0]["range"]["start"],
-        position(source, source.find("inspect(1)").unwrap())
+        position(source, source.find("observe(1)").unwrap())
     );
 
     let with_declaration = server.handle(json!({
@@ -1629,7 +1633,7 @@ fn definition_and_references_use_source_identities_and_utf16_ranges() {
     // Navigation receives a caret position rather than a hovered character,
     // so the identifier ending at an adjacent opening parenthesis remains the
     // target.
-    let adjacent = source.find("inspect(1)").unwrap() + "inspect".len();
+    let adjacent = source.find("observe(1)").unwrap() + "observe".len();
     let (adjacent_line, adjacent_character) = position_parts(source, adjacent);
     let definition = server.handle(json!({
         "jsonrpc": "2.0",
@@ -1871,12 +1875,12 @@ fn prepare_rename_and_rename_emit_validated_workspace_edits() {
     let source = concat!(
         "// \u{1f98a}\n",
         "state \"game.exe\" {}\n",
-        "fn inspect(value: i32) { print(value as String) }\n",
-        "whileAttached { inspect(1) }\n"
+        "fn observe(value: i32) { print(value as String) }\n",
+        "whileAttached { observe(1) }\n"
     );
     let uri = "file:///rename.split";
-    let call = source.rfind("inspect").unwrap();
-    let (line, character) = position_parts(source, call + "inspect".len());
+    let call = source.rfind("observe").unwrap();
+    let (line, character) = position_parts(source, call + "observe".len());
     let mut server = LanguageServer::default();
     initialize(&mut server);
     server.handle(notification(
@@ -1899,7 +1903,7 @@ fn prepare_rename_and_rename_emit_validated_workspace_edits() {
             "position": { "line": line, "character": character }
         }
     }));
-    assert_eq!(prepared[0]["result"]["placeholder"], "inspect");
+    assert_eq!(prepared[0]["result"]["placeholder"], "observe");
     assert_eq!(
         prepared[0]["result"]["range"]["start"],
         position(source, call)
@@ -2294,6 +2298,108 @@ fn code_actions_extract_selected_expressions() {
 }
 
 #[test]
+fn code_actions_add_and_remove_expression_inspection() {
+    let source = "state \"game.exe\" {}\nfn score(offset: i32) { return offset + 1 }\n";
+    let uri = "file:///inspect-refactor.split";
+    let mut server = LanguageServer::default();
+    initialize(&mut server);
+    server.handle(notification(
+        "textDocument/didOpen",
+        json!({
+            "textDocument": {
+                "uri": uri,
+                "version": 1,
+                "text": source
+            }
+        }),
+    ));
+
+    let start = source.find("offset + 1").unwrap();
+    let end = start + "offset + 1".len();
+    let actions = server.handle(json!({
+        "jsonrpc": "2.0",
+        "id": 27,
+        "method": "textDocument/codeAction",
+        "params": {
+            "textDocument": { "uri": uri },
+            "range": {
+                "start": position(source, start),
+                "end": position(source, end)
+            },
+            "context": { "diagnostics": [], "only": ["refactor.rewrite"] }
+        }
+    }));
+    let actions = actions[0]["result"].as_array().unwrap();
+    assert_eq!(actions.len(), 1, "{actions:#?}");
+    assert_eq!(actions[0]["title"], "Inspect expression");
+    assert_eq!(actions[0]["kind"], "refactor.rewrite.inspect.add");
+    assert_eq!(
+        actions[0]["edit"]["changes"][uri][0]["newText"],
+        "inspect(offset + 1)"
+    );
+
+    let inspected = "state \"game.exe\" {}\nfn score(offset: i32) { return inspect(offset + 1) }\n";
+    server.handle(notification(
+        "textDocument/didChange",
+        json!({
+            "textDocument": { "uri": uri, "version": 2 },
+            "contentChanges": [{ "text": inspected }]
+        }),
+    ));
+    let cursor = inspected.find("inspect(offset + 1)").unwrap() + 2;
+    let actions = server.handle(json!({
+        "jsonrpc": "2.0",
+        "id": 28,
+        "method": "textDocument/codeAction",
+        "params": {
+            "textDocument": { "uri": uri },
+            "range": {
+                "start": position(inspected, cursor),
+                "end": position(inspected, cursor)
+            },
+            "context": { "diagnostics": [], "only": ["refactor.rewrite"] }
+        }
+    }));
+    let actions = actions[0]["result"].as_array().unwrap();
+    assert_eq!(actions.len(), 1, "{actions:#?}");
+    assert_eq!(actions[0]["title"], "Remove inspection");
+    assert_eq!(actions[0]["kind"], "refactor.rewrite.inspect.remove");
+    assert_eq!(
+        actions[0]["edit"]["changes"][uri][0]["newText"],
+        "(offset + 1)"
+    );
+
+    server.handle(notification(
+        "textDocument/didChange",
+        json!({
+            "textDocument": { "uri": uri, "version": 3 },
+            "contentChanges": [{ "text": source }]
+        }),
+    ));
+    let cursor = source.find("offset + 1").unwrap() + 2;
+    let actions = server.handle(json!({
+        "jsonrpc": "2.0",
+        "id": 29,
+        "method": "textDocument/codeAction",
+        "params": {
+            "textDocument": { "uri": uri },
+            "range": {
+                "start": position(source, cursor),
+                "end": position(source, cursor)
+            },
+            "context": { "diagnostics": [], "only": ["refactor.rewrite"] }
+        }
+    }));
+    let actions = actions[0]["result"].as_array().unwrap();
+    assert_eq!(actions.len(), 1, "{actions:#?}");
+    assert_eq!(actions[0]["title"], "Inspect expression");
+    assert_eq!(
+        actions[0]["edit"]["changes"][uri][0]["newText"],
+        "inspect(offset)"
+    );
+}
+
+#[test]
 fn unused_member_code_actions_apply_validated_multi_edit_suppressions() {
     let source = concat!(
         "struct Pair {\n",
@@ -2357,9 +2463,9 @@ fn unused_struct_field_fix_survives_save_undo_and_save() {
         "fn Pos.toString() { return `({self.x}, {self.y})` }\n",
         "setup {\n",
         "    let x = 5\n",
-        "    inspect([Pos { x, y: 2 }, Pos { x: 3, y: 4 }])\n",
+        "    observe([Pos { x, y: 2 }, Pos { x: 3, y: 4 }])\n",
         "}\n",
-        "fn inspect(values) { print(values) }\n",
+        "fn observe(values) { print(values) }\n",
     );
     let source = crate::database::CompilerDatabase::new(unformatted)
         .format()

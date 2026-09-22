@@ -970,7 +970,7 @@ mod tests {
     fn root_pattern_completion_is_type_directed_and_suppresses_expressions() {
         let source = r#"
 state "game.exe" {}
-fn inspect(value: bool) {
+fn observe(value: bool) {
     return match value {
         <|>true => 1,
         false => 0,
@@ -991,7 +991,7 @@ fn inspect(value: bool) {
         let root = labels(
             r#"
 state "game.exe" {}
-fn inspect(value: bool?) {
+fn observe(value: bool?) {
     if value is <|> {
         print("matched")
     }
@@ -1008,7 +1008,7 @@ fn inspect(value: bool?) {
         let nested = labels(
             r#"
 state "game.exe" {}
-fn inspect(value: bool?) {
+fn observe(value: bool?) {
     if value is Some(<|>) {
         print("matched")
     }
@@ -1025,7 +1025,7 @@ fn inspect(value: bool?) {
         let items = completions(
             r#"
 state "game.exe" {}
-fn inspect(value: i16) {
+fn observe(value: i16) {
     return match value {
         <|>
     }
@@ -1050,7 +1050,7 @@ fn inspect(value: i16) {
     fn completion_survives_an_empty_recovered_match_arm() {
         let source = r#"
 state "game.exe" {}
-fn inspect(value: bool) {
+fn observe(value: bool) {
     return match value {
         <|>
     }
@@ -1067,7 +1067,7 @@ fn inspect(value: bool) {
         let source = r#"
 enum Mode { Idle, Active(bool) }
 state "game.exe" {}
-fn inspect(mode: Mode) {
+fn observe(mode: Mode) {
     return match mode {
         <|>Mode.Idle => false,
         Mode.Active(value) => value,
@@ -1093,7 +1093,7 @@ fn inspect(mode: Mode) {
     fn standard_enum_completion_uses_the_same_qualification_rules() {
         let source = r#"
 state "game.exe" {}
-fn inspect(value: TimerState) {
+fn observe(value: TimerState) {
     return match value {
         <|>TimerState.Running => true,
         _ => false,
@@ -1116,7 +1116,7 @@ fn inspect(value: TimerState) {
     fn wrapper_and_array_payloads_complete_recursively() {
         let option = r#"
 state "game.exe" {}
-fn inspect(value: bool?) {
+fn observe(value: bool?) {
     return match value {
         Some(<|>_) => true,
         None => false,
@@ -1136,7 +1136,7 @@ fn inspect(value: bool?) {
 
         let array = r#"
 state "game.exe" {}
-fn inspect(value: [bool; 2]) {
+fn observe(value: [bool; 2]) {
     return match value {
         [true, <|>_] => true,
         _ => false,
@@ -1154,7 +1154,7 @@ fn inspect(value: [bool; 2]) {
     fn array_rest_completion_is_offered_only_once_per_array_pattern() {
         let source = r#"
 state "game.exe" {}
-fn inspect(value: [bool]) {
+fn observe(value: [bool]) {
     return match value {
         [true, <|>_] => true,
         _ => false,
@@ -1179,7 +1179,7 @@ fn inspect(value: [bool]) {
     fn result_and_iterator_step_completion_offer_only_their_constructors() {
         let result = r#"
 state "game.exe" {}
-fn inspect(value: bool!) {
+fn observe(value: bool!) {
     return match value {
         <|>Ok(_) => true,
         Err(_) => false,
@@ -1197,7 +1197,7 @@ fn inspect(value: bool!) {
 
         let step = r#"
 state "game.exe" {}
-fn inspect(value: IteratorStep<bool>) {
+fn observe(value: IteratorStep<bool>) {
     return match value {
         <|>Item(_) => true,
         End => false,
@@ -1215,7 +1215,7 @@ fn inspect(value: IteratorStep<bool>) {
     fn completion_survives_an_unclosed_wrapper_pattern() {
         let source = r#"
 state "game.exe" {}
-fn inspect(value: bool?) {
+fn observe(value: bool?) {
     return match value {
         Some(<|>
     }
@@ -1232,7 +1232,7 @@ fn inspect(value: bool?) {
         let source = r#"
 struct Position { visible: bool, grounded: bool }
 state "game.exe" {}
-fn inspect(position: Position) {
+fn observe(position: Position) {
     return match position {
         Position { visible: _, <|>grounded: _ } => true,
         _ => false,
@@ -1275,7 +1275,7 @@ fn inspect(position: Position) {
         let parameter = r#"
 struct Position { x: u16, y: u16 }
 state "game.exe" {}
-fn inspect({ x, <|> }: Position) -> u16 {
+fn observe({ x, <|> }: Position) -> u16 {
     return x
 }
 "#;
@@ -1308,7 +1308,7 @@ fn inspect({ x, <|> }: Position) -> u16 {
             r#"
 struct Position { x: u16, y: u16 }
 state "game.exe" {}
-fn inspect(position: Position) -> u16 {
+fn observe(position: Position) -> u16 {
     let { x, <|> } = position
     return x
 }
@@ -1316,14 +1316,14 @@ fn inspect(position: Position) -> u16 {
             r#"
 struct Position { x: u16, y: u16 }
 state "game.exe" {}
-fn inspect(positions: [Position]) {
+fn observe(positions: [Position]) {
     for { x, <|> } in positions { print(x) }
 }
 "#,
             r#"
 struct Position { x: u16, y: u16 }
 state "game.exe" {}
-fn inspect(position: Position) -> u16 {
+fn observe(position: Position) -> u16 {
     let read = ({ x, <|> }: Position) => x
     return read(position)
 }
@@ -1347,7 +1347,7 @@ fn inspect(position: Position) -> u16 {
             r#"
 struct Position { x: u16, y: u16 }
 state "game.exe" {}
-fn inspect(position: Position) -> u16 {
+fn observe(position: Position) -> u16 {
     return match position {
         <|>
     }
@@ -1368,7 +1368,7 @@ fn inspect(position: Position) -> u16 {
     fn fixed_array_completion_provides_the_exact_shape() {
         let source = r#"
 state "game.exe" {}
-fn inspect(value: [bool; 2]) {
+fn observe(value: [bool; 2]) {
     return match value {
         <|>_ => true,
     }
@@ -1388,7 +1388,7 @@ fn inspect(value: [bool; 2]) {
     fn match_arm_values_keep_ordinary_expression_completion() {
         let source = r#"
 state "game.exe" {}
-fn inspect(value: bool) {
+fn observe(value: bool) {
     return match value {
         true => <|>false,
         false => false,

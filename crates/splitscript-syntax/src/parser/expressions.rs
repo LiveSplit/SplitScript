@@ -425,6 +425,31 @@ impl Parser<'_> {
             let span = start.join(error.span);
             return Ok(self.new_expr(ExprKind::Throw(Box::new(error)), span));
         }
+        if self.eat_ident("inspect").is_some() {
+            let keyword_span = self.previous().span;
+            self.expect(
+                TokenKind::LParen,
+                "expected `(` after `inspect`; write `inspect(expression)`",
+            )?;
+            let value = self.with_struct_literals(true, |parser| parser.required_expression(0))?;
+            let closing =
+                self.expect(TokenKind::RParen, "expected `)` after inspected expression")?;
+            let label = self
+                .source
+                .get(value.span.start..value.span.end)
+                .unwrap_or_default()
+                .trim()
+                .to_owned();
+            let span = keyword_span.join(closing);
+            return Ok(self.new_expr(
+                ExprKind::Inspect {
+                    label,
+                    value: Box::new(value),
+                    keyword_span,
+                },
+                span,
+            ));
+        }
         if self.at_ident("await") || self.at_ident("retry") {
             let mode = if self.eat_ident("await").is_some() {
                 super::SuspensionMode::Await

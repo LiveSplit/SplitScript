@@ -237,7 +237,7 @@ fn user_function_types_are_inferred_across_bodies_and_call_sites() {
         struct First { value: i32 }
         struct Second { value: i32 }
         state "game.exe" {}
-        fn inspect(item) { return item.value }
+        fn observe(item) { return item.value }
     "#;
     let errors = splitscript::check(splitscript::parse(ambiguous).unwrap())
         .expect_err("shared field names need enough call-site context");
