@@ -24,7 +24,35 @@ are under ignored `target/performance-review`.
 
 ## Current priorities after the September 22 reassessment
 
-### Minish Cap is the primary latency target
+### Lunistice is the primary latency target
+
+Priority update (2026-09-22): Minish Cap is fast enough; retain it as a
+regression fixture and focus further latency work on the real Lunistice
+autosplitter, including its LSP diagnostics.
+
+**Implemented: omit provably unused managed collection setup before checking.**
+Lunistice's declared schema uses scalars, strings, classes, and a plain struct.
+The compiler previously generated array/list/map/set adapters and schema
+verification helpers anyway, only pruning them after analysis and initial
+Wasm lowering. A conservative source-schema check now avoids generating that
+work in both Debug and Release. Nested structs are inspected; unknown and
+constructed types keep the existing complete setup.
+
+Paired Lunistice warm compilation improves from **57.8–58.7 to 28.4–29.8 ms**
+(49–51%), and actual LSP edit-to-diagnostics from **26.1–26.3 to 10.7–11.2 ms**
+(57–59%). Lowered function bodies fall from 219 to 127. Minish Cap stays around
+7 ms. Explicit Lunistice release Wasm remains 32,121 bytes; automatic Unity
+selection shrinks slightly from 142,220 to 142,192 bytes. All 18 output
+fixtures validate. See
+[the schema measurements](docs/BASELINES.md#2026-09-22-omit-unused-managed-collection-setup).
+All 1,158 compiler/library tests pass, with one manual benchmark ignored.
+
+A prototype reusing Wasm function plans after managed pruning saved only
+about 3% on Lunistice while adding expression/temporary ownership complexity;
+it was discarded in favor of avoiding the work earlier. Further investigation
+should start with Lunistice's remaining lowering/backend cost and fresh-process
+initialization. Do not add a general optimization pass without evidence that
+it benefits this workload.
 
 **Implemented: borrowed specialization-cache lookups.** Type-specialization
 cache reads no longer clone function signature vectors to construct a key.
@@ -126,8 +154,8 @@ preserve higher-order effects, generic specialization, implicit capability
 calls, and generated provider helpers. Simply omitting bodies and falling
 back to coarse catalog effects is not an equivalent implementation.
 
-Judge the next implementation by Minish Cap compilation and edit-to-diagnostics
-latency, with Lunistice as the other real-autosplitter check. Use the same
+Judge the next implementation by Lunistice compilation and edit-to-diagnostics
+latency, with Minish Cap as a regression check. Use the same
 source, build profile, and paired run orders, and validate emitted Wasm.
 Prioritize avoiding entire unused-library stages over further reductions in
 small inference, pattern, or sorting costs. The earlier implementation history

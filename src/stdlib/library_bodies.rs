@@ -448,6 +448,47 @@ struct SchemaClass<'ast> {
     class: &'ast ManagedClassDecl,
 }
 
+/// Omit the collection scaffold only when the whole declared schema proves
+/// it unnecessary. Inspect every source struct as well: a managed field may
+/// hide a collection behind several nominal fields. Unknown catalog types or
+/// constructed types conservatively keep the complete scaffold.
+fn schema_may_use_collections(program: &Program, classes: &[SchemaClass<'_>]) -> bool {
+    use crate::ast::TypeRef as SourceType;
+    let plain_names = program
+        .structs
+        .iter()
+        .map(|structure| structure.name.as_str())
+        .chain(classes.iter().map(|class| class.class.name.as_str()))
+        .chain(
+            program
+                .enums
+                .iter()
+                .filter(|enumeration| {
+                    enumeration
+                        .variants
+                        .iter()
+                        .all(|variant| variant.payload.is_none())
+                })
+                .map(|enumeration| enumeration.name.as_str()),
+        )
+        .chain(std::iter::once("String"))
+        .collect::<std::collections::HashSet<_>>();
+    let plain = |ty| match ty {
+        SourceType::Core(_) => true,
+        SourceType::Named(name) => plain_names.contains(program.type_name(name)),
+        _ => false,
+    };
+    classes
+        .iter()
+        .flat_map(|class| class_fields(class.class))
+        .any(|field| !plain(field.ty))
+        || program
+            .structs
+            .iter()
+            .flat_map(|structure| &structure.fields)
+            .any(|field| !plain(field.ty))
+}
+
 fn managed_preparation_source(
     program: &Program,
     preparation: &str,
@@ -457,6 +498,7 @@ fn managed_preparation_source(
 ) -> String {
     let classes = schema_classes(program);
     let instance_classes = managed_instance_classes(program);
+    let include_collections = !classes.is_empty() && schema_may_use_collections(program, &classes);
     if classes.is_empty() && contexts.is_empty() {
         return format!(
             "fn {PROVIDER_PREPARATION_FUNCTION}() {{ return await {preparation}({arguments}) }}"
@@ -467,6 +509,8 @@ fn managed_preparation_source(
     if !classes.is_empty() {
         source.push_str(&format!("    {MANAGED_POINTER_SIZE_FIELD}: u32,\n"));
         source.push_str(&format!("    {MANAGED_OBJECT_TYPE_FIELD}: (address, address, address, ManagedReadContext) -> address!,\n"));
+    }
+    if include_collections {
         source.push_str(&format!(
             "    {MANAGED_LIST_LAYOUT_FIELD}: (address, u32, u32, u32, address, ManagedReadContext) -> UnityListLayout!,\n"
         ));
@@ -474,7 +518,7 @@ fn managed_preparation_source(
             "    {MANAGED_ARRAY_TYPE_FIELD}: (address, u32, u32, u32, ManagedReadContext) -> address!,\n"
         ));
     }
-    if !classes.is_empty() {
+    if include_collections {
         source.push_str(&format!(
             "    {MANAGED_MAP_READ_FIELD}: (address, u32, u32, u32, u32, u32, u32, u32, u32, u64, ManagedReadContext) -> UnityKeyedRead!,\n    {MANAGED_SET_READ_FIELD}: (address, u32, u32, u32, u32, u32, u32, u32, u32, u64, ManagedReadContext) -> UnityKeyedRead!,\n"
         ));
@@ -482,7 +526,7 @@ fn managed_preparation_source(
             "    {MANAGED_KEYED_VERIFY_FIELD}: (UnityKeyedRead) -> bool!,\n"
         ));
     }
-    if !classes.is_empty() {
+    if include_collections {
         source.push_str(&format!(
             "    {MANAGED_ARRAY_TYPE_FIELD}_class: (address, u32, u32, u32, address, ManagedReadContext) -> address!,\n\
                  {MANAGED_LIST_LAYOUT_FIELD}_class: (address, u32, u32, u32, address, address, ManagedReadContext) -> UnityListLayout!,\n\
@@ -490,7 +534,7 @@ fn managed_preparation_source(
                  {MANAGED_SET_READ_FIELD}_class: (address, u32, u32, u32, u32, u32, u32, address, address, u32, u32, u64, ManagedReadContext) -> UnityKeyedRead!,\n"
         ));
     }
-    if !classes.is_empty() {
+    if include_collections {
         let checker = "(address, u32, ManagedReadContext) -> bool!";
         for (name, signature) in schema_binding_signatures() {
             source.push_str(&format!("    {name}: {signature},\n"));
@@ -578,6 +622,7 @@ fn managed_preparation_source(
                 false,
                 ".address",
                 contexts,
+                include_collections,
             ));
             source.push_str("    }\n");
         }
@@ -592,6 +637,7 @@ fn managed_preparation_source(
                 true,
                 ".address",
                 contexts,
+                include_collections,
             ));
             source.push_str("    }\n");
         }
@@ -605,6 +651,7 @@ fn managed_preparation_source(
                 true,
                 ".classAddress()",
                 contexts,
+                include_collections,
             ));
             source.push_str("    }\n");
         }
@@ -613,6 +660,7 @@ fn managed_preparation_source(
     source
 }
 
+#[allow(clippy::too_many_arguments)]
 fn managed_backend_binding_source(
     classes: &[SchemaClass<'_>],
     instance_classes: &std::collections::HashSet<ManagedClassId>,
@@ -621,6 +669,7 @@ fn managed_backend_binding_source(
     instance_header_is_async: bool,
     class_address: &str,
     contexts: &[SelectedProviderContext],
+    include_collections: bool,
 ) -> String {
     let mut source = String::new();
     source.push_str(&format!(
@@ -649,7 +698,8 @@ fn managed_backend_binding_source(
                          return class\n\
                      }}\n"
     ));
-    source.push_str(&format!(
+    if include_collections {
+        source.push_str(&format!(
         "            let __class_contract_cache: [[address; 2]] = []\n\
                      let __class_contract: (address, address, ManagedReadContext) -> bool! = (type, expected, context) => {{\n\
                          let charge = () => Unity.chargeManagedWork(context)\n\
@@ -668,41 +718,41 @@ fn managed_backend_binding_source(
                          return true\n\
                      }}\n"
     ));
-    source.push_str(&schema_binding_bodies(module));
-    source.push_str("            let __array_layout_cache: [UnityArrayLayout] = []\n");
-    for mode in ["", "_class", "_schema"] {
-        let nominal = mode == "_class";
-        let schema = mode == "_schema";
-        let binding = format!("{MANAGED_ARRAY_TYPE_FIELD}{mode}");
-        let class_parameter = if schema {
-            "(address, u32, ManagedReadContext) -> bool!, "
-        } else if nominal {
-            "address, "
-        } else {
-            ""
-        };
-        let class_argument = if schema {
-            "verify, "
-        } else if nominal {
-            "elementClass, "
-        } else {
-            ""
-        };
-        let cached_check = if schema {
-            "cached.validate(depth, elementBytes, elementKinds)?; verify(cached.elementType(depth)?, __pointer_size, context)?; return class"
-        } else if nominal {
-            "cached.validate(depth, elementBytes, elementKinds)?; __class_contract(cached.elementType(depth)?, elementClass, context)?; return class"
-        } else {
-            "return cached.validate(depth, elementBytes, elementKinds)"
-        };
-        let layout_check = if schema {
-            "verify(layout.elementType(depth)?, __pointer_size, context)?;"
-        } else if nominal {
-            "__class_contract(layout.elementType(depth)?, elementClass, context)?;"
-        } else {
-            ""
-        };
-        source.push_str(&format!(
+        source.push_str(&schema_binding_bodies(module));
+        source.push_str("            let __array_layout_cache: [UnityArrayLayout] = []\n");
+        for mode in ["", "_class", "_schema"] {
+            let nominal = mode == "_class";
+            let schema = mode == "_schema";
+            let binding = format!("{MANAGED_ARRAY_TYPE_FIELD}{mode}");
+            let class_parameter = if schema {
+                "(address, u32, ManagedReadContext) -> bool!, "
+            } else if nominal {
+                "address, "
+            } else {
+                ""
+            };
+            let class_argument = if schema {
+                "verify, "
+            } else if nominal {
+                "elementClass, "
+            } else {
+                ""
+            };
+            let cached_check = if schema {
+                "cached.validate(depth, elementBytes, elementKinds)?; verify(cached.elementType(depth)?, __pointer_size, context)?; return class"
+            } else if nominal {
+                "cached.validate(depth, elementBytes, elementKinds)?; __class_contract(cached.elementType(depth)?, elementClass, context)?; return class"
+            } else {
+                "return cached.validate(depth, elementBytes, elementKinds)"
+            };
+            let layout_check = if schema {
+                "verify(layout.elementType(depth)?, __pointer_size, context)?;"
+            } else if nominal {
+                "__class_contract(layout.elementType(depth)?, elementClass, context)?;"
+            } else {
+                ""
+            };
+            source.push_str(&format!(
         "            let {binding}: (address, u32, u32, u32, {class_parameter}ManagedReadContext) -> address! = (object, depth, elementBytes, elementKinds, {class_argument}context) => {{\n\
                          let charge = () => Unity.chargeManagedWork(context)\n\
                          let class = {module}.objectClass(object, charge)?\n\
@@ -716,41 +766,41 @@ fn managed_backend_binding_source(
                          return class\n\
                      }}\n"
     ));
-    }
-    source.push_str("            let __list_layout_cache: [UnityListLayout] = []\n");
-    for mode in ["", "_class", "_schema"] {
-        let nominal = mode == "_class";
-        let schema = mode == "_schema";
-        let binding = format!("{MANAGED_LIST_LAYOUT_FIELD}{mode}");
-        let class_parameter = if schema {
-            "(address, u32, ManagedReadContext) -> bool!, "
-        } else if nominal {
-            "address, "
-        } else {
-            ""
-        };
-        let class_argument = if schema {
-            "verify, "
-        } else if nominal {
-            "elementClass, "
-        } else {
-            ""
-        };
-        let cached_check = if schema {
-            "verify(cached.elements.elementType(depth)?, __pointer_size, context)?;"
-        } else if nominal {
-            "__class_contract(cached.elements.elementType(depth)?, elementClass, context)?;"
-        } else {
-            ""
-        };
-        let layout_check = if schema {
-            "verify(layout.elements.elementType(depth)?, __pointer_size, context)?;"
-        } else if nominal {
-            "__class_contract(layout.elements.elementType(depth)?, elementClass, context)?;"
-        } else {
-            ""
-        };
-        source.push_str(&format!(
+        }
+        source.push_str("            let __list_layout_cache: [UnityListLayout] = []\n");
+        for mode in ["", "_class", "_schema"] {
+            let nominal = mode == "_class";
+            let schema = mode == "_schema";
+            let binding = format!("{MANAGED_LIST_LAYOUT_FIELD}{mode}");
+            let class_parameter = if schema {
+                "(address, u32, ManagedReadContext) -> bool!, "
+            } else if nominal {
+                "address, "
+            } else {
+                ""
+            };
+            let class_argument = if schema {
+                "verify, "
+            } else if nominal {
+                "elementClass, "
+            } else {
+                ""
+            };
+            let cached_check = if schema {
+                "verify(cached.elements.elementType(depth)?, __pointer_size, context)?;"
+            } else if nominal {
+                "__class_contract(cached.elements.elementType(depth)?, elementClass, context)?;"
+            } else {
+                ""
+            };
+            let layout_check = if schema {
+                "verify(layout.elements.elementType(depth)?, __pointer_size, context)?;"
+            } else if nominal {
+                "__class_contract(layout.elements.elementType(depth)?, elementClass, context)?;"
+            } else {
+                ""
+            };
+            source.push_str(&format!(
         "            let {binding}: (address, u32, u32, u32, address, {class_parameter}ManagedReadContext) -> UnityListLayout! = (object, depth, elementBytes, elementKinds, expectedClass, {class_argument}context) => {{\n\
                          if !Unity.chargeManagedWork(context) {{ throw \"managed read work limit exceeded\" }}\n\
                          let class = {module}.collectionClass(object)?\n\
@@ -765,8 +815,8 @@ fn managed_backend_binding_source(
                          return layout\n\
                      }}\n"
     ));
-    }
-    source.push_str(&format!(
+        }
+        source.push_str(&format!(
         "            let __keyed_array_cache: [[address; 2]] = []\n\
                      let __keyed_array: (address, address, ManagedReadContext) -> address! = (object, declared, context) => {{\n\
                          let charge = () => Unity.chargeManagedWork(context)\n\
@@ -779,56 +829,56 @@ fn managed_backend_binding_source(
                          return class\n\
                      }}\n"
     ));
-    for (base, cache, method, noun) in [
-        (
-            MANAGED_MAP_READ_FIELD,
-            "__map_layout_cache",
-            "dictionaryLayout",
-            "dictionary",
-        ),
-        (
-            MANAGED_SET_READ_FIELD,
-            "__set_layout_cache",
-            "setLayout",
-            "set",
-        ),
-    ] {
-        source.push_str(&format!(
-            "            let {cache}: [UnityKeyedLayout] = []\n"
-        ));
-        for mode in ["", "_class", "_schema"] {
-            let nominal = mode == "_class";
-            let schema = mode == "_schema";
-            let binding = format!("{base}{mode}");
-            let class_parameter = if schema {
-                "(address, u32, ManagedReadContext) -> bool!, (address, u32, ManagedReadContext) -> bool!, "
-            } else if nominal {
-                "address, address, "
-            } else {
-                ""
-            };
-            let class_argument = if schema {
-                "verifyKey, verifyValue, "
-            } else if nominal {
-                "keyClass, valueClass, "
-            } else {
-                ""
-            };
-            let cached_check = if schema {
-                "if cached.members.length() == 4 { verifyKey(cached.members[2].nestedType(keyDepth, cached.keyElements)?, __pointer_size, context)? } verifyValue(cached.members[cached.members.length() - 1].nestedType(valueDepth, cached.valueElements)?, __pointer_size, context)?;"
-            } else if nominal {
-                "cached.validateClasses(keyDepth, valueDepth, keyClass, valueClass, (type, expected) => __class_contract(type, expected, context))?;"
-            } else {
-                ""
-            };
-            let layout_check = if schema {
-                "if layout.members.length() == 4 { verifyKey(layout.members[2].nestedType(keyDepth, layout.keyElements)?, __pointer_size, context)? } verifyValue(layout.members[layout.members.length() - 1].nestedType(valueDepth, layout.valueElements)?, __pointer_size, context)?;"
-            } else if nominal {
-                "layout.validateClasses(keyDepth, valueDepth, keyClass, valueClass, (type, expected) => __class_contract(type, expected, context))?;"
-            } else {
-                ""
-            };
+        for (base, cache, method, noun) in [
+            (
+                MANAGED_MAP_READ_FIELD,
+                "__map_layout_cache",
+                "dictionaryLayout",
+                "dictionary",
+            ),
+            (
+                MANAGED_SET_READ_FIELD,
+                "__set_layout_cache",
+                "setLayout",
+                "set",
+            ),
+        ] {
             source.push_str(&format!(
+                "            let {cache}: [UnityKeyedLayout] = []\n"
+            ));
+            for mode in ["", "_class", "_schema"] {
+                let nominal = mode == "_class";
+                let schema = mode == "_schema";
+                let binding = format!("{base}{mode}");
+                let class_parameter = if schema {
+                    "(address, u32, ManagedReadContext) -> bool!, (address, u32, ManagedReadContext) -> bool!, "
+                } else if nominal {
+                    "address, address, "
+                } else {
+                    ""
+                };
+                let class_argument = if schema {
+                    "verifyKey, verifyValue, "
+                } else if nominal {
+                    "keyClass, valueClass, "
+                } else {
+                    ""
+                };
+                let cached_check = if schema {
+                    "if cached.members.length() == 4 { verifyKey(cached.members[2].nestedType(keyDepth, cached.keyElements)?, __pointer_size, context)? } verifyValue(cached.members[cached.members.length() - 1].nestedType(valueDepth, cached.valueElements)?, __pointer_size, context)?;"
+                } else if nominal {
+                    "cached.validateClasses(keyDepth, valueDepth, keyClass, valueClass, (type, expected) => __class_contract(type, expected, context))?;"
+                } else {
+                    ""
+                };
+                let layout_check = if schema {
+                    "if layout.members.length() == 4 { verifyKey(layout.members[2].nestedType(keyDepth, layout.keyElements)?, __pointer_size, context)? } verifyValue(layout.members[layout.members.length() - 1].nestedType(valueDepth, layout.valueElements)?, __pointer_size, context)?;"
+                } else if nominal {
+                    "layout.validateClasses(keyDepth, valueDepth, keyClass, valueClass, (type, expected) => __class_contract(type, expected, context))?;"
+                } else {
+                    ""
+                };
+                source.push_str(&format!(
         "            let {binding}: (address, u32, u32, u32, u32, u32, u32, {class_parameter}u32, u32, u64, ManagedReadContext) -> UnityKeyedRead! = (object, keyLeafBytes, valueLeafBytes, keyLeafKinds, valueLeafKinds, keyDepth, valueDepth, {class_argument}scanBudget, elementBudget, byteBudget, context) => {{\n\
                          if !Unity.chargeManagedWork(context) {{ throw \"managed read work limit exceeded\" }}\n\
                          let class = {module}.collectionClass(object)?\n\
@@ -847,9 +897,10 @@ fn managed_backend_binding_source(
                      }}\n\
 "
     ));
+            }
         }
+        source.push_str(&format!("            let {MANAGED_KEYED_VERIFY_FIELD}: (UnityKeyedRead) -> bool! = read => read.verify()\n"));
     }
-    source.push_str(&format!("            let {MANAGED_KEYED_VERIFY_FIELD}: (UnityKeyedRead) -> bool! = read => read.verify()\n"));
     let mut images = std::collections::HashMap::new();
     for class in classes {
         let image_index = if let Some(index) = images.get(class.image) {
@@ -932,22 +983,24 @@ fn managed_backend_binding_source(
     source.push_str(&format!("            {PROVIDER_BINDINGS_TYPE} {{\n"));
     push_provider_context_initializers(&mut source, contexts, "                ");
     source.push_str(&format!("                {MANAGED_POINTER_SIZE_FIELD},\n"));
-    source.push_str(&format!("                {MANAGED_LIST_LAYOUT_FIELD},\n"));
-    source.push_str(&format!("                {MANAGED_ARRAY_TYPE_FIELD},\n"));
     source.push_str(&format!("                {MANAGED_OBJECT_TYPE_FIELD},\n"));
-    source.push_str(&format!(
+    if include_collections {
+        source.push_str(&format!("                {MANAGED_LIST_LAYOUT_FIELD},\n"));
+        source.push_str(&format!("                {MANAGED_ARRAY_TYPE_FIELD},\n"));
+        source.push_str(&format!(
         "                {MANAGED_MAP_READ_FIELD}, {MANAGED_SET_READ_FIELD}, {MANAGED_KEYED_VERIFY_FIELD},\n"
     ));
-    for base in [
-        MANAGED_ARRAY_TYPE_FIELD,
-        MANAGED_LIST_LAYOUT_FIELD,
-        MANAGED_MAP_READ_FIELD,
-        MANAGED_SET_READ_FIELD,
-    ] {
-        source.push_str(&format!("                {base}_class, {base}_schema,\n"));
-    }
-    for (name, _) in schema_binding_signatures() {
-        source.push_str(&format!("                {name},\n"));
+        for base in [
+            MANAGED_ARRAY_TYPE_FIELD,
+            MANAGED_LIST_LAYOUT_FIELD,
+            MANAGED_MAP_READ_FIELD,
+            MANAGED_SET_READ_FIELD,
+        ] {
+            source.push_str(&format!("                {base}_class, {base}_schema,\n"));
+        }
+        for (name, _) in schema_binding_signatures() {
+            source.push_str(&format!("                {name},\n"));
+        }
     }
     for class in classes {
         source.push_str(&format!(
@@ -1422,6 +1475,96 @@ mod tests {
     use std::sync::Arc;
 
     use super::*;
+
+    #[test]
+    fn managed_collection_scaffold_is_conservative_through_nominal_fields() {
+        for (declarations, fields, expected) in [
+            (
+                "struct Plain { value: u32 }",
+                "Plain value; String name;",
+                false,
+            ),
+            (
+                "struct Outer { inner: Inner } struct Inner { values: [u32] }",
+                "Outer value;",
+                true,
+            ),
+            ("", "List<i32> values;", true),
+            ("", "Map<String, [u32]> values;", true),
+            ("", "UnityListLayout unknown;", true),
+            ("enum Kind { Plain, Payload([u32]) }", "Kind value;", true),
+            (
+                "let extra: bool",
+                "u32 value; if extra { [u32] values; }",
+                true,
+            ),
+        ] {
+            let source = format!(
+                "{declarations}\nimage \"Assembly-CSharp\" {{ class Probe {{ {fields} }} }}\nstate Unity [\"game.exe\"] {{}}"
+            );
+            let parsed = crate::parse(&source).unwrap();
+            assert_eq!(
+                schema_may_use_collections(parsed.syntax(), &schema_classes(parsed.syntax())),
+                expected,
+                "{source}"
+            );
+        }
+    }
+
+    #[test]
+    fn lunistice_omits_collection_scaffold_before_checking() {
+        let source = include_str!("../../examples/lunistice.split");
+        let lowered = crate::lower(crate::parse(source).unwrap());
+        let bindings = lowered
+            .compilation_syntax
+            .structs
+            .iter()
+            .find(|structure| structure.name == PROVIDER_BINDINGS_TYPE)
+            .unwrap();
+        assert!(
+            bindings
+                .fields
+                .iter()
+                .any(|field| field.name == MANAGED_OBJECT_TYPE_FIELD)
+        );
+        for field in [
+            MANAGED_ARRAY_TYPE_FIELD,
+            MANAGED_LIST_LAYOUT_FIELD,
+            MANAGED_MAP_READ_FIELD,
+            MANAGED_SET_READ_FIELD,
+        ] {
+            assert!(
+                !bindings
+                    .fields
+                    .iter()
+                    .any(|candidate| candidate.name.starts_with(field))
+            );
+        }
+        // An unrelated array declaration conservatively restores the full
+        // scaffold. Type identities can move when the omitted helpers are
+        // restored, but backend demand and the release module size must agree.
+        let full = format!("{source}\nstruct ForceCollections {{ unused: [u32] }}");
+        let options = crate::CompilerOptions {
+            profile: crate::BuildProfile::Release,
+            ..Default::default()
+        };
+        let compile = |source: &str| {
+            let checked = crate::check(crate::lower(crate::parse(source).unwrap())).unwrap();
+            crate::codegen::compile_with_report(crate::lower_wasm_with_options(&checked, options))
+        };
+        let (optimized, report) = compile(source);
+        let (reference, full_report) = compile(&full);
+        assert_eq!(optimized.len(), reference.len());
+        assert_eq!(report.runtime_helpers, full_report.runtime_helpers);
+        assert_eq!(report.functions.len(), full_report.functions.len());
+        assert_eq!(report.scratch_bytes, full_report.scratch_bytes);
+        assert_eq!(report.abi_read_capacity, full_report.abi_read_capacity);
+        for wasm in [&optimized, &reference] {
+            wasmparser::Validator::new_with_features(wasmparser::WasmFeatures::all())
+                .validate_all(wasm)
+                .unwrap();
+        }
+    }
 
     fn lower_with_all_bodies(source: &str) -> crate::LoweredProgram {
         let mut lowered = crate::lower(crate::parse(source).unwrap());

@@ -1359,28 +1359,37 @@ fn unused_nested_managed_classes_do_not_retain_object_walk_helpers() {
         image "Unused" {{ class Recursive {{ Recursive? next; }} }}
     "#
     );
-    let options = splitscript::CompilerOptions {
-        profile: splitscript::BuildProfile::Release,
-        ..Default::default()
-    };
-    assert_eq!(
-        splitscript::compile_with_options(source, options).unwrap(),
-        splitscript::compile_with_options(&extended, options).unwrap()
-    );
-    let debug = splitscript::compile(source).unwrap();
-    let (_, names) = debug_function_names(&debug).unwrap();
-    assert!(
-        names
-            .iter()
-            .all(|(_, name)| !name.contains("EnterManagedObject")),
-        "{names:#?}"
-    );
-    // Even a flat snapshot charges work while validating its runtime class.
-    assert!(
-        names
-            .iter()
-            .any(|(_, name)| name.contains("ChargeManagedWork"))
-    );
+    let (plain, report) = release_emission(source);
+    let (unused, unused_report) = release_emission(&extended);
+    // The optional recursive field conservatively keeps collection setup
+    // before checking. That can reorder GC type indices, but must not retain
+    // additional code or discovery after backend demand pruning.
+    assert_eq!(plain.len(), unused.len());
+    assert_eq!(report.runtime_helpers, unused_report.runtime_helpers);
+    assert_eq!(report.functions.len(), unused_report.functions.len());
+    assert!(!contains_string_literal(&unused, b"Unused"));
+    assert!(!contains_string_literal(&unused, b"Recursive"));
+    for wasm in [&plain, &unused] {
+        Validator::new_with_features(WasmFeatures::all())
+            .validate_all(wasm)
+            .unwrap();
+    }
+    for source in [source, &extended] {
+        let debug = splitscript::compile(source).unwrap();
+        let (_, names) = debug_function_names(&debug).unwrap();
+        assert!(
+            names
+                .iter()
+                .all(|(_, name)| !name.contains("EnterManagedObject")),
+            "{names:#?}"
+        );
+        // Even a flat snapshot charges work while validating its runtime class.
+        assert!(
+            names
+                .iter()
+                .any(|(_, name)| name.contains("ChargeManagedWork"))
+        );
+    }
 }
 
 #[test]

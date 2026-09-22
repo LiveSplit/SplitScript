@@ -46,6 +46,73 @@ compiler regression. Generated Wasm byte counts are deterministic, but should
 also be reviewed rather than frozen into brittle assertions because valid
 backend changes can alter them intentionally.
 
+## 2026-09-22 omit unused managed collection setup
+
+Lunistice is now the primary latency target; Minish Cap remains a regression
+fixture. Its managed schema has no collections, but generated preparation
+previously included collection adapters, caches, and schema-verification
+helpers. Their library dependencies were selected and checked before backend
+demand pruning could remove them. A conservative scan of managed fields and
+all source structs now omits this setup when all field types are known to be
+plain. This catches collections hidden behind nominal structs without a
+recursive type walk. Unknown catalog types, payload enums, and constructed
+types retain the complete setup. Both profiles share this behavior, full
+library bootstrap validation remains, and user bodies are still checked.
+
+Paired measurements compare `5cf241a` with this change using ordinary Rust
+release builds, identical frozen sources, CPU 0, 20 warmups, and 50 samples.
+Run order is before/after/after/before. LSP measurements use the actual stdio
+server and alternate trailing-newline edits to force analysis of each revision:
+
+| Workload | Before, first / reverse | After, first / reverse |
+| --- | ---: | ---: |
+| Lunistice warm compile | 57.7582 / 58.6557 ms | 28.3934 / 29.8301 ms |
+| Lunistice LSP diagnostics | 26.1181 / 26.2580 ms | 10.7330 / 11.1587 ms |
+| Minish Cap warm compile | 7.8777 / 7.8043 ms | 7.1766 / 7.3307 ms |
+
+Lunistice improves by 49–51% for compilation and 57–59% for LSP diagnostics.
+Its lowered function count falls from 219 to 127; Minish Cap remains at 41.
+Minish Cap does not use this managed-schema path, so its small timing movement
+is not attributed to the omitted setup. Absolute baseline times also moved
+since the preceding session; use this paired comparison. These are warm
+measurements and do not establish a fresh-process startup gain.
+
+Separate Lunistice stage medians are 24.408 → 8.867 ms for analysis,
+12.067 → 6.428 ms for initial Wasm lowering, and 21.541 → 13.038 ms for
+backend preparation/encoding/disposal. The last phase includes managed demand
+pruning and the remaining Wasm rebuild. These separate runs do not sum to
+the paired end-to-end medians.
+
+All nine Release and nine Debug fixtures validate with no size increases.
+Explicit Lunistice remains 32,121 bytes in Release and moves from 44,512 to
+44,510 bytes in Debug. Automatic Unity Lunistice moves from 142,220 to
+142,192 bytes in Release and 171,143 to 171,111 bytes in Debug. Other fixtures
+keep their sizes, including Minish Cap at 35,326/43,162 bytes. Omitting helpers
+changes type numbering and corresponding references, so byte identity is not
+claimed. This is primarily a latency improvement, not an output-size pass.
+
+New tests cover collections hidden in nested structs, conditional managed
+fields, maps/lists, unknown catalog types, and payload enums. The real
+Lunistice test compares generated-module size and backend demand with a
+conservatively forced complete-setup reference and validates both modules.
+The existing unused-recursive-class test now checks size, helper/function
+demand, omitted metadata, and object-walk-helper absence in both variants
+instead of requiring identical GC type indices. Validation covers all 694
+compiler and 464 library tests, with one manual benchmark ignored. Full runs
+were followed by focused reruns of the corrected byte-identity assertions;
+production code did not change between those runs. Formatting and diff checks
+also pass.
+
+An earlier prototype reused unchanged Wasm function plans after pruning.
+Longer paired runs (150 samples) showed only a 3.0–3.3% Lunistice improvement,
+at the cost of tracking generated expression and temporary ranges. That
+prototype was discarded; only the earlier omission of unused setup is shipped.
+
+Local artifacts are under `target/performance-review/2026-09-22/`, using
+`specialization-cache-release-*` and `schema-scaffold-release-*` binaries,
+`schema-scaffold-measurements.log`, `schema_scaffold_final.py`, and the
+Lunistice-specific `measure_lunistice_lsp.py` driver.
+
 ## 2026-09-22 borrowed specialization-cache lookups
 
 Cached type specialization previously constructed a composite lookup key by
