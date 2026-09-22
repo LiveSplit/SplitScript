@@ -46,6 +46,52 @@ compiler regression. Generated Wasm byte counts are deterministic, but should
 also be reviewed rather than frozen into brittle assertions because valid
 backend changes can alter them intentionally.
 
+## 2026-09-22 borrowed specialization-cache lookups
+
+Cached type specialization previously constructed a composite lookup key by
+cloning the function instance, including its signature vectors. The cache now
+groups type mappings by complete function instance, allowing reads to borrow
+that instance. The key still includes type arguments and the exact concrete
+signature; distinct generic instances retain distinct type mappings. This is
+a shared cache-layout change, with no new optimization pass or profile split.
+
+Paired measurements compare the saved compiler from the preceding pruning
+change with this change, using ordinary Rust release builds, the same frozen
+real autosplitters, CPU 0, 20 warmups, and 50 samples. Run order is
+before/after/after/before:
+
+| Workload | Before, first / reverse | After, first / reverse |
+| --- | ---: | ---: |
+| Minish Cap warm compile | 7.7323 / 7.6294 ms | 7.2440 / 7.2575 ms |
+| Lunistice warm compile | 56.1693 / 56.4116 ms | 55.2273 / 56.2516 ms |
+| Minish Cap LSP diagnostics | 4.0913 / 3.9707 ms | 4.0527 / 3.9802 ms |
+
+Minish Cap improves by 4.9–6.3% in both orders. Lunistice's improvement is
+small and varies between orders, so no reliable end-to-end gain is claimed
+there. LSP diagnostics remain around 4 ms. Absolute times moved since the
+preceding session, including for the unchanged earlier binary; use the paired
+comparison rather than comparing separate sessions. No startup gain is claimed.
+
+Separate stage measurements show Minish Cap analysis essentially unchanged
+(3.550 → 3.554 ms), initial Wasm lowering at 0.611 → 0.602 ms, and backend
+preparation/encoding/disposal at 2.999 → 2.827 ms. Lunistice's backend phase
+moves from 21.054 to 20.254 ms, while its other phases remain broadly unchanged.
+These separate stage runs are diagnostic and do not sum to the paired totals.
+
+All nine release and nine debug output fixtures validate with unchanged
+sizes. Release bytes match after build-stamp normalization; Debug executable
+sections also match, with differences confined to some DWARF `.debug_info`
+sections. Minish Cap remains 35,326 bytes, Lunistice 32,121 bytes, and automatic
+Unity Lunistice 142,220 bytes in Release.
+
+All 694 compiler tests and 462 library tests pass, with one manual benchmark
+ignored. Existing runtime cases verify distinct generic instances, nested
+generic closures, specialized async frames, and recursive generic calls.
+
+Local artifacts are under `target/performance-review/2026-09-22/`, using the
+`prune-reuse-release-*` and `specialization-cache-release-*` binaries,
+`specialization-cache-measurements.log`, and `specialization_cache_final.py`.
+
 ## 2026-09-22 reuse typed code after managed binding pruning
 
 Managed metadata pruning changes the generated preparation function, but used

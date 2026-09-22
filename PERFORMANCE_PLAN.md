@@ -26,6 +26,16 @@ are under ignored `target/performance-review`.
 
 ### Minish Cap is the primary latency target
 
+**Implemented: borrowed specialization-cache lookups.** Type-specialization
+cache reads no longer clone function signature vectors to construct a key.
+Paired Minish Cap warm compile medians improve from 7.63–7.73 to
+**7.24–7.26 ms** (4.9–6.3%). Lunistice's small improvement is not consistent
+enough to claim an end-to-end gain; LSP diagnostics remain around 4 ms.
+Both profiles share the cache layout. All 18 output fixtures validate, with
+unchanged sizes and executable sections. See
+[the cache measurements](docs/BASELINES.md#2026-09-22-borrowed-specialization-cache-lookups).
+All 1,156 compiler/library tests pass, with one manual benchmark ignored.
+
 **Implemented: reuse typed code after managed binding pruning.** Pruning
 generated preparation bindings now rebuilds only that function's typed HIR.
 Paired Lunistice warm compile medians improve from 55.4–55.9 to

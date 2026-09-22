@@ -409,7 +409,9 @@ pub struct SemanticModel {
     source_associated_types:
         HashMap<(TypeId, crate::stdlib::StdlibCapabilityId, &'static str), TypeId>,
     generic_parameter_constraints: HashMap<TypeId, Vec<crate::stdlib::StdlibCapabilityId>>,
-    specialized_types: HashMap<(FunctionInstance, TypeId), TypeId>,
+    // Group by instance so hot type lookups can borrow its signature instead
+    // of allocating cloned vectors to construct a composite lookup key.
+    specialized_types: HashMap<FunctionInstance, HashMap<TypeId, TypeId>>,
     struct_field_types: HashMap<StructFieldId, TypeId>,
     managed_field_types: HashMap<ManagedFieldId, TypeId>,
     standard_field_types: HashMap<StdlibFieldId, TypeId>,
@@ -679,7 +681,11 @@ impl SemanticModel {
     /// inference, so specialization preserves the checked program's canonical
     /// type and layout identities.
     pub fn specialize_type(&self, instance: &FunctionInstance, ty: TypeId) -> TypeId {
-        if let Some(specialized) = self.specialized_types.get(&(instance.clone(), ty)) {
+        if let Some(specialized) = self
+            .specialized_types
+            .get(instance)
+            .and_then(|types| types.get(&ty))
+        {
             return *specialized;
         }
         if let Some(specialized) = self.direct_specialization(instance, ty) {
@@ -781,12 +787,18 @@ impl SemanticModel {
         ids: &mut crate::ast::ConstructedTypeIdAllocator,
         constructed: &mut ResolvedConstructedTypesMut<'_>,
     ) -> TypeId {
-        if let Some(specialized) = self.specialized_types.get(&(instance.clone(), ty)) {
+        if let Some(specialized) = self
+            .specialized_types
+            .get(instance)
+            .and_then(|types| types.get(&ty))
+        {
             return *specialized;
         }
         if let Some(specialized) = self.direct_specialization(instance, ty) {
             self.specialized_types
-                .insert((instance.clone(), ty), specialized);
+                .entry(instance.clone())
+                .or_default()
+                .insert(ty, specialized);
             return specialized;
         }
         let kind = self.types.kind(ty).clone();
@@ -1064,7 +1076,9 @@ impl SemanticModel {
             | TypeKind::GenericParameter { .. } => ty,
         };
         self.specialized_types
-            .insert((instance.clone(), ty), specialized);
+            .entry(instance.clone())
+            .or_default()
+            .insert(ty, specialized);
         specialized
     }
 
