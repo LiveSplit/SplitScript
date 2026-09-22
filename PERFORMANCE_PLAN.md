@@ -41,7 +41,7 @@ from one native pass. See [the complete measurements](docs/BASELINES.md#2026-09-
 
 The next implementation order is:
 
-1. **Reduce repeated effect-analysis work.** Temporary profiling of minimal
+1. **Reduce repeated effect-analysis work (implemented September 22).** Temporary profiling of minimal
    compilation attributes about 36 ms to `effects::polymorphic::infer`: nine
    rounds reevaluate all 408 function bodies. First prototype dependency-driven
    reevaluation or per-body summary reuse within one analysis. Track every
@@ -50,11 +50,23 @@ The next implementation order is:
    against full reevaluation on recursive calls, returned closures, iterator
    effects, source-defined capabilities, and the bundled library. Do not skip
    validation of uncalled bodies or cache compilation-owned IDs across programs.
+   The implementation records summary reads, including nested closures and
+   implicit display calls, and reevaluates a body only when one of those inputs
+   changed. Updates remain simultaneous, with the same iteration limit. Every
+   body is still analyzed initially, and reuse ends with the current analysis.
+   Ordinary-release compilation improves by 28–33% in paired measurements;
+   minimal compilation drops from 93–96 to 65–66 ms. The remaining latency is
+   still well above September 12, so typed-HIR work is the next priority.
 2. **Investigate typed-HIR construction before adding a large cache.** It costs
    about 13 ms even for minimal input. Separate syntax visiting, expression
    materialization, and function-body construction; look for repeated tree
    walks and index lookups. Keep improvements shared by compiler and LSP and by
    Debug and Release. Type checking itself is another 16 ms, mainly body work.
+   Concrete candidates in `TypedProgram::build`: expressions, assignments, and
+   patterns first enter hash maps and are then collected and sorted; binding
+   patterns are also lowered while constructing function/global bodies after
+   the syntax visitor has populated the pattern table. Profile these costs and
+   verify ID/ownership requirements before replacing either path.
 3. **Revisit library-product reuse with the new floor.** The standard-library
    source grew from 308,872 to 600,330 bytes. Minimal compilation analyzes
    17,058 expressions, and frontend-only time rose from 2.27 to 8.62 ms.
@@ -73,9 +85,10 @@ The next implementation order is:
 For every compiler slice, repeat the same-input latency comparison in both
 orders, check actual LSP diagnostics with `scripts/lsp_baseline.mjs`, validate
 output and runtime behavior, and then measure the packaged `max-opt` binaries.
-Keep normal `release` unchanged. No production compiler changes or temporary
-tracing are included in this reassessment; it adds a reusable LSP benchmark and
-updates the evidence and priorities.
+Keep normal `release` unchanged. The initial reassessment added a reusable LSP
+benchmark and updated the evidence and priorities. The subsequent summary-reuse
+implementation and its verification are recorded in
+[the follow-up measurements](docs/BASELINES.md#2026-09-22-effect-summary-reuse).
 
 ## First implementation batch
 

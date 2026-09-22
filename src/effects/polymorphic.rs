@@ -23,7 +23,10 @@ use crate::{
     stdlib::{Availability, CoreTypeId, Effect, StdlibItemId, StdlibTypeConstructorId},
     types::TypeKind,
 };
-use std::collections::{BTreeSet, HashMap};
+use std::{
+    cell::RefCell,
+    collections::{BTreeSet, HashMap},
+};
 
 // Value identities are lexical, so only referenced values already present in
 // the outer environment can be captures. Include nested closure bodies: their
@@ -279,13 +282,30 @@ impl Accumulator {
     }
 }
 
+// Every summary lookup goes through this view, including lookups made by
+// nested closure evaluators. A body's previous dependencies are sufficient to
+// invalidate it: new dynamic callees can only appear when an input changes.
+struct SummaryLookup<'a> {
+    values: &'a [FunctionSummary],
+    reads: Option<&'a RefCell<Vec<usize>>>,
+}
+
+impl SummaryLookup<'_> {
+    fn get(&self, index: usize) -> Option<&FunctionSummary> {
+        if let Some(reads) = self.reads {
+            reads.borrow_mut().push(index);
+        }
+        self.values.get(index)
+    }
+}
+
 struct Evaluator<'a> {
     syntax: &'a Program,
     program: &'a TypedProgram,
     semantics: &'a SemanticModel,
     capabilities: &'a crate::capabilities::CapabilityAnalysis,
     scoped_globals: &'a crate::scoped_globals::ScopedGlobalAnalysis,
-    summaries: &'a [FunctionSummary],
+    summaries: &'a SummaryLookup<'a>,
     env: HashMap<ValueId, SymbolicValue>,
     accumulator: Accumulator,
     returns: Vec<SymbolicValue>,
@@ -355,7 +375,7 @@ impl<'a> Evaluator<'a> {
         semantics: &'a SemanticModel,
         capabilities: &'a crate::capabilities::CapabilityAnalysis,
         scoped_globals: &'a crate::scoped_globals::ScopedGlobalAnalysis,
-        summaries: &'a [FunctionSummary],
+        summaries: &'a SummaryLookup<'a>,
         env: HashMap<ValueId, SymbolicValue>,
     ) -> Self {
         Self {
@@ -1097,8 +1117,10 @@ fn evaluate_function(
     semantics: &SemanticModel,
     capabilities: &crate::capabilities::CapabilityAnalysis,
     scoped_globals: &crate::scoped_globals::ScopedGlobalAnalysis,
-    summaries: &[FunctionSummary],
+    summaries: &SummaryLookup<'_>,
 ) -> FunctionSummary {
+    #[cfg(test)]
+    tests::EVALUATIONS.set(tests::EVALUATIONS.get() + 1);
     let mut evaluator = Evaluator::new(
         syntax,
         program,
@@ -1124,6 +1146,70 @@ fn evaluate_function(
     }
 }
 
+fn infer_function_summaries(
+    syntax: &Program,
+    program: &TypedProgram,
+    semantics: &SemanticModel,
+    capabilities: &crate::capabilities::CapabilityAnalysis,
+    scoped_globals: &crate::scoped_globals::ScopedGlobalAnalysis,
+) -> Vec<FunctionSummary> {
+    let function_count = program
+        .all_function_bodies()
+        .map(|body| body.function.function.index() + 1)
+        .max()
+        .unwrap_or(0);
+    let mut summaries = vec![FunctionSummary::default(); function_count];
+    let mut dependencies = vec![Vec::new(); function_count];
+    let mut changed = vec![false; function_count];
+    for round in 0..MAX_FIXPOINT_ROUNDS {
+        // Publish updates together after the round, so every evaluation sees
+        // exactly the same inputs as full simultaneous reevaluation.
+        let mut updates = Vec::new();
+        for body in program.all_function_bodies() {
+            let index = body.function.function.index();
+            if round != 0
+                && !dependencies[index]
+                    .iter()
+                    .any(|&dependency| changed[dependency])
+            {
+                continue;
+            }
+            let reads = RefCell::new(Vec::new());
+            let lookup = SummaryLookup {
+                values: &summaries,
+                reads: Some(&reads),
+            };
+            let summary = evaluate_function(
+                body,
+                syntax,
+                program,
+                semantics,
+                capabilities,
+                scoped_globals,
+                &lookup,
+            );
+            if summary != summaries[index] {
+                updates.push((index, summary));
+            }
+            let mut reads = reads.into_inner();
+            // Missing function summaries remain missing throughout inference.
+            reads.retain(|&dependency| dependency < function_count);
+            reads.sort_unstable();
+            reads.dedup();
+            dependencies[index] = reads;
+        }
+        if updates.is_empty() {
+            break;
+        }
+        changed.fill(false);
+        for (index, summary) in updates {
+            summaries[index] = summary;
+            changed[index] = true;
+        }
+    }
+    summaries
+}
+
 pub(super) fn infer(
     syntax: &Program,
     program: &TypedProgram,
@@ -1131,32 +1217,12 @@ pub(super) fn infer(
     capabilities: &crate::capabilities::CapabilityAnalysis,
     scoped_globals: &crate::scoped_globals::ScopedGlobalAnalysis,
 ) -> OperationAnalysis {
-    let function_count = program
-        .all_function_bodies()
-        .map(|body| body.function.function.index() + 1)
-        .max()
-        .unwrap_or(0);
-    let mut summaries = vec![FunctionSummary::default(); function_count];
-    for _ in 0..MAX_FIXPOINT_ROUNDS {
-        let mut next = summaries.clone();
-        for body in program.all_function_bodies() {
-            next[body.function.function.index()] = evaluate_function(
-                body,
-                syntax,
-                program,
-                semantics,
-                capabilities,
-                scoped_globals,
-                &summaries,
-            );
-        }
-        if next == summaries {
-            summaries = next;
-            break;
-        }
-        summaries = next;
-    }
-
+    let summaries =
+        infer_function_summaries(syntax, program, semantics, capabilities, scoped_globals);
+    let lookup = SummaryLookup {
+        values: &summaries,
+        reads: None,
+    };
     let mut calls = HashMap::new();
     let mut global_initializers = HashMap::new();
     for initializer in program.global_initializers() {
@@ -1166,7 +1232,7 @@ pub(super) fn infer(
             semantics,
             capabilities,
             scoped_globals,
-            &summaries,
+            &lookup,
             HashMap::new(),
         )
         .with_calls(&mut calls);
@@ -1180,7 +1246,7 @@ pub(super) fn infer(
             semantics,
             capabilities,
             scoped_globals,
-            &summaries,
+            &lookup,
             HashMap::new(),
         )
         .with_calls(&mut calls);
@@ -1193,7 +1259,7 @@ pub(super) fn infer(
             semantics,
             capabilities,
             scoped_globals,
-            &summaries,
+            &lookup,
             HashMap::new(),
         )
         .with_calls(&mut calls);
@@ -1206,7 +1272,7 @@ pub(super) fn infer(
             semantics,
             capabilities,
             scoped_globals,
-            &summaries,
+            &lookup,
             HashMap::new(),
         )
         .with_calls(&mut calls);
@@ -1220,5 +1286,107 @@ pub(super) fn infer(
             .collect(),
         calls,
         global_initializers,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    thread_local! {
+        pub(super) static EVALUATIONS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+    }
+
+    fn compare_with_full_reevaluation(source: &str) -> (usize, usize) {
+        let checked = crate::check(crate::lower(crate::parse(source).unwrap())).unwrap();
+        EVALUATIONS.set(0);
+        let actual = infer_function_summaries(
+            &checked.compilation_syntax,
+            &checked.hir,
+            &checked.semantics,
+            &checked.capabilities,
+            &checked.scoped_globals,
+        );
+        let reused_evaluations = EVALUATIONS.get();
+        EVALUATIONS.set(0);
+        // Keep the original whole-program, simultaneous-update algorithm as
+        // an independent oracle for dependency invalidation and convergence.
+        let mut expected = vec![FunctionSummary::default(); actual.len()];
+        for _ in 0..MAX_FIXPOINT_ROUNDS {
+            let lookup = SummaryLookup {
+                values: &expected,
+                reads: None,
+            };
+            let mut next = expected.clone();
+            for body in checked.hir.all_function_bodies() {
+                next[body.function.function.index()] = evaluate_function(
+                    body,
+                    &checked.compilation_syntax,
+                    &checked.hir,
+                    &checked.semantics,
+                    &checked.capabilities,
+                    &checked.scoped_globals,
+                    &lookup,
+                );
+            }
+            if next == expected {
+                expected = next;
+                break;
+            }
+            expected = next;
+        }
+        let mismatch = actual
+            .iter()
+            .zip(&expected)
+            .position(|(actual, expected)| actual != expected);
+        assert_eq!(mismatch, None, "summary differs from full reevaluation");
+        (reused_evaluations, EVALUATIONS.get())
+    }
+
+    #[test]
+    fn summary_reuse_preserves_library_effects_and_avoids_unchanged_bodies() {
+        let (reused, full) = compare_with_full_reevaluation("state \"game.exe\" {}");
+        assert!(reused * 2 < full, "{reused} evaluations versus {full}");
+        for source in [
+            include_str!("../../examples/minish_cap.split"),
+            include_str!("../../examples/lunistice.split"),
+        ] {
+            compare_with_full_reevaluation(source);
+        }
+    }
+
+    #[test]
+    fn summary_reuse_tracks_recursive_higher_order_and_implicit_calls() {
+        compare_with_full_reevaluation(
+            r#"
+state "game.exe" {}
+let counter = 0u32
+struct Box { value: u32 }
+fn leaf() -> u32 { counter += 1; return counter }
+fn select() -> () -> u32 { return leaf }
+fn wrap() -> () -> u32 {
+    let inner = select()
+    return () => {
+        let nested: () -> u32 = () => inner()
+        nested()
+    }
+}
+fn invoke(callback: () -> u32) -> u32 { return callback() }
+fn left(n: u32) -> u32 {
+    if n == 0 { return invoke(wrap()) }
+    return right(n - 1)
+}
+fn right(n: u32) -> u32 { return left(n) }
+fn values() -> iterator u32 { yield invoke(wrap()) }
+fn consume() -> u32 {
+    let result = 0u32
+    for value in values() { result += value }
+    return result
+}
+fn Box.toString() -> String { return `{leaf()}` }
+fn show() { print(Box { value: 1 }) }
+whileAttached { print(left(2)); print(consume()); show() }
+"#,
+        );
     }
 }

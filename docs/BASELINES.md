@@ -46,6 +46,89 @@ compiler regression. Generated Wasm byte counts are deterministic, but should
 also be reviewed rather than frozen into brittle assertions because valid
 backend changes can alter them intentionally.
 
+## 2026-09-22 effect-summary reuse
+
+Follow-up to the reassessment below: effect inference now records the function
+summaries read by each body and reevaluates that body only when an input changed.
+The initial round still visits every body. Nested closures, higher-order calls,
+and implicit display calls use the same tracked lookup. Updates are published
+together after each round, preserving the previous simultaneous fixed-point
+semantics and 64-round limit. Reuse is local to one analysis; no compilation IDs
+or validation results are cached across programs. Debug, Release, and LSP share
+the implementation.
+
+Paired ordinary Cargo-release measurements compare the frozen `4720d69`
+compiler with this change on `f241574` (whose compiler is identical to
+`4720d69`). Same frozen fixtures, CPU affinity, 20 warmups, 50 samples, and
+measurement procedure as the reassessment. Builds never overlap timing runs.
+Documentation-only verification fixes were applied after these binaries
+were saved; neither changes compilation semantics.
+
+| Fixture | Before → after median | Reverse-order before → after median | Before → after p95, first pair |
+| --- | ---: | ---: | ---: |
+| minimal | 95.69 → 65.73 ms | 92.53 → 65.06 ms | 102.91 → 69.61 ms |
+| Minish Cap | 105.37 → 70.50 ms | 97.78 → 69.89 ms | 113.31 → 74.27 ms |
+| cancellation | 91.03 → 64.30 ms | 90.93 → 63.32 ms | 95.11 → 66.67 ms |
+| settings | 92.70 → 64.87 ms | 91.93 → 63.91 ms | 95.04 → 68.13 ms |
+
+This removes 28–33% of total compilation time in these runs. It does not restore
+the September 12 baseline: minimal compilation remains about three times as
+slow. Typed-HIR construction, type checking, and repeated library work remain
+the next targets. A separate post-change stage run measures minimal analysis
+at 49.05 ms, Wasm lowering at 10.57 ms, and encoding at 5.94 ms (medians).
+This localizes the gain to analysis; stage runs are diagnostic and need not
+sum to an end-to-end median.
+
+Actual stdio LSP edit-to-diagnostics measurements, with identical source hashes
+on both sides:
+
+| Fixture | Before → after median | Reverse-order before → after median | Before → after p95, first pair |
+| --- | ---: | ---: | ---: |
+| small | 80.79 → 52.64 ms | 78.96 → 53.61 ms | 84.47 → 54.84 ms |
+| Minish Cap | 80.79 → 52.10 ms | 80.05 → 54.95 ms | 87.22 → 55.88 ms |
+| 500 helpers | 102.89 → 73.70 ms | 107.53 → 77.86 ms | 109.90 → 81.72 ms |
+
+The regression tests compare full summaries (including returned symbolic
+values) against the original full-reevaluation algorithm for the bundled
+library, Minish Cap, Lunistice, recursive/higher-order calls, nested returned
+closures, iterators, global mutation, and implicit display calls. The minimal
+fixture requires fewer than half as many function-body evaluations; this is a
+work-count assertion, not a timing threshold.
+
+All nine Release size fixtures are unchanged: minimal 597 bytes, Minish Cap
+35,334, cancellation 2,241, settings 7,987, debug-profile fixture 1,170, set
+3,106, map 4,779, explicit Lunistice 32,121, automatic Lunistice 142,234.
+Every output validates with `wasm-tools --features all`. Before/after bytes
+match after replacing the one compiler Git-revision field in module metadata;
+code, data, types, and all other content are identical.
+
+The same nine fixtures also validate in Debug and retain identical sizes and
+executable sections. Four have different ordering of type/variable records in
+the DWARF `.debug_info` section; the other five match completely after the
+revision substitution. Debug results are therefore not claimed to be wholly
+byte-identical.
+
+Native Rust verification builds now use the user-approved 3,072 MiB ceiling in
+`scripts/run_limited.py`; its default remains 768 MiB, which is still used for
+script compilation, measurements, and runtime verification. Cargo's ordinary
+`release` profile is unchanged. After `cargo clean`, verification builds use
+`CARGO_PROFILE_DEV_DEBUG=0` and `CARGO_PROFILE_TEST_DEBUG=0` to reduce disk use.
+These omit Rust symbols without disabling assertions or SplitScript's Debug
+profile; the packaged `max-opt` settings are unchanged.
+
+The packaged `max-opt` follow-up measures compilation medians of 59.05 ms
+(minimal), 62.29 ms (Minish Cap), 56.78 ms (cancellation), and 57.34 ms
+(settings). LSP medians are 46.65, 46.79, and 66.19 ms for small, Minish Cap,
+and 500 helpers respectively. These are post-change absolute measurements,
+not a paired `max-opt` improvement claim.
+
+Validation: Clippy passed; all 454 active library tests and 137 syntax/loader
+tests passed, as did the 20 CLI/LSP unit tests. The integration run passed
+693 tests; its sole failure was an outdated `inspect` wording assertion,
+which was corrected and passed on a targeted rerun. A stale Unity documentation
+assertion and a missing `debug` documentation link were also repaired. The
+full extension packaging/browser stage was not rerun for this change.
+
 ## 2026-09-22 performance reassessment
 
 Compared freshly built `40d72a0` (September 12) with `4720d69` (the committed

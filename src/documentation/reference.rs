@@ -2872,11 +2872,7 @@ mod tests {
                 .markdown
                 .contains("Read one transactional managed snapshot")
         );
-        assert!(
-            unity
-                .markdown
-                .contains("Scalar live reads allocate no GC objects")
-        );
+        assert!(unity.markdown.contains("Class checks share bounded"));
         assert!(!unity.markdown.contains("`MonoModule`"));
         assert!(!unity.markdown.contains("`UnityClass`"));
     }

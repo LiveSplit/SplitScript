@@ -3,6 +3,9 @@
 The child starts suspended and is resumed only after job assignment succeeds.
 Closing this launcher's job handle kills remaining descendants. Concurrent
 launchers fail instead of competing for memory. No unguarded fallback exists.
+
+Use the default 768 MiB for script compilation and runtime tests. Native Rust
+builds may use up to 3072 MiB; the larger ceiling does not change the default.
 """
 import argparse
 import ctypes as c
@@ -131,6 +134,6 @@ if __name__ == "__main__":
     args = parser.parse_args()
     if args.command[:1] == ["--"]:
         args.command.pop(0)
-    if not args.command or not 32 <= args.memory_mib <= 1536 or not 1 <= args.seconds <= 1800:
-        parser.error("provide a command, a 32..1536 MiB memory cap, and a 1..1800s timeout")
+    if not args.command or not 32 <= args.memory_mib <= 3072 or not 1 <= args.seconds <= 1800:
+        parser.error("provide a command, a 32..3072 MiB memory cap, and a 1..1800s timeout")
     sys.exit(run(args))

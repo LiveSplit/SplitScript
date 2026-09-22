@@ -121,7 +121,7 @@ fn inspect_is_a_documented_highlighted_expression_keyword() {
             .unwrap()
             .expect("inspect should expose its language documentation")
             .markdown
-            .contains("evaluates its operand exactly once")
+            .contains("evaluates its operand once")
     );
     assert!(
         database
