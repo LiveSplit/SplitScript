@@ -46,6 +46,65 @@ compiler regression. Generated Wasm byte counts are deterministic, but should
 also be reviewed rather than frozen into brittle assertions because valid
 backend changes can alter them intentionally.
 
+## 2026-09-22 exhaustiveness checks for catch-all patterns
+
+`missing_patterns` now returns immediately when a checked, unguarded binding
+or wildcard already covers the entire input. Previously it built a pattern
+matrix, checked inhabitedness, and expanded type constructors before the
+recursive witness search recognized that nothing could be missing. For enums,
+constructor expansion repeatedly copied the complete variant list. This path
+also ran for ordinary function parameters and variable declarations.
+
+Pattern checking, duplicate/unreachable-arm diagnostics, guarded-arm handling,
+and analysis of refutable patterns remain in place. Debug, Release, and the
+LSP share the shortcut. It also correctly covers uninhabited input types.
+
+Compared with `8b842ea`, using ordinary Cargo release, frozen inputs, CPU
+affinity, 20 warmups, and 50 measured samples, with serialized builds/runs:
+
+| Compilation fixture | Before → shortcut | Reverse-order before → shortcut |
+| --- | ---: | ---: |
+| minimal | 54.72 → 55.03 ms | 56.69 → 57.01 ms |
+| Minish Cap | 60.21 → 59.96 ms | 61.60 → 61.30 ms |
+| cancellation | 54.20 → 52.27 ms | 54.98 → 55.07 ms |
+| settings | 56.53 → 53.44 ms | 55.71 → 55.18 ms |
+
+These small-fixture compile results are mixed and do not establish a general
+compilation speedup. Actual stdio LSP diagnostics show a consistent 6–8%
+improvement for the 500-helper fixture, with mixed smaller-fixture results:
+
+| LSP fixture | Before → shortcut | Reverse-order before → shortcut |
+| --- | ---: | ---: |
+| small | 47.06 → 42.01 ms | 41.50 → 42.68 ms |
+| Minish Cap | 47.60 → 41.89 ms | 41.36 → 40.89 ms |
+| 500 helpers | 66.70 → 61.51 ms | 63.99 → 60.17 ms |
+
+A separate scaling fixture contains one 128-variant enum and 64 ordinary
+functions taking that enum as a parameter (4,717 source bytes). Full CLI
+compilation improves from **187.20 to 152.16 ms median (19%)**, with p95 moving
+from 211.47 to 184.94 ms. This comparison alternates binary order, uses four
+warmups and 20 samples per binary, and includes process startup and I/O; it is
+not directly comparable with the in-process table above. Both binaries emit
+the same 597-byte Release module after normalizing the compiler revision.
+
+All nine regular Release and nine Debug fixtures validate at unchanged sizes.
+Release bytes match after revision normalization; Debug differences remain
+limited to the revision and previously observed DWARF record ordering.
+All 52 focused pattern, exhaustiveness, and guard tests pass, including async
+execution, refutable binding diagnostics, and recursively uninhabited types.
+The larger-enum output also validates, and formatting checks pass.
+Artifacts are under ignored `target/performance-review/2026-09-22`, including
+`coverage-release-*`, `coverage-wide-enum.log`, and `common/wide_enum.split`.
+The packaged `max-opt` profile and extension packaging were not rebuilt.
+
+The investigation also narrowed the remaining fixed type-checking cost:
+minimal input spends about 12 ms checking function bodies, 1.1 ms generalizing
+functions, and 2 ms publishing inference results. More intrusive diagnostic
+timers found only four associated-type projections and about 0.17 ms in type
+construction. Those measurements include instrumentation overhead and are
+used to choose work, not to claim end-to-end gains. The suspected repeated
+generic-call scan was therefore left unchanged.
+
 ## 2026-09-22 compact-key HIR sorting
 
 Profiling `0758c7c` separates minimal-input HIR construction into visiting

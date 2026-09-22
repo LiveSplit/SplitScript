@@ -1069,6 +1069,11 @@ impl Checker {
         previous: &[PatternCoverage],
         ty: Type,
     ) -> Vec<PatternCoverage> {
+        // A binding or wildcard already covers every value, including an
+        // uninhabited type. Avoid expanding its constructors just to prove it again.
+        if previous.iter().any(PatternCoverage::is_irrefutable) {
+            return Vec::new();
+        }
         let matrix = previous
             .iter()
             .cloned()

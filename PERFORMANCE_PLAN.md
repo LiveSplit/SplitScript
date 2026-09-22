@@ -78,6 +78,16 @@ The next implementation order is:
    improve by 3–9% in both run orders; compilation improves consistently for
    cancellation/settings, while minimal/Minish Cap results remain mixed.
    Output sizes are unchanged. See [the sorting measurements](docs/BASELINES.md#2026-09-22-compact-key-hir-sorting).
+   Further body-checking investigation removed constructor expansion when an
+   unguarded binding/wildcard already proves exhaustiveness. A 128-variant
+   enum with 64 parameter bindings compiles 19% faster; the 500-helper LSP
+   fixture improves 6–8% in both run orders. Small compile fixtures remain
+   mixed, and Wasm output sizes are unchanged. Pattern validation still runs.
+   See [the exhaustiveness measurements](docs/BASELINES.md#2026-09-22-exhaustiveness-checks-for-catch-all-patterns).
+   Profiling puts function-body checking around 12 ms, generalization around
+   1.1 ms, and inference finalization around 2 ms. The repeated generic-call
+   scan and constructed-type interning are smaller than the body-checking
+   floor; avoid treating them as its primary cause without new evidence.
 3. **Revisit library-product reuse with the new floor.** The standard-library
    source grew from 308,872 to 600,330 bytes. Minimal compilation analyzes
    17,058 expressions, and frontend-only time rose from 2.27 to 8.62 ms.
