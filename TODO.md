@@ -1010,7 +1010,7 @@ Implement in this order:
    functions, runtime helpers, imports, types, static data, and scratch regions
    can disappear. Integrate this with existing demand-driven emission instead
    of maintaining a second dependency model.
-5. [ ] Verify equivalent observable behavior with focused runtime tests and the
+5. [x] Verify equivalent observable behavior with focused runtime tests and the
    maintained corpus, confirm Debug emission is unaffected, and record measured
    byte savings and compiler resource costs. Enable the proven passes only for
    Release. Add further passes only when size measurements justify them.

@@ -56,6 +56,25 @@ fits into the existing instruction scan. A second cleanup sweep saves another
 enabled; it exposes useful simplifications without introducing another analysis.
 Pass savings interact and must not be added together as independent totals.
 
+## Compiler cost
+
+Optimized-host seven-sample medians for the promoted pipeline:
+
+| Real script | Passes disabled | Promoted Release backend | Added backend time |
+| --- | ---: | ---: | ---: |
+| Minish Cap | 2.978 ms | 6.448 ms | 3.470 ms |
+| Lunistice | 16.505 ms | 19.161 ms | 2.656 ms |
+| Neon White | 0.505 ms | 1.005 ms | 0.500 ms |
+| A Hat in Time | 4.556 ms | 7.469 ms | 2.913 ms |
+
+These measurements include lowering and emission but exclude parsing/type
+checking. Previous full-experiment totals were 7.591 / 20.856 ms on the primary
+scripts. The selected pipeline is faster in these measurements while retaining
+almost all size savings; cross-run differences are not isolated per-pass costs.
+All nine fixtures and individual samples are in `target/size-check/timing.json`.
+The optimized-host corpus check also validates identical sizes to the native
+development build. Debug does not pay these optimizer costs.
+
 ## Validation and reproduction
 
 The promoted pipeline has focused instruction/control/function-sharing tests
