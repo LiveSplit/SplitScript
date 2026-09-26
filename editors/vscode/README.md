@@ -18,7 +18,9 @@ separate native executable.
 4. On desktop, use **Auto Splitter Debugger: Debug Active File** to compile and
    run a `.split` source or directly launch a `.wasm` module inside VS Code. The
    debugger hot reloads saved `.split` sources and rebuilt `.wasm` modules by
-   default. The dedicated **Auto Splitter Debugger** sidebar shows
+   default, including changes written by tools outside VS Code. The standard
+   debug toolbar pauses and resumes the autosplitter update loop. The dedicated
+   **Auto Splitter Debugger** sidebar shows
    the simulated timer, runtime statistics, user settings, the raw settings map,
    timer variables, and controls; runtime output is sent to the
    **Auto Splitting Runtime** Output channel and Debug Console.
@@ -107,9 +109,12 @@ virtual workspaces.
 - WASI snapshot preview1 (WASI 0.1) is available with a read-only filesystem
   below `/mnt`. Arguments and environment variables are deliberately empty,
   and filesystem-mutating operations return `NOTCAPABLE`.
-- Source breakpoints and stepping are not implemented yet. Debug builds already
-  carry source and variable metadata; pausing V8 execution requires the planned
-  debugger-instrumented compiler mode.
+- Pause and Continue suspend and resume the autosplitter scheduler between
+  entry-point calls. Pausing keeps the WebAssembly instance and debugger state
+  alive, and hot reload preserves the suspended state. It cannot interrupt an
+  `update` call that is already executing. Source breakpoints, stepping, and
+  pausing at a source location are not implemented yet; those require the
+  planned debugger-instrumented compiler mode.
 - A directly launched `.wasm` file is instantiated as-is. Modules exporting
   `update` use the recurring auto-splitting loop; otherwise `_initialize` and
   `_start` are invoked once when present. A module with no conventional entry

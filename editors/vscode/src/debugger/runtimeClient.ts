@@ -21,6 +21,7 @@ export class RuntimeClient {
     private worker: Worker | undefined;
     private intentionalTermination = false;
     private settings: SettingMapSnapshot | undefined;
+    private paused = false;
     private nextRequestId = 1;
     private readonly memoryReads = new Map<
         number,
@@ -29,6 +30,10 @@ export class RuntimeClient {
     private readonly processMemoryRanges = new Map<
         number,
         { resolve(ranges: ProcessMemoryRange[]): void; reject(error: Error): void }
+    >();
+    private readonly executionChanges = new Map<
+        number,
+        { resolve(): void; reject(error: Error): void }
     >();
 
     public constructor(
@@ -84,8 +89,26 @@ export class RuntimeClient {
             program,
             settings: this.settings,
             nativeModulePath: this.nativeModulePath,
+            paused: this.paused,
         }, [owned.buffer]);
         await ready;
+    }
+
+    public setPaused(paused: boolean): Promise<void> {
+        if (this.worker === undefined) {
+            return Promise.reject(new Error('the ASR runtime worker is not running'));
+        }
+        this.paused = paused;
+        const requestId = this.nextRequestId++;
+        return new Promise((resolve, reject) => {
+            this.executionChanges.set(requestId, { resolve, reject });
+            try {
+                this.post({ type: 'setExecution', requestId, paused });
+            } catch (error) {
+                this.executionChanges.delete(requestId);
+                reject(asError(error));
+            }
+        });
     }
 
     public timerCommand(command: 'start' | 'reset'): void {
@@ -201,6 +224,11 @@ export class RuntimeClient {
             const pending = this.processMemoryRanges.get(message.requestId);
             this.processMemoryRanges.delete(message.requestId);
             pending?.resolve(message.ranges);
+        } else if (message.type === 'executionChanged') {
+            const pending = this.executionChanges.get(message.requestId);
+            this.executionChanges.delete(message.requestId);
+            this.paused = message.paused;
+            pending?.resolve();
         } else if (message.type === 'requestFailure') {
             const error = new Error(message.message);
             const memoryRead = this.memoryReads.get(message.requestId);
@@ -209,6 +237,9 @@ export class RuntimeClient {
             const ranges = this.processMemoryRanges.get(message.requestId);
             this.processMemoryRanges.delete(message.requestId);
             ranges?.reject(error);
+            const execution = this.executionChanges.get(message.requestId);
+            this.executionChanges.delete(message.requestId);
+            execution?.reject(error);
         }
     }
 
@@ -224,6 +255,8 @@ export class RuntimeClient {
         this.memoryReads.clear();
         for (const pending of this.processMemoryRanges.values()) pending.reject(error);
         this.processMemoryRanges.clear();
+        for (const pending of this.executionChanges.values()) pending.reject(error);
+        this.executionChanges.clear();
     }
 }
 

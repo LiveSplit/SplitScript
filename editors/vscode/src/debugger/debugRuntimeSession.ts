@@ -56,7 +56,7 @@ export class DebugRuntimeSession implements vscode.Disposable {
                 && this.programUri !== undefined
                 && document.uri.toString() === this.programUri.toString()
             ) {
-                this.runHotReload();
+                this.scheduleFileReload(this.programUri);
             }
         });
     }
@@ -76,7 +76,7 @@ export class DebugRuntimeSession implements vscode.Disposable {
         this.programUri = uri;
         this.callbacks.memoryReset();
         await this.runtime.launch(artifact, uri.fsPath);
-        if (this.hotReload && !sourceProgram) {
+        if (this.hotReload) {
             this.watchProgramFile(uri);
         }
     }
@@ -100,6 +100,14 @@ export class DebugRuntimeSession implements vscode.Disposable {
 
     public timerCommand(command: 'start' | 'reset'): void {
         this.runtime.timerCommand(command);
+    }
+
+    public pause(): Promise<void> {
+        return this.runtime.setPaused(true);
+    }
+
+    public resume(): Promise<void> {
+        return this.runtime.setPaused(false);
     }
 
     public setSetting(key: string, value: boolean | string): void {
@@ -176,12 +184,16 @@ export class DebugRuntimeSession implements vscode.Disposable {
                 this.suppressSaveReload = false;
             }
         }
+        // A filesystem watcher may observe an external write before VS Code has
+        // refreshed an already-open TextDocument. Read the saved source from
+        // disk so hot reload always compiles the change that triggered it.
+        const savedSource = new TextDecoder().decode(await vscode.workspace.fs.readFile(uri));
         const response = await compiler.compile({
             protocolVersion: compilerServiceProtocolVersion,
             uri: uri.toString(),
             sourcePath: uri.fsPath,
             revision: document.version,
-            source: document.getText(),
+            source: savedSource,
             profile: 'debug',
         });
         this.reportDiagnostics(response);
@@ -215,7 +227,7 @@ export class DebugRuntimeSession implements vscode.Disposable {
         );
         const changed = (changedUri: vscode.Uri): void => {
             if (sameFile(changedUri, uri)) {
-                this.scheduleFileReload();
+                this.scheduleFileReload(uri);
             }
         };
         watcher.onDidChange(changed);
@@ -225,7 +237,7 @@ export class DebugRuntimeSession implements vscode.Disposable {
         this.programWatcher = watcher;
     }
 
-    private scheduleFileReload(): void {
+    private scheduleFileReload(uri: vscode.Uri): void {
         if (this.fileReloadTimer !== undefined) {
             clearTimeout(this.fileReloadTimer);
         }
@@ -233,8 +245,22 @@ export class DebugRuntimeSession implements vscode.Disposable {
         // module and often emit several events for one build.
         this.fileReloadTimer = setTimeout(() => {
             this.fileReloadTimer = undefined;
-            this.runHotReload();
+            this.runFileHotReload(uri);
         }, 100);
+    }
+
+    private runFileHotReload(uri: vscode.Uri): void {
+        const openDocument = vscode.workspace.textDocuments.find(
+            document => sameFile(document.uri, uri),
+        );
+        if (openDocument?.isDirty) {
+            this.callbacks.log(runtimeLog(
+                'warning',
+                `Skipped hot reload for ${uri.fsPath} because it has unsaved editor changes.`,
+            ));
+            return;
+        }
+        this.runHotReload();
     }
 
     private runHotReload(): void {

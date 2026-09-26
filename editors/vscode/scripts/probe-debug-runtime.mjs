@@ -120,6 +120,50 @@ try {
     assert(running.snapshot.retainedTickCount > 0);
     assert.equal(running.snapshot.settings.widgets.length, 5);
 
+    const paused = waitFor(
+        worker,
+        message => message.type === 'snapshot'
+            && message.snapshot.status === 'paused',
+    );
+    const pausedAcknowledgement = waitFor(
+        worker,
+        message => message.type === 'executionChanged'
+            && message.requestId === 4
+            && message.paused,
+    );
+    worker.postMessage({ type: 'setExecution', requestId: 4, paused: true });
+    const pausedSnapshot = await paused;
+    await pausedAcknowledgement;
+    const pausedTickCount = pausedSnapshot.snapshot.tickCount;
+    await delay(100);
+    const settingWhilePaused = waitFor(
+        worker,
+        message => message.type === 'snapshot'
+            && message.snapshot.status === 'paused'
+            && message.snapshot.settings.map.some(entry => entry.key === 'label'
+                && entry.value.type === 'string'
+                && entry.value.value === 'paused'),
+    );
+    worker.postMessage({ type: 'setSetting', key: 'label', value: 'paused' });
+    const frozenSnapshot = await settingWhilePaused;
+    assert.equal(frozenSnapshot.snapshot.tickCount, pausedTickCount);
+
+    const resumed = waitFor(
+        worker,
+        message => message.type === 'snapshot'
+            && message.snapshot.status === 'running'
+            && message.snapshot.tickCount > pausedTickCount,
+    );
+    const resumedAcknowledgement = waitFor(
+        worker,
+        message => message.type === 'executionChanged'
+            && message.requestId === 5
+            && !message.paused,
+    );
+    worker.postMessage({ type: 'setExecution', requestId: 5, paused: false });
+    await resumedAcknowledgement;
+    await resumed;
+
     const memoryRead = waitFor(
         worker,
         message => message.type === 'memoryRead' && message.requestId === 1,
@@ -238,6 +282,12 @@ setup {
     await wasiRead;
 
     const genericReady = waitFor(genericWorker, message => message.type === 'ready');
+    const genericPaused = waitFor(
+        genericWorker,
+        message => message.type === 'snapshot'
+            && message.snapshot.status === 'paused'
+            && message.snapshot.tickCount === 0,
+    );
     const genericRan = waitFor(
         genericWorker,
         message => message.type === 'snapshot' && message.snapshot.tickCount === 1,
@@ -260,13 +310,24 @@ setup {
         type: 'launch',
         wasm: genericWasm.buffer,
         program: 'generic.wasm',
+        paused: true,
     }, [genericWasm.buffer]);
     const genericReadyMessage = await genericReady;
     assert.deepEqual(genericReadyMessage.unsupportedImports, []);
+    await genericPaused;
+    await delay(100);
+    const genericResumed = waitFor(
+        genericWorker,
+        message => message.type === 'executionChanged'
+            && message.requestId === 6
+            && !message.paused,
+    );
+    genericWorker.postMessage({ type: 'setExecution', requestId: 6, paused: false });
+    await genericResumed;
     const genericSnapshot = await genericRan;
     assert.equal(genericSnapshot.snapshot.memoryBytes, 65_536);
 
-    console.log('Production debug runtime probe passed: ASR and generic Wasm launch, process attach/read, lazy memory, tick statistics, log, settings, WASI, timer controls.');
+    console.log('Production debug runtime probe passed: ASR and generic Wasm launch, pause/resume, process attach/read, lazy memory, tick statistics, log, settings, WASI, timer controls.');
 } finally {
     await stopWorker(worker);
     await stopWorker(wasiWorker);

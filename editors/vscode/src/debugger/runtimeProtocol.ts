@@ -78,7 +78,7 @@ export interface RuntimeMemoryRead {
 }
 
 export interface RuntimeSnapshot {
-    status: 'starting' | 'running' | 'trapped';
+    status: 'starting' | 'running' | 'paused' | 'trapped';
     program: string;
     tickRateHz: number;
     tickCount: number;
@@ -98,6 +98,13 @@ export interface RuntimeLaunchMessage {
     program: string;
     settings?: SettingMapSnapshot;
     nativeModulePath?: string;
+    paused?: boolean;
+}
+
+export interface RuntimeSetExecutionMessage {
+    type: 'setExecution';
+    requestId: number;
+    paused: boolean;
 }
 
 export interface RuntimeTimerCommandMessage {
@@ -139,6 +146,7 @@ export interface RuntimeShutdownMessage {
 
 export type RuntimeRequest =
     | RuntimeLaunchMessage
+    | RuntimeSetExecutionMessage
     | RuntimeTimerCommandMessage
     | RuntimeSetSettingMessage
     | RuntimeClearSettingsMessage
@@ -175,6 +183,12 @@ export interface RuntimeStoppedMessage {
     type: 'stopped';
 }
 
+export interface RuntimeExecutionChangedMessage {
+    type: 'executionChanged';
+    requestId: number;
+    paused: boolean;
+}
+
 export interface RuntimeMemoryReadMessage {
     type: 'memoryRead';
     requestId: number;
@@ -200,6 +214,7 @@ export type RuntimeResponse =
     | RuntimeSnapshotMessage
     | RuntimeLogMessage
     | RuntimeFailureMessage
+    | RuntimeExecutionChangedMessage
     | RuntimeMemoryReadMessage
     | RuntimeProcessMemoryRangesMessage
     | RuntimeRequestFailureMessage

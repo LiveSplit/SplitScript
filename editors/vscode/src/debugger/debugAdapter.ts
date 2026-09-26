@@ -172,6 +172,23 @@ export class SplitScriptDebugAdapter implements vscode.DebugAdapter {
                 await this.restart();
                 this.respond(request);
                 break;
+            case 'pause':
+                await this.runtime.pause();
+                this.respond(request);
+                this.event('stopped', {
+                    reason: 'pause',
+                    threadId: 1,
+                    allThreadsStopped: true,
+                });
+                break;
+            case 'continue':
+                await this.runtime.resume();
+                this.respond(request, { allThreadsContinued: true });
+                this.event('continued', {
+                    threadId: 1,
+                    allThreadsContinued: true,
+                });
+                break;
             case 'readMemory': {
                 const arguments_ = request.arguments ?? {};
                 const memoryReference = arguments_.memoryReference;

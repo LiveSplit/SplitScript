@@ -36,8 +36,15 @@ workerPort.on('message', (message: RuntimeRequest) => {
             message.program,
             message.settings,
             message.nativeModulePath,
+            message.paused ?? false,
         );
         void host.launch(message.wasm).catch(fail);
+    } else if (message.type === 'setExecution') {
+        if (host === undefined) {
+            requestFailure(message.requestId, 'the ASR runtime is not running');
+        } else {
+            host.setPaused(message.requestId, message.paused);
+        }
     } else if (message.type === 'timerCommand') {
         host?.timerCommand(message.command);
     } else if (message.type === 'setSetting') {
@@ -90,6 +97,7 @@ class RuntimeHost {
         private readonly program: string,
         initialSettings: SettingMapSnapshot | undefined,
         nativeModulePath: string | undefined,
+        private readonly initiallyPaused: boolean,
     ) {
         this.timer = new DebuggerTimer(
             () => {},
@@ -125,7 +133,7 @@ class RuntimeHost {
         const update = instance.exports.update;
         this.update = typeof update === 'function' ? update as () => void : undefined;
         this.initialize = initialEntryPoint(instance.exports, this.update !== undefined);
-        this.status = 'running';
+        this.status = this.initiallyPaused ? 'paused' : 'running';
         workerPort.postMessage({ type: 'ready', unsupportedImports } satisfies RuntimeResponse);
         if (unsupportedImports.length > 0) {
             this.emitLog({
@@ -148,7 +156,48 @@ class RuntimeHost {
             message: `Loaded ${this.program}`,
         });
         this.emitSnapshot(true);
-        if (this.initialize !== undefined || this.update !== undefined) this.scheduleTick(0);
+        if (
+            this.status === 'running'
+            && (this.initialize !== undefined || this.update !== undefined)
+        ) {
+            this.scheduleTick(0);
+        }
+    }
+
+    public setPaused(requestId: number, paused: boolean): void {
+        try {
+            if (paused) {
+                if (this.status === 'running') {
+                    this.status = 'paused';
+                    if (this.tickTimer !== undefined) {
+                        clearTimeout(this.tickTimer);
+                        this.tickTimer = undefined;
+                    }
+                } else if (this.status !== 'paused') {
+                    throw new Error('the ASR runtime is not ready to pause');
+                }
+            } else if (this.status === 'paused') {
+                this.status = 'running';
+            } else if (this.status !== 'running') {
+                throw new Error('the ASR runtime is not ready to resume');
+            }
+
+            this.emitSnapshot(true);
+            workerPort.postMessage({
+                type: 'executionChanged',
+                requestId,
+                paused,
+            } satisfies RuntimeResponse);
+            if (
+                !paused
+                && this.tickTimer === undefined
+                && (this.initialize !== undefined || this.update !== undefined)
+            ) {
+                this.scheduleTick(0);
+            }
+        } catch (error) {
+            requestFailure(requestId, error instanceof Error ? error.message : String(error));
+        }
     }
 
     public timerCommand(command: 'start' | 'reset'): void {
@@ -226,6 +275,7 @@ class RuntimeHost {
     }
 
     private tick(): void {
+        this.tickTimer = undefined;
         const update = this.update;
         const initialize = this.initialize;
         if (this.status !== 'running' || (initialize === undefined && update === undefined)) {

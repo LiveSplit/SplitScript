@@ -27,6 +27,11 @@ export class RuntimeViewProvider implements vscode.TreeDataProvider<vscode.TreeI
         return [
             item('Program', path.basename(snapshot.program), 'file-code'),
             item(
+                'Execution',
+                words(snapshot.status),
+                snapshot.status === 'paused' ? 'debug-pause' : 'debug-continue',
+            ),
+            item(
                 'Timer State',
                 words(snapshot.timer.state),
                 'watch',
