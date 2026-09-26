@@ -4,6 +4,55 @@ use super::catalogs_types::TypedExpressionCounter;
 use super::*;
 
 #[test]
+fn never_statements_stop_synchronous_and_async_emission_in_both_profiles() {
+    let source = r#"
+        state "game.exe" {}
+        fn spin() -> Never { loop {} }
+        fn direct() {
+            spin()
+            print(918273)
+        }
+        fn suspended() {
+            await nextTick()
+            spin()
+            print(918273)
+        }
+        onAttach {
+            print(445566)
+            if true { direct() } else { await suspended() }
+        }
+    "#;
+    for profile in [
+        splitscript::BuildProfile::Debug,
+        splitscript::BuildProfile::Release,
+    ] {
+        let wasm = splitscript::compile_with_options(
+            source,
+            splitscript::CompilerOptions {
+                profile,
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        Validator::new_with_features(WasmFeatures::all())
+            .validate_all(&wasm)
+            .unwrap();
+        let mut reachable_marker = false;
+        for payload in Parser::new(0).parse_all(&wasm) {
+            if let Payload::CodeSectionEntry(body) = payload.unwrap() {
+                for op in body.get_operators_reader().unwrap() {
+                    if let wasmparser::Operator::I32Const { value } = op.unwrap() {
+                        assert_ne!(value, 918273, "unreachable tail emitted in {profile:?}");
+                        reachable_marker |= value == 445566;
+                    }
+                }
+            }
+        }
+        assert!(reachable_marker);
+    }
+}
+
+#[test]
 fn explicit_il2cpp_profiles_omit_the_measured_catalog_and_version_lookup() {
     let source = include_str!("../il2cpp_profile_custom.split");
     let (wasm, report) = release_emission(source);

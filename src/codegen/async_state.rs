@@ -3924,7 +3924,12 @@ fn compile_async_flow(
                 discard_result,
             } => {
                 compile_expr(function, *expression, context);
-                if *discard_result && context.expression_type(*expression) != Type::Never {
+                if context.expression_type(*expression) == Type::Never {
+                    // Do not append continuation/completion code after a
+                    // checked expression that cannot return to this state.
+                    return false;
+                }
+                if *discard_result {
                     function.instruction(&Instruction::Drop);
                 }
             }

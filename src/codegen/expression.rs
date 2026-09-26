@@ -635,6 +635,11 @@ fn compile_block_with_loop(
                     *context
                 };
                 compile_expr(function, *expression, &expression_context);
+                if ty == Type::Never {
+                    // The checked expression transfers control. No later
+                    // statement or terminator in this block can execute.
+                    return;
+                }
                 if *discard_result && ty.has_runtime_value() {
                     function.instruction(&Instruction::Drop);
                 }
