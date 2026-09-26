@@ -46,6 +46,67 @@ compiler regression. Generated Wasm byte counts are deterministic, but should
 also be reviewed rather than frozen into brittle assertions because valid
 backend changes can alter them intentionally.
 
+## 2026-09-26 defer suspension liveness until after pruning
+
+The Lunistice source and compiler code were unchanged from the preceding
+measurement, although those commits were rebased (`170dff9` is the setup
+omission change). The saved preceding binaries remain the comparison baseline;
+the new compiler uses the same Rust 1.98.1 ordinary release profile.
+
+Temporary per-body instrumentation found roughly 2.7 ms spent calculating
+suspension liveness for the unpruned generated preparation function alone.
+Its control flow was then discarded and rebuilt. All nonsuspending functions
+together spent only about 0.14 ms on liveness, so a special case for those
+functions was not pursued. The instrumentation was removed before benchmarking.
+
+Wasm lowering now constructs control flow and local plans first. Backend
+preparation materializes types and prunes managed bindings, then calculates
+liveness once on the final function and closure bodies. Pruning and type
+materialization do not consume liveness. Public backend products still expose
+complete suspension storage plans, and the liveness algorithm, state numbering,
+and Debug/Release behavior are unchanged.
+
+Paired runs use the same frozen autosplitters, CPU 0, 20 warmups, and ordinary
+Rust release builds. Initial 50-sample before/after/after/before runs measured
+Lunistice compilation at 28.6268/29.0348 ms before and 25.6010/27.0272 ms after
+(7–11% faster). LSP medians initially moved slightly upward, so a longer run
+checked both workloads again with 150 samples in after/before/before/after
+order:
+
+| Workload | Before, first / reverse | After, first / reverse |
+| --- | ---: | ---: |
+| Lunistice warm compile | 28.0469 / 28.3312 ms | 24.4880 / 24.4608 ms |
+| Lunistice LSP diagnostics | 9.9776 / 9.9781 ms | 9.7668 / 10.0684 ms |
+| Minish Cap warm compile | 6.7892 / 6.7984 ms | 6.7242 / 6.7838 ms |
+
+The longer comparison confirms a 12.7–13.7% Lunistice compile improvement.
+The earlier LSP slowdown did not repeat; no LSP improvement is claimed.
+Minish Cap remains effectively unchanged. These are warm measurements,
+not fresh-process startup results.
+
+Separate 50-sample Lunistice stage medians are 8.750 → 9.152 ms for analysis,
+6.100 → 3.239 ms for initial Wasm lowering, and 12.937 → 13.303 ms for backend
+preparation/encoding/disposal. Final liveness now falls in the backend phase,
+while its redundant execution disappears from initial lowering. These stage
+runs are diagnostic and do not sum to the longer paired totals.
+
+All nine Release and nine Debug fixtures validate with unchanged sizes and
+identical executable sections. Release bytes match after compiler-revision
+stamp normalization. Some Debug `.debug_info` sections differ; their lengths
+and executable sections match. Explicit Lunistice remains 32,121 bytes in
+Release, automatic Unity Lunistice 142,192, and Minish Cap 35,326. No output-size
+improvement is claimed.
+
+All 694 compiler/runtime and 464 library tests pass, with one manual benchmark
+ignored. Existing tests cover frame liveness across suspension, async closures,
+retries, generators, and managed preparation. The full-HIR-rebuild comparison
+now explicitly performs the final liveness step on its reference IR as well.
+Formatting and diff checks pass.
+
+Artifacts are under `target/performance-review/2026-09-26/`: `before-*` and
+`after-*` binaries, `measurements.log`, `confirmation.log`, `measure_final.py`,
+`confirm.py`, `compare_wasm.py`, and the temporary profiling logs.
+
 ## 2026-09-22 omit unused managed collection setup
 
 Lunistice is now the primary latency target; Minish Cap remains a regression

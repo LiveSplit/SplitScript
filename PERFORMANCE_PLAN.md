@@ -30,6 +30,20 @@ Priority update (2026-09-22): Minish Cap is fast enough; retain it as a
 regression fixture and focus further latency work on the real Lunistice
 autosplitter, including its LSP diagnostics.
 
+**Implemented September 26: defer suspension liveness until after pruning.**
+Lunistice was spending about 2.7 ms planning suspension storage for generated
+preparation code that would be pruned and rebuilt. Liveness now runs once on
+the final control flow, after managed pruning and type materialization. The
+existing algorithm is unchanged and shared by Debug and Release.
+
+Longer paired runs (150 samples, both orders) improve Lunistice warm compile
+medians from **28.0–28.3 to 24.5 ms** (13–14%). LSP diagnostics remain around
+10 ms and Minish Cap around 6.8 ms. All 18 Debug/Release fixtures validate,
+with identical executable sections and unchanged sizes; Lunistice release
+Wasm remains 32,121 bytes. See
+[the liveness measurements](docs/BASELINES.md#2026-09-26-defer-suspension-liveness-until-after-pruning).
+All 694 compiler and 464 library tests pass, with one manual benchmark ignored.
+
 **Implemented: omit provably unused managed collection setup before checking.**
 Lunistice's declared schema uses scalars, strings, classes, and a plain struct.
 The compiler previously generated array/list/map/set adapters and schema

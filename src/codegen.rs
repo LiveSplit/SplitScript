@@ -359,6 +359,7 @@ impl<'a> BackendProgram<'a> {
         } else {
             std::borrow::Cow::Borrowed(checked.compilation_syntax.as_ref())
         };
+        wasm_ir.plan_suspension_liveness();
         Self {
             standard_library: checked.context.standard_library(),
             program,

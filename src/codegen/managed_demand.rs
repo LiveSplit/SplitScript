@@ -461,7 +461,7 @@ mod tests {
                     checked.hir.visible_expression_count(),
                     checked.hir.visible_function_count(),
                 );
-                let reference = crate::wasm_ir::Program::lower(
+                let mut reference = crate::wasm_ir::Program::lower(
                     &hir,
                     &backend.semantics,
                     &checked.effects,
@@ -469,6 +469,7 @@ mod tests {
                     &checked.scoped_globals,
                     profile,
                 );
+                reference.plan_suspension_liveness();
                 let actual = crate::codegen::compile(backend);
                 let mut backend = crate::lower_wasm_with_options(&checked, options);
                 backend.wasm_ir = reference;

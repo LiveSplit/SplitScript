@@ -1222,7 +1222,6 @@ impl Program {
             let mut next_async_state = 1;
             assign_async_states(&mut entry, &mut next_async_state);
             let locals = plan_block(&entry, &program, semantics, capabilities);
-            let frame_values = plan_frame_values(&mut entry, &locals, &program);
             let frame_temporaries = locals
                 .iter()
                 .filter_map(|local| match local.purpose {
@@ -1252,13 +1251,32 @@ impl Program {
                 captures,
                 entry,
                 locals,
-                frame_values,
+                frame_values: Vec::new(),
                 frame_temporaries,
                 abi,
                 async_state_count: next_async_state,
             });
         }
         program
+    }
+
+    /// Plan suspension storage only after managed preparation has been pruned.
+    /// Reachability and type materialization need control flow and locals, but
+    /// do not consume liveness. Planning it earlier would analyze discarded
+    /// setup branches and repeat the work when their control flow is rebuilt.
+    pub(crate) fn plan_suspension_liveness(&mut self) {
+        // Expression traversal needs the program's expression/capture tables,
+        // while the body entries receive their per-suspension live-value sets.
+        let mut bodies = std::mem::take(&mut self.bodies);
+        for body in &mut bodies {
+            body.frame_values = plan_frame_values(&mut body.entry, &body.locals, self);
+        }
+        self.bodies = bodies;
+        let mut closures = std::mem::take(&mut self.closures);
+        for closure in &mut closures {
+            closure.frame_values = plan_frame_values(&mut closure.entry, &closure.locals, self);
+        }
+        self.closures = closures;
     }
 
     pub fn profile(&self) -> crate::BuildProfile {
@@ -2585,7 +2603,6 @@ fn lower_body(
     if matches!(abi, BodyAbi::Direct) {
         snapshot_projections::plan(&entry, wasm_ir, semantics, mutated_values, &mut locals);
     }
-    let frame_values = plan_frame_values(&mut entry, &locals, wasm_ir);
     let frame_temporaries = locals
         .iter()
         .filter_map(|local| match local.purpose {
@@ -2612,7 +2629,7 @@ fn lower_body(
         abi,
         entry,
         locals,
-        frame_values,
+        frame_values: Vec::new(),
         frame_temporaries,
         cancellation_region,
         async_state_count: next_async_state,
