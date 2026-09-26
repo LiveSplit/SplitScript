@@ -6,6 +6,7 @@
 //! retain stable GC slots but are read only when their attachment-wide layout
 //! predicate is active.
 
+use crate::codegen::GC_NULL_HEAP_TYPE;
 use std::collections::HashMap;
 
 use wasm_encoder::{BlockType, Function, Instruction, ValType};
@@ -470,15 +471,13 @@ fn emit_field_read(
         let TypeKind::ManagedClass(child) = context.semantics.types().kind(child_type) else {
             unreachable!("only child class fields differ from their live projection")
         };
-        if let Some(option) = optional {
+        if optional.is_some() {
             function
                 .instruction(&Instruction::RefIsNull)
                 .instruction(&Instruction::If(BlockType::Result(
                     context.gc.val_type(Type::Result(result)),
                 )))
-                .instruction(&Instruction::RefNull(wasm_encoder::HeapType::Concrete(
-                    context.gc.index(Type::Option(option)),
-                )));
+                .instruction(&Instruction::RefNull(GC_NULL_HEAP_TYPE));
             emit_result_success(function, result, context.gc);
             let TypeKind::Option {
                 layout: live_option,

@@ -700,10 +700,8 @@ fn emit_pointer_read_failure(
     gc: &GcLayout,
     failure_payloads: &super::failure_payload::FailurePayloadDemand,
 ) {
-    if let Some(option) = optional {
-        function.instruction(&Instruction::RefNull(HeapType::Concrete(
-            gc.index(Type::Option(option)),
-        )));
+    if optional.is_some() {
+        function.instruction(&Instruction::RefNull(GC_NULL_HEAP_TYPE));
         emit_result_success(function, result_type, gc);
     } else {
         emit_result_error(
@@ -1298,16 +1296,12 @@ pub(super) fn compile_async_closure_init(
                         .instruction(&Instruction::StructNew(lowering.gc.capture_cell_index(ty)));
                 }
             } else if layout.capture_cell_fields.contains(&field) {
-                function.instruction(&Instruction::RefNull(HeapType::Concrete(
-                    lowering.gc.capture_cell_index(ty),
-                )));
+                function.instruction(&Instruction::RefNull(GC_NULL_HEAP_TYPE));
             } else {
                 emit_default(&mut function, ty, lowering.gc);
             }
         } else if layout.capture_cell_fields.contains(&field) {
-            function.instruction(&Instruction::RefNull(HeapType::Concrete(
-                lowering.gc.capture_cell_index(ty),
-            )));
+            function.instruction(&Instruction::RefNull(GC_NULL_HEAP_TYPE));
         } else {
             emit_default(&mut function, ty, lowering.gc);
         }
@@ -1452,9 +1446,7 @@ pub(super) fn emit_action_default(
             function.instruction(&Instruction::I32Const(-1));
         }
         ActionKind::GameTime => {
-            function.instruction(&Instruction::RefNull(HeapType::Concrete(
-                gc.standard_index(StdlibTypeId::Duration),
-            )));
+            function.instruction(&Instruction::RefNull(GC_NULL_HEAP_TYPE));
         }
         ActionKind::Setup
         | ActionKind::OnDetach
@@ -1662,6 +1654,7 @@ pub(super) fn plan_wasm_locals(
         }
     }
 }
+use crate::codegen::GC_NULL_HEAP_TYPE;
 use std::collections::HashMap;
 
 use wasm_encoder::{BlockType, Function, HeapType, Instruction, ValType};
@@ -1745,16 +1738,12 @@ pub(super) fn compile_async_function_init(
                         .instruction(&Instruction::StructNew(lowering.gc.capture_cell_index(ty)));
                 }
             } else if captured_cell {
-                function.instruction(&Instruction::RefNull(HeapType::Concrete(
-                    lowering.gc.capture_cell_index(ty),
-                )));
+                function.instruction(&Instruction::RefNull(GC_NULL_HEAP_TYPE));
             } else {
                 emit_default(&mut function, ty, lowering.gc);
             }
         } else if captured_cell {
-            function.instruction(&Instruction::RefNull(HeapType::Concrete(
-                lowering.gc.capture_cell_index(ty),
-            )));
+            function.instruction(&Instruction::RefNull(GC_NULL_HEAP_TYPE));
         } else {
             emit_default(&mut function, ty, lowering.gc);
         }

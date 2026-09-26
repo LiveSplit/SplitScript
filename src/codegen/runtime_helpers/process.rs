@@ -1,5 +1,6 @@
 //! Process-memory, signature-scanning, and managed-string runtime helpers.
 
+use crate::codegen::GC_NULL_HEAP_TYPE;
 use wasm_encoder::{BlockType, Function, HeapType, Instruction, RefType, ValType};
 
 use crate::{
@@ -608,7 +609,6 @@ pub(super) fn compile_read_relative32(abi: &Abi, abi_read: AbiReadScratch) -> Fu
 
 pub(super) fn compile_utf8_string_from_memory(
     string_from_memory: u32,
-    gc: &GcLayout,
     native_utf8: ScratchRegion,
 ) -> Function {
     let native_utf8_start = native_utf8.destination(MAX_NATIVE_STRING_BYTES);
@@ -627,7 +627,7 @@ pub(super) fn compile_utf8_string_from_memory(
         .instruction(&Instruction::I32Const(MAX_NATIVE_STRING_BYTES as i32))
         .instruction(&Instruction::I32GtU)
         .instruction(&Instruction::I32Or);
-    emit_null_string_if(&mut function, gc);
+    emit_null_string_if(&mut function);
 
     // Find the first NUL byte. If none occurs within the bound, the complete
     // bounded region is the string payload, matching ASR's ArrayCString.
@@ -709,7 +709,7 @@ pub(super) fn compile_utf8_string_from_memory(
         .instruction(&Instruction::End)
         .instruction(&Instruction::LocalTee(width))
         .instruction(&Instruction::I32Eqz);
-    emit_null_string_if(&mut function, gc);
+    emit_null_string_if(&mut function);
 
     function
         .instruction(&Instruction::LocalGet(index))
@@ -717,7 +717,7 @@ pub(super) fn compile_utf8_string_from_memory(
         .instruction(&Instruction::I32Add)
         .instruction(&Instruction::LocalGet(byte_len))
         .instruction(&Instruction::I32GtU);
-    emit_null_string_if(&mut function, gc);
+    emit_null_string_if(&mut function);
 
     function
         .instruction(&Instruction::LocalGet(width))
@@ -760,7 +760,7 @@ pub(super) fn compile_utf8_string_from_memory(
         .instruction(&Instruction::I32GtU)
         .instruction(&Instruction::I32And)
         .instruction(&Instruction::I32Or);
-    emit_null_string_if(&mut function, gc);
+    emit_null_string_if(&mut function);
     function.instruction(&Instruction::End);
 
     for (required_width, offset) in [(3, 2), (4, 3)] {
@@ -772,7 +772,7 @@ pub(super) fn compile_utf8_string_from_memory(
         emit_scratch_byte(&mut function, native_utf8_start, index, offset);
         function.instruction(&Instruction::LocalSet(next));
         emit_invalid_continuation(&mut function, next);
-        emit_null_string_if(&mut function, gc);
+        emit_null_string_if(&mut function);
         function.instruction(&Instruction::End);
     }
 
@@ -794,7 +794,6 @@ pub(super) fn compile_utf8_string_from_memory(
 pub(super) fn compile_read_utf8_string(
     abi: &Abi,
     utf8_from_memory: u32,
-    gc: &GcLayout,
     native_utf8: ScratchRegion,
 ) -> Function {
     let native_utf8_start = native_utf8.destination(MAX_NATIVE_STRING_BYTES);
@@ -813,7 +812,7 @@ pub(super) fn compile_read_utf8_string(
         .instruction(&Instruction::I32Const(MAX_NATIVE_STRING_BYTES as i32))
         .instruction(&Instruction::I32GtU)
         .instruction(&Instruction::I32Or);
-    emit_null_string_if(&mut function, gc);
+    emit_null_string_if(&mut function);
 
     function
         .instruction(&Instruction::LocalGet(process))
@@ -822,7 +821,7 @@ pub(super) fn compile_read_utf8_string(
         .instruction(&Instruction::LocalGet(max_bytes))
         .instruction(&Instruction::Call(abi.function(AbiImportId::ProcessRead)))
         .instruction(&Instruction::I32Eqz);
-    emit_null_string_if(&mut function, gc);
+    emit_null_string_if(&mut function);
 
     function
         .instruction(&Instruction::LocalGet(max_bytes))
@@ -834,7 +833,6 @@ pub(super) fn compile_read_utf8_string(
 pub(super) fn compile_read_utf16_le_string(
     abi: &Abi,
     utf16_le_from_memory: u32,
-    gc: &GcLayout,
     utf16: ScratchRegion,
 ) -> Function {
     let utf16_start = utf16.destination(
@@ -859,7 +857,7 @@ pub(super) fn compile_read_utf16_le_string(
         ))
         .instruction(&Instruction::I32GtU)
         .instruction(&Instruction::I32Or);
-    emit_null_string_if(&mut function, gc);
+    emit_null_string_if(&mut function);
 
     function
         .instruction(&Instruction::LocalGet(process))
@@ -870,7 +868,7 @@ pub(super) fn compile_read_utf16_le_string(
         .instruction(&Instruction::I32Shl)
         .instruction(&Instruction::Call(abi.function(AbiImportId::ProcessRead)))
         .instruction(&Instruction::I32Eqz);
-    emit_null_string_if(&mut function, gc);
+    emit_null_string_if(&mut function);
 
     function
         .instruction(&Instruction::LocalGet(max_units))
@@ -883,7 +881,6 @@ pub(super) fn compile_read_utf16_le_string(
 /// and decodes the bounded prefix. A missing terminator decodes the full bound.
 pub(super) fn compile_utf16_le_string_from_memory(
     utf16_from_memory: u32,
-    gc: &GcLayout,
     utf16: ScratchRegion,
 ) -> Function {
     let utf16_start = utf16.destination(
@@ -905,7 +902,7 @@ pub(super) fn compile_utf16_le_string_from_memory(
         ))
         .instruction(&Instruction::I32GtU)
         .instruction(&Instruction::I32Or);
-    emit_null_string_if(&mut function, gc);
+    emit_null_string_if(&mut function);
 
     function
         .instruction(&Instruction::Block(BlockType::Empty))
@@ -1117,7 +1114,7 @@ pub(super) fn compile_read_managed_string(
             .instruction(&Instruction::I64Add);
     });
     function.instruction(&Instruction::If(BlockType::Empty));
-    emit_failed_managed_string_return(&mut function, gc);
+    emit_failed_managed_string_return(&mut function);
     function
         .instruction(&Instruction::End)
         .instruction(&Instruction::LocalGet(process))
@@ -1132,7 +1129,7 @@ pub(super) fn compile_read_managed_string(
         .instruction(&Instruction::Call(abi.function(AbiImportId::ProcessRead)))
         .instruction(&Instruction::I32Eqz)
         .instruction(&Instruction::If(BlockType::Empty));
-    emit_failed_managed_string_return(&mut function, gc);
+    emit_failed_managed_string_return(&mut function);
     function
         .instruction(&Instruction::End)
         .instruction(&Instruction::I32Const(abi_read.start()))
@@ -1141,7 +1138,7 @@ pub(super) fn compile_read_managed_string(
         .instruction(&Instruction::I32Const(0))
         .instruction(&Instruction::I32LtS)
         .instruction(&Instruction::If(BlockType::Empty));
-    emit_failed_managed_string_return(&mut function, gc);
+    emit_failed_managed_string_return(&mut function);
     function
         .instruction(&Instruction::End)
         .instruction(&Instruction::LocalGet(units))
@@ -1158,7 +1155,7 @@ pub(super) fn compile_read_managed_string(
         .instruction(&Instruction::Call(charge_bytes))
         .instruction(&Instruction::I32Eqz)
         .instruction(&Instruction::If(BlockType::Empty));
-    emit_failed_managed_string_return(&mut function, gc);
+    emit_failed_managed_string_return(&mut function);
     function.instruction(&Instruction::End);
     emit_invalid_managed_span(&mut function, address, pointer_size, |function| {
         function
@@ -1173,7 +1170,7 @@ pub(super) fn compile_read_managed_string(
             .instruction(&Instruction::I64Add);
     });
     function.instruction(&Instruction::If(BlockType::Empty));
-    emit_failed_managed_string_return(&mut function, gc);
+    emit_failed_managed_string_return(&mut function);
     function
         .instruction(&Instruction::End)
         .instruction(&Instruction::LocalGet(units))
@@ -1230,7 +1227,7 @@ pub(super) fn compile_read_managed_string(
         .instruction(&Instruction::Call(abi.function(AbiImportId::ProcessRead)))
         .instruction(&Instruction::I32Eqz)
         .instruction(&Instruction::If(BlockType::Empty));
-    emit_failed_managed_string_return(&mut function, gc);
+    emit_failed_managed_string_return(&mut function);
     function
         .instruction(&Instruction::End)
         .instruction(&Instruction::Block(BlockType::Empty))
@@ -1437,10 +1434,8 @@ pub(super) fn compile_read_managed_string_field(
         .instruction(&Instruction::If(BlockType::Result(
             gc.val_type(Type::Result(result)),
         )));
-    if let Some(option) = option {
-        function.instruction(&Instruction::RefNull(HeapType::Concrete(
-            gc.index(Type::Option(option)),
-        )));
+    if option.is_some() {
+        function.instruction(&Instruction::RefNull(GC_NULL_HEAP_TYPE));
         emit_result_success(&mut function, result, gc);
     } else {
         emit_result_error(
@@ -1593,12 +1588,10 @@ pub(in crate::codegen) fn emit_invalid_managed_span(
         .instruction(&Instruction::I32Or);
 }
 
-fn emit_failed_managed_string_return(function: &mut Function, gc: &GcLayout) {
+fn emit_failed_managed_string_return(function: &mut Function) {
     function
         .instruction(&Instruction::I32Const(0))
-        .instruction(&Instruction::RefNull(HeapType::Concrete(
-            gc.standard_index(StdlibTypeId::String),
-        )))
+        .instruction(&Instruction::RefNull(GC_NULL_HEAP_TYPE))
         .instruction(&Instruction::Return);
 }
 
@@ -1686,7 +1679,7 @@ pub(super) fn compile_loaded_module(
         .instruction(&Instruction::LocalTee(address))
         .instruction(&Instruction::I64Eqz)
         .instruction(&Instruction::If(BlockType::Result(module_ref)))
-        .instruction(&Instruction::RefNull(HeapType::Concrete(module_type)))
+        .instruction(&Instruction::RefNull(GC_NULL_HEAP_TYPE))
         .instruction(&Instruction::Else)
         .instruction(&Instruction::LocalGet(process))
         .instruction(&Instruction::I32Const(host_strings))
@@ -1697,7 +1690,7 @@ pub(super) fn compile_loaded_module(
         .instruction(&Instruction::LocalTee(size))
         .instruction(&Instruction::I64Eqz)
         .instruction(&Instruction::If(BlockType::Result(module_ref)))
-        .instruction(&Instruction::RefNull(HeapType::Concrete(module_type)))
+        .instruction(&Instruction::RefNull(GC_NULL_HEAP_TYPE))
         .instruction(&Instruction::Else)
         .instruction(&Instruction::LocalGet(address))
         .instruction(&Instruction::LocalGet(size))
@@ -1793,7 +1786,7 @@ pub(super) fn compile_module_path(
         .instruction(&Instruction::I32Const(MAX_MODULE_PATH_BYTES))
         .instruction(&Instruction::I32GtU)
         .instruction(&Instruction::I32Or);
-    emit_null_string_if(&mut function, gc);
+    emit_null_string_if(&mut function);
 
     function
         .instruction(&Instruction::LocalGet(process))
@@ -1807,7 +1800,7 @@ pub(super) fn compile_module_path(
             abi.function(AbiImportId::ProcessGetModulePath),
         ))
         .instruction(&Instruction::I32Eqz);
-    emit_null_string_if(&mut function, gc);
+    emit_null_string_if(&mut function);
 
     function
         .instruction(&Instruction::I32Const(host_strings))
@@ -1822,7 +1815,6 @@ pub(super) fn compile_module_path(
 pub(super) fn compile_process_path(
     abi: &Abi,
     string_from_memory: u32,
-    gc: &GcLayout,
     scratch: super::super::memory_plan::RuntimeScratch,
 ) -> Function {
     const MAX_PROCESS_PATH_BYTES: i32 = 65_536;
@@ -1858,7 +1850,7 @@ pub(super) fn compile_process_path(
         .instruction(&Instruction::I32Const(MAX_PROCESS_PATH_BYTES))
         .instruction(&Instruction::I32GtU)
         .instruction(&Instruction::I32Or);
-    emit_null_string_if(&mut function, gc);
+    emit_null_string_if(&mut function);
 
     function
         .instruction(&Instruction::LocalGet(process))
@@ -1868,7 +1860,7 @@ pub(super) fn compile_process_path(
             abi.function(AbiImportId::ProcessGetPath),
         ))
         .instruction(&Instruction::I32Eqz);
-    emit_null_string_if(&mut function, gc);
+    emit_null_string_if(&mut function);
 
     function
         .instruction(&Instruction::I32Const(host_strings))
@@ -1882,7 +1874,6 @@ pub(super) fn compile_runtime_metadata(
     abi: &Abi,
     import: AbiImportId,
     string_from_memory: u32,
-    gc: &GcLayout,
     scratch: super::super::memory_plan::RuntimeScratch,
 ) -> Function {
     const MAX_RUNTIME_METADATA_BYTES: i32 = 256;
@@ -1918,14 +1909,14 @@ pub(super) fn compile_runtime_metadata(
         .instruction(&Instruction::I32Const(MAX_RUNTIME_METADATA_BYTES))
         .instruction(&Instruction::I32GtU)
         .instruction(&Instruction::I32Or);
-    emit_null_string_if(&mut function, gc);
+    emit_null_string_if(&mut function);
 
     function
         .instruction(&Instruction::I32Const(host_strings))
         .instruction(&Instruction::I32Const(length_pointer))
         .instruction(&Instruction::Call(abi.function(import)))
         .instruction(&Instruction::I32Eqz);
-    emit_null_string_if(&mut function, gc);
+    emit_null_string_if(&mut function);
 
     function
         .instruction(&Instruction::I32Const(host_strings))
@@ -1954,17 +1945,15 @@ fn emit_ensure_linear_capacity(function: &mut Function, end: i32, required_pages
         .instruction(&Instruction::End);
 }
 
-fn emit_null_string_return(function: &mut Function, gc: &GcLayout) {
+fn emit_null_string_return(function: &mut Function) {
     function
-        .instruction(&Instruction::RefNull(HeapType::Concrete(
-            gc.standard_index(StdlibTypeId::String),
-        )))
+        .instruction(&Instruction::RefNull(GC_NULL_HEAP_TYPE))
         .instruction(&Instruction::Return);
 }
 
-fn emit_null_string_if(function: &mut Function, gc: &GcLayout) {
+fn emit_null_string_if(function: &mut Function) {
     function.instruction(&Instruction::If(BlockType::Empty));
-    emit_null_string_return(function, gc);
+    emit_null_string_return(function);
     function.instruction(&Instruction::End);
 }
 

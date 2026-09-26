@@ -1,5 +1,6 @@
 //! Per-tick process, snapshot, lifecycle-action, and timer runtime emission.
 
+use crate::codegen::GC_NULL_HEAP_TYPE;
 use std::collections::HashMap;
 
 use wasm_encoder::{BlockType, Function, HeapType, Instruction, RefType, ValType};
@@ -448,11 +449,11 @@ fn emit_attachment_teardown(
         emit_provider_default(function, alternative.declaration.process_type, lowering);
         function.instruction(&Instruction::GlobalSet(provider_global));
     }
-    if let (Some(frame_global), Some(ProviderAttach { frame_type, .. })) =
+    if let (Some(frame_global), Some(ProviderAttach { .. })) =
         (globals.provider_attachment_frame, lowering.provider_attach)
     {
         function
-            .instruction(&Instruction::RefNull(HeapType::Concrete(frame_type)))
+            .instruction(&Instruction::RefNull(GC_NULL_HEAP_TYPE))
             .instruction(&Instruction::GlobalSet(frame_global));
     }
     for attachment in lowering
@@ -461,16 +462,12 @@ fn emit_attachment_teardown(
         .filter_map(|alternative| alternative.attachment)
     {
         function
-            .instruction(&Instruction::RefNull(HeapType::Concrete(
-                attachment.frame_type,
-            )))
+            .instruction(&Instruction::RefNull(GC_NULL_HEAP_TYPE))
             .instruction(&Instruction::GlobalSet(attachment.frame_global));
     }
     if let Some(preparation) = lowering.provider_preparation {
         function
-            .instruction(&Instruction::RefNull(HeapType::Concrete(
-                preparation.frame_type,
-            )))
+            .instruction(&Instruction::RefNull(GC_NULL_HEAP_TYPE))
             .instruction(&Instruction::GlobalSet(preparation.frame_global));
         emit_storage_default(function, lowering.gc.val_type(preparation.value_type));
         function
@@ -755,9 +752,7 @@ pub(super) fn compile_update(
                     .instruction(&Instruction::GlobalSet(
                         lowering.provider_values[&alternative.provider],
                     ))
-                    .instruction(&Instruction::RefNull(HeapType::Concrete(
-                        attachment.frame_type,
-                    )))
+                    .instruction(&Instruction::RefNull(GC_NULL_HEAP_TYPE))
                     .instruction(&Instruction::GlobalSet(attachment.frame_global));
                 emit_provider_selection(
                     &mut function,
@@ -874,7 +869,7 @@ pub(super) fn compile_update(
                 field_index: completion_field,
             })
             .instruction(&Instruction::GlobalSet(provider_global))
-            .instruction(&Instruction::RefNull(HeapType::Concrete(frame_type)))
+            .instruction(&Instruction::RefNull(GC_NULL_HEAP_TYPE))
             .instruction(&Instruction::GlobalSet(frame_global));
         function.instruction(&Instruction::End);
         emit_provider_unavailable(&mut function, provider_global, provider_type, lowering);
@@ -922,9 +917,7 @@ pub(super) fn compile_update(
                 field_index: preparation.completion_field,
             })
             .instruction(&Instruction::GlobalSet(preparation.value_global))
-            .instruction(&Instruction::RefNull(HeapType::Concrete(
-                preparation.frame_type,
-            )))
+            .instruction(&Instruction::RefNull(GC_NULL_HEAP_TYPE))
             .instruction(&Instruction::GlobalSet(preparation.frame_global))
             .instruction(&Instruction::I32Const(1))
             .instruction(&Instruction::GlobalSet(preparation.ready_global))
@@ -1035,9 +1028,7 @@ pub(super) fn compile_update(
     }
     for storage in lowering.managed_state_reads.entries() {
         function
-            .instruction(&Instruction::RefNull(HeapType::Concrete(
-                lowering.gc.index(Type::Result(storage.result)),
-            )))
+            .instruction(&Instruction::RefNull(GC_NULL_HEAP_TYPE))
             .instruction(&Instruction::GlobalSet(storage.global));
     }
 
@@ -1237,9 +1228,7 @@ pub(super) fn compile_update(
                     ),
                 }),
                 |function| {
-                    function.instruction(&Instruction::RefNull(HeapType::Concrete(
-                        lowering.gc.standard_index(StdlibTypeId::Duration),
-                    )));
+                    function.instruction(&Instruction::RefNull(GC_NULL_HEAP_TYPE));
                 },
                 lowering,
             );
@@ -1787,7 +1776,7 @@ fn emit_storage_default(function: &mut Function, ty: ValType) {
         ValType::F32 => function.instruction(&Instruction::F32Const(0.0.into())),
         ValType::F64 => function.instruction(&Instruction::F64Const(0.0.into())),
         ValType::V128 => function.instruction(&Instruction::V128Const(0)),
-        ValType::Ref(reference) => function.instruction(&Instruction::RefNull(reference.heap_type)),
+        ValType::Ref(_) => function.instruction(&Instruction::RefNull(GC_NULL_HEAP_TYPE)),
     };
 }
 
@@ -2231,9 +2220,7 @@ fn emit_provider_default(function: &mut Function, ty: StdlibTypeId, context: &Up
         RuntimeRepresentation::GcStruct { .. }
         | RuntimeRepresentation::GcArray { .. }
         | RuntimeRepresentation::Enum { .. } => {
-            function.instruction(&Instruction::RefNull(HeapType::Concrete(
-                context.gc.standard_index(ty),
-            )));
+            function.instruction(&Instruction::RefNull(GC_NULL_HEAP_TYPE));
         }
         representation => {
             unreachable!("unsupported state-provider representation: {representation:?}")

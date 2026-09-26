@@ -1,5 +1,6 @@
 //! Structured Wasm-IR block, assignment, expression, and intrinsic emission.
 
+use crate::codegen::GC_NULL_HEAP_TYPE;
 use std::collections::HashMap;
 
 use wasm_encoder::{AbstractHeapType, BlockType, Function, HeapType, Instruction, ValType};
@@ -3126,10 +3127,8 @@ fn emit_managed_read_at_address(
             .instruction(&Instruction::If(BlockType::Result(
                 context.gc.val_type(Type::Result(result)),
             )));
-        if let Some(option) = reference_option {
-            function.instruction(&Instruction::RefNull(HeapType::Concrete(
-                context.gc.index(Type::Option(option)),
-            )));
+        if reference_option.is_some() {
+            function.instruction(&Instruction::RefNull(GC_NULL_HEAP_TYPE));
             emit_result_success(function, result, context.gc);
         } else {
             emit_result_error(
@@ -3288,9 +3287,7 @@ pub(super) fn compile_expr(function: &mut Function, expression: ExprId, context:
             ValueConversionKind::NoneToDomainNullable
                 if target == Type::Standard(StdlibTypeId::Duration) =>
             {
-                function.instruction(&Instruction::RefNull(HeapType::Concrete(
-                    context.gc.standard_index(StdlibTypeId::Duration),
-                )));
+                function.instruction(&Instruction::RefNull(GC_NULL_HEAP_TYPE));
                 return;
             }
             _ => {}
@@ -3307,9 +3304,7 @@ pub(super) fn compile_expr(function: &mut Function, expression: ExprId, context:
                 // null error complete the monomorphized result structure.
                 function
                     .instruction(&Instruction::I32Const(0))
-                    .instruction(&Instruction::RefNull(HeapType::Concrete(
-                        context.gc.standard_index(StdlibTypeId::String),
-                    )))
+                    .instruction(&Instruction::RefNull(GC_NULL_HEAP_TYPE))
                     .instruction(&Instruction::StructNew(
                         context.gc.index(Type::Result(result)),
                     ));
@@ -3336,10 +3331,8 @@ pub(super) fn compile_expr(function: &mut Function, expression: ExprId, context:
 /// wrapper handling and avoids boundary-specific code generation.
 fn emit_contextual_none(function: &mut Function, target: Type, context: &ExprContext<'_>) {
     match target {
-        Type::Option(option) => {
-            function.instruction(&Instruction::RefNull(HeapType::Concrete(
-                context.gc.index(Type::Option(option)),
-            )));
+        Type::Option(_) => {
+            function.instruction(&Instruction::RefNull(GC_NULL_HEAP_TYPE));
         }
         Type::Result(result) => {
             emit_contextual_none(
@@ -3349,9 +3342,7 @@ fn emit_contextual_none(function: &mut Function, target: Type, context: &ExprCon
             );
             function
                 .instruction(&Instruction::I32Const(0))
-                .instruction(&Instruction::RefNull(HeapType::Concrete(
-                    context.gc.standard_index(StdlibTypeId::String),
-                )))
+                .instruction(&Instruction::RefNull(GC_NULL_HEAP_TYPE))
                 .instruction(&Instruction::StructNew(
                     context.gc.index(Type::Result(result)),
                 ));
@@ -3396,14 +3387,10 @@ fn compile_expr_unconverted(
                 function.instruction(&Instruction::I32Const(-1));
             }
             Type::Standard(StdlibTypeId::Duration) => {
-                function.instruction(&Instruction::RefNull(HeapType::Concrete(
-                    context.gc.standard_index(StdlibTypeId::Duration),
-                )));
+                function.instruction(&Instruction::RefNull(GC_NULL_HEAP_TYPE));
             }
-            Type::Option(option) => {
-                function.instruction(&Instruction::RefNull(HeapType::Concrete(
-                    context.gc.index(Type::Option(option)),
-                )));
+            Type::Option(_) => {
+                function.instruction(&Instruction::RefNull(GC_NULL_HEAP_TYPE));
             }
             _ => unreachable!(
                 "typed None expressions use the unit or nullable representation, found {ty:?} with conversion {:?}",
@@ -3411,12 +3398,10 @@ fn compile_expr_unconverted(
             ),
         },
         wasm_ir::ExpressionKind::IteratorEnd => {
-            let Type::Application(step) = ty else {
+            let Type::Application(_) = ty else {
                 unreachable!("End expressions have IteratorStep<T> type")
             };
-            function.instruction(&Instruction::RefNull(HeapType::Concrete(
-                context.gc.index(Type::Application(step)),
-            )));
+            function.instruction(&Instruction::RefNull(GC_NULL_HEAP_TYPE));
         }
         wasm_ir::ExpressionKind::Bool(value) => {
             function.instruction(&Instruction::I32Const(*value as i32));
@@ -3516,9 +3501,7 @@ fn compile_expr_unconverted(
                 parts.len() as u32,
             );
             function
-                .instruction(&Instruction::RefNull(HeapType::Concrete(
-                    context.gc.standard_index(StdlibTypeId::String),
-                )))
+                .instruction(&Instruction::RefNull(GC_NULL_HEAP_TYPE))
                 .instruction(&Instruction::Call(
                     context
                         .runtime_helpers
@@ -4267,9 +4250,7 @@ fn compile_expr_unconverted(
                         Type::Standard(StdlibTypeId::String),
                     );
                 } else {
-                    function.instruction(&Instruction::RefNull(HeapType::Concrete(
-                        context.gc.standard_index(StdlibTypeId::String),
-                    )));
+                    function.instruction(&Instruction::RefNull(GC_NULL_HEAP_TYPE));
                 }
                 function.instruction(&Instruction::StructNew(
                     context.gc.index(Type::Result(*result)),
@@ -4301,9 +4282,7 @@ fn compile_expr_unconverted(
                         compile_expr(function, args[0], context);
                         function.instruction(&Instruction::Drop);
                     }
-                    function.instruction(&Instruction::RefNull(HeapType::Concrete(
-                        context.gc.standard_index(StdlibTypeId::String),
-                    )));
+                    function.instruction(&Instruction::RefNull(GC_NULL_HEAP_TYPE));
                 }
                 function.instruction(&Instruction::StructNew(
                     context.gc.index(Type::Result(result)),
@@ -4334,9 +4313,7 @@ fn compile_expr_unconverted(
                 compile_expr(function, args[0], context);
                 function
                     .instruction(&Instruction::I32Const(0))
-                    .instruction(&Instruction::RefNull(HeapType::Concrete(
-                        context.gc.standard_index(StdlibTypeId::String),
-                    )))
+                    .instruction(&Instruction::RefNull(GC_NULL_HEAP_TYPE))
                     .instruction(&Instruction::StructNew(
                         context.gc.index(Type::Result(result)),
                     ));
@@ -4440,9 +4417,7 @@ fn compile_expr_unconverted(
                     .instruction(&Instruction::I32Const(0))
                     .instruction(&Instruction::I32LtS)
                     .instruction(&Instruction::If(BlockType::Result(option_type)))
-                    .instruction(&Instruction::RefNull(HeapType::Concrete(
-                        context.gc.index(Type::Option(option)),
-                    )))
+                    .instruction(&Instruction::RefNull(GC_NULL_HEAP_TYPE))
                     .instruction(&Instruction::Else)
                     .instruction(&Instruction::LocalGet(found))
                     .instruction(&Instruction::StructNew(
@@ -4637,9 +4612,7 @@ fn compile_expr_unconverted(
             IntrinsicId::StringConcat => {
                 compile_expr(function, args[0], context);
                 function
-                    .instruction(&Instruction::RefNull(HeapType::Concrete(
-                        context.gc.standard_index(StdlibTypeId::String),
-                    )))
+                    .instruction(&Instruction::RefNull(GC_NULL_HEAP_TYPE))
                     .instruction(&Instruction::Call(
                         context
                             .runtime_helpers
@@ -4713,9 +4686,7 @@ fn compile_expr_unconverted(
                     .instruction(&Instruction::I64Const(0))
                     .instruction(&Instruction::I64LtS)
                     .instruction(&Instruction::If(BlockType::Result(option_type)))
-                    .instruction(&Instruction::RefNull(HeapType::Concrete(
-                        context.gc.index(Type::Option(option)),
-                    )))
+                    .instruction(&Instruction::RefNull(GC_NULL_HEAP_TYPE))
                     .instruction(&Instruction::Else)
                     .instruction(&Instruction::LocalGet(host_index))
                     .instruction(&Instruction::StructNew(
@@ -4738,9 +4709,7 @@ fn compile_expr_unconverted(
                     .instruction(&Instruction::I32Const(0))
                     .instruction(&Instruction::I32LtS)
                     .instruction(&Instruction::If(BlockType::Result(option_type)))
-                    .instruction(&Instruction::RefNull(HeapType::Concrete(
-                        context.gc.index(Type::Option(option)),
-                    )))
+                    .instruction(&Instruction::RefNull(GC_NULL_HEAP_TYPE))
                     .instruction(&Instruction::Else)
                     .instruction(&Instruction::LocalGet(host_value))
                     .instruction(&Instruction::I32Const(0))
@@ -4856,9 +4825,7 @@ fn compile_expr_unconverted(
                     .instruction(&Instruction::If(BlockType::Result(
                         context.gc.val_type(Type::Option(option)),
                     )))
-                    .instruction(&Instruction::RefNull(HeapType::Concrete(
-                        context.gc.index(Type::Option(option)),
-                    )))
+                    .instruction(&Instruction::RefNull(GC_NULL_HEAP_TYPE))
                     .instruction(&Instruction::Else)
                     .instruction(&Instruction::LocalGet(module))
                     .instruction(&Instruction::StructNew(
@@ -5651,7 +5618,7 @@ fn emit_array_iterator_next(
     emit_cursor_increment(function, cursor, cursor_index, 1, Type::U32);
 
     function.instruction(&Instruction::Else);
-    emit_iterator_end(function, step, context);
+    emit_iterator_end(function);
     function.instruction(&Instruction::End);
 }
 
@@ -5726,7 +5693,7 @@ fn emit_set_iterator_next(
     emit_cursor_increment(function, cursor, cursor_index, 1, Type::U32);
 
     function.instruction(&Instruction::Else);
-    emit_iterator_end(function, step, context);
+    emit_iterator_end(function);
     function.instruction(&Instruction::End);
 }
 
@@ -5786,7 +5753,7 @@ fn emit_range_iterator_next(
     }
 
     function.instruction(&Instruction::Else);
-    emit_iterator_end(function, step, context);
+    emit_iterator_end(function);
     function.instruction(&Instruction::End);
 }
 
@@ -5835,14 +5802,8 @@ fn emit_iterator_item(
     ));
 }
 
-fn emit_iterator_end(
-    function: &mut Function,
-    step: crate::ast::TypeApplicationId,
-    context: &ExprContext<'_>,
-) {
-    function.instruction(&Instruction::RefNull(HeapType::Concrete(
-        context.gc.index(Type::Application(step)),
-    )));
+fn emit_iterator_end(function: &mut Function) {
+    function.instruction(&Instruction::RefNull(GC_NULL_HEAP_TYPE));
 }
 
 fn compile_return_expression(
@@ -5873,7 +5834,7 @@ fn compile_return_expression(
                 });
             function.instruction(&Instruction::I32Const(1));
         }
-        BareReturn::Generator { frame, step } => {
+        BareReturn::Generator { frame, .. } => {
             if let Some(value) = value {
                 debug_assert_eq!(
                     context.expression_type(value),
@@ -5889,9 +5850,7 @@ fn compile_return_expression(
                     struct_type_index: frame.struct_type,
                     field_index: 0,
                 })
-                .instruction(&Instruction::RefNull(HeapType::Concrete(
-                    context.gc.index(step),
-                )));
+                .instruction(&Instruction::RefNull(GC_NULL_HEAP_TYPE));
         }
         BareReturn::AsyncAction {
             action,
@@ -6675,9 +6634,7 @@ fn compile_memory_reader_string(
                     },
                 )))
                 .instruction(&Instruction::Else)
-                .instruction(&Instruction::RefNull(HeapType::Concrete(
-                    context.gc.standard_index(StdlibTypeId::String),
-                )))
+                .instruction(&Instruction::RefNull(GC_NULL_HEAP_TYPE))
                 .instruction(&Instruction::End);
         }
     }

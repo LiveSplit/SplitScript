@@ -1,5 +1,6 @@
 //! Compiler-generated operations for concrete growable source arrays.
 
+use crate::codegen::GC_NULL_HEAP_TYPE;
 use std::collections::HashMap;
 
 use wasm_encoder::{BlockType, Function, Instruction, StorageType, ValType};
@@ -246,14 +247,14 @@ fn compile_remove_at(
 
     // Array copying leaves the final logical slot duplicated. Release a
     // reference there so the removed value is not retained by spare capacity.
-    if let StorageType::Val(ValType::Ref(reference)) = gc.storage_type(element) {
+    if let StorageType::Val(ValType::Ref(_)) = gc.storage_type(element) {
         function
             .instruction(&Instruction::LocalGet(backing))
             .instruction(&Instruction::RefAsNonNull)
             .instruction(&Instruction::LocalGet(length))
             .instruction(&Instruction::I32Const(1))
             .instruction(&Instruction::I32Sub)
-            .instruction(&Instruction::RefNull(reference.heap_type))
+            .instruction(&Instruction::RefNull(GC_NULL_HEAP_TYPE))
             .instruction(&Instruction::ArraySet(storage_type));
     }
 
@@ -311,12 +312,12 @@ fn compile_clear(
 
     // Primitive slots do not keep GC objects alive. Null every live reference
     // slot while retaining the backing allocation and its capacity.
-    if let StorageType::Val(ValType::Ref(reference)) = gc.storage_type(element) {
+    if let StorageType::Val(ValType::Ref(_)) = gc.storage_type(element) {
         function
             .instruction(&Instruction::LocalGet(backing))
             .instruction(&Instruction::RefAsNonNull)
             .instruction(&Instruction::I32Const(0))
-            .instruction(&Instruction::RefNull(reference.heap_type))
+            .instruction(&Instruction::RefNull(GC_NULL_HEAP_TYPE))
             .instruction(&Instruction::LocalGet(length))
             .instruction(&Instruction::ArrayFill(storage_type));
     }

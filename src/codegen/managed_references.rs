@@ -1,5 +1,6 @@
 //! Class-checked live references. Snapshot child reads use their snapshot check.
-use wasm_encoder::{BlockType, Function, HeapType, Instruction as I, ValType};
+use crate::codegen::GC_NULL_HEAP_TYPE;
+use wasm_encoder::{BlockType, Function, Instruction as I, ValType};
 
 use super::{
     Type, context::EmissionContext, emit_default, emit_result_error, emit_result_success,
@@ -81,10 +82,8 @@ pub(super) fn compile(value: TypeId, l: &EmissionContext<'_>) -> Function {
         .instruction(&I::LocalTee(4))
         .instruction(&I::I64Eqz)
         .instruction(&I::If(BlockType::Empty));
-    if let Some(option) = option {
-        f.instruction(&I::RefNull(HeapType::Concrete(
-            l.gc.index(Type::Option(option)),
-        )));
+    if option.is_some() {
+        f.instruction(&I::RefNull(GC_NULL_HEAP_TYPE));
         emit_result_success(&mut f, result, l.gc);
     } else {
         emit_result_error(

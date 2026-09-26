@@ -301,7 +301,6 @@ pub(super) fn build_read_utf8_string(inputs: &RuntimeHelperInputs<'_>) -> Functi
     process::compile_read_utf8_string(
         inputs.abi,
         inputs.plan.function(RuntimeHelperId::Utf8StringFromMemory),
-        inputs.gc,
         inputs.memory.scratch().native_utf8,
     )
 }
@@ -309,7 +308,6 @@ pub(super) fn build_read_utf8_string(inputs: &RuntimeHelperInputs<'_>) -> Functi
 pub(super) fn build_utf8_string_from_memory(inputs: &RuntimeHelperInputs<'_>) -> Function {
     process::compile_utf8_string_from_memory(
         inputs.plan.function(RuntimeHelperId::StringFromMemory),
-        inputs.gc,
         inputs.memory.scratch().native_utf8,
     )
 }
@@ -322,7 +320,6 @@ pub(super) fn build_utf16_string_from_memory(inputs: &RuntimeHelperInputs<'_>) -
 pub(super) fn build_utf16_le_string_from_memory(inputs: &RuntimeHelperInputs<'_>) -> Function {
     process::compile_utf16_le_string_from_memory(
         inputs.plan.function(RuntimeHelperId::Utf16StringFromMemory),
-        inputs.gc,
         inputs.memory.scratch().utf16_input,
     )
 }
@@ -333,7 +330,6 @@ pub(super) fn build_read_utf16_le_string(inputs: &RuntimeHelperInputs<'_>) -> Fu
         inputs
             .plan
             .function(RuntimeHelperId::Utf16LeStringFromMemory),
-        inputs.gc,
         inputs.memory.scratch().utf16_input,
     )
 }
@@ -427,7 +423,6 @@ pub(super) fn build_process_path(inputs: &RuntimeHelperInputs<'_>) -> Function {
     process::compile_process_path(
         inputs.abi,
         inputs.plan.function(RuntimeHelperId::StringFromMemory),
-        inputs.gc,
         inputs.memory.scratch(),
     )
 }
@@ -437,7 +432,6 @@ pub(super) fn build_runtime_operating_system(inputs: &RuntimeHelperInputs<'_>) -
         inputs.abi,
         crate::abi::AbiImportId::RuntimeGetOs,
         inputs.plan.function(RuntimeHelperId::StringFromMemory),
-        inputs.gc,
         inputs.memory.scratch(),
     )
 }
@@ -447,7 +441,6 @@ pub(super) fn build_runtime_architecture(inputs: &RuntimeHelperInputs<'_>) -> Fu
         inputs.abi,
         crate::abi::AbiImportId::RuntimeGetArch,
         inputs.plan.function(RuntimeHelperId::StringFromMemory),
-        inputs.gc,
         inputs.memory.scratch(),
     )
 }

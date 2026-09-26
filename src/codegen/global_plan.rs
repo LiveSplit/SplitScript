@@ -1,3 +1,4 @@
+use crate::codegen::GC_NULL_HEAP_TYPE;
 use std::collections::HashMap;
 
 use wasm_encoder::{ConstExpr, GlobalSection, GlobalType, HeapType, RefType, ValType};
@@ -168,9 +169,7 @@ pub(super) fn encode(inputs: Inputs<'_>) -> GlobalPlan {
             } => ConstExpr::i64_const(0),
             RuntimeRepresentation::GcStruct { .. }
             | RuntimeRepresentation::GcArray { .. }
-            | RuntimeRepresentation::Enum { .. } => {
-                ConstExpr::ref_null(HeapType::Concrete(gc.standard_index(ty)))
-            }
+            | RuntimeRepresentation::Enum { .. } => ConstExpr::ref_null(GC_NULL_HEAP_TYPE),
             representation => {
                 unreachable!("unsupported state-provider representation: {representation:?}")
             }
@@ -199,9 +198,7 @@ pub(super) fn encode(inputs: Inputs<'_>) -> GlobalPlan {
             } => ConstExpr::i64_const(0),
             RuntimeRepresentation::GcStruct { .. }
             | RuntimeRepresentation::GcArray { .. }
-            | RuntimeRepresentation::Enum { .. } => {
-                ConstExpr::ref_null(HeapType::Concrete(gc.standard_index(ty)))
-            }
+            | RuntimeRepresentation::Enum { .. } => ConstExpr::ref_null(GC_NULL_HEAP_TYPE),
             representation => {
                 unreachable!("unsupported state-provider representation: {representation:?}")
             }
@@ -228,7 +225,7 @@ pub(super) fn encode(inputs: Inputs<'_>) -> GlobalPlan {
                 mutable: true,
                 shared: false,
             },
-            &ConstExpr::ref_null(HeapType::Concrete(frame_type)),
+            &ConstExpr::ref_null(GC_NULL_HEAP_TYPE),
         );
         index
     });
@@ -245,7 +242,7 @@ pub(super) fn encode(inputs: Inputs<'_>) -> GlobalPlan {
                 mutable: true,
                 shared: false,
             },
-            &ConstExpr::ref_null(HeapType::Concrete(frame_type)),
+            &ConstExpr::ref_null(GC_NULL_HEAP_TYPE),
         );
         provider_attachment_frames.insert(*variant, index);
     }
@@ -282,7 +279,7 @@ pub(super) fn encode(inputs: Inputs<'_>) -> GlobalPlan {
                 mutable: true,
                 shared: false,
             },
-            &ConstExpr::ref_null(HeapType::Concrete(frame_type)),
+            &ConstExpr::ref_null(GC_NULL_HEAP_TYPE),
         );
         index
     });
@@ -333,7 +330,7 @@ pub(super) fn encode(inputs: Inputs<'_>) -> GlobalPlan {
             mutable: true,
             shared: false,
         },
-        &ConstExpr::ref_null(HeapType::Concrete(STATE_TYPE)),
+        &ConstExpr::ref_null(GC_NULL_HEAP_TYPE),
     );
     let old = section.len();
     section.global(
@@ -342,7 +339,7 @@ pub(super) fn encode(inputs: Inputs<'_>) -> GlobalPlan {
             mutable: true,
             shared: false,
         },
-        &ConstExpr::ref_null(HeapType::Concrete(STATE_TYPE)),
+        &ConstExpr::ref_null(GC_NULL_HEAP_TYPE),
     );
     let attach_ready = section.len();
     section.global(
@@ -418,7 +415,7 @@ pub(super) fn encode(inputs: Inputs<'_>) -> GlobalPlan {
             mutable: true,
             shared: false,
         },
-        &ConstExpr::ref_null(HeapType::Concrete(gc.async_frame_index())),
+        &ConstExpr::ref_null(GC_NULL_HEAP_TYPE),
     );
     let while_attached_result = wasm_ir
         .body(wasm_ir::BodyOwner::Action(ActionKind::WhileAttached))
@@ -483,13 +480,8 @@ pub(super) fn encode(inputs: Inputs<'_>) -> GlobalPlan {
                 mutable: variable.mutable,
                 shared: false,
             };
-            if let Type::Option(option) = ty {
-                section.global(
-                    global_type,
-                    &ConstExpr::ref_null(HeapType::Concrete(gc.index(Type::Option(option)))),
-                );
-            } else if let ValType::Ref(reference) = gc.val_type(ty) {
-                section.global(global_type, &ConstExpr::ref_null(reference.heap_type));
+            if let ValType::Ref(_) = val_type {
+                section.global(global_type, &ConstExpr::ref_null(GC_NULL_HEAP_TYPE));
             } else if simple
                 && let Some(value) = &variable.value
                 && is_wasm_global_constant(value.id, wasm_ir)
@@ -554,7 +546,7 @@ fn default_const_expr(ty: ValType) -> ConstExpr {
         ValType::I64 => ConstExpr::i64_const(0),
         ValType::F32 => ConstExpr::f32_const(0.0.into()),
         ValType::F64 => ConstExpr::f64_const(0.0.into()),
-        ValType::Ref(reference) => ConstExpr::ref_null(reference.heap_type),
+        ValType::Ref(_) => ConstExpr::ref_null(GC_NULL_HEAP_TYPE),
         ValType::V128 => unreachable!("SplitScript has no v128 source values"),
     }
 }
@@ -572,14 +564,12 @@ fn emit_setting_global(
     };
     match ty {
         Type::Bool => section.global(global_type, &ConstExpr::i32_const(0)),
-        Type::Standard(StdlibTypeId::String) => section.global(
-            global_type,
-            &ConstExpr::ref_null(HeapType::Concrete(gc.standard_index(StdlibTypeId::String))),
-        ),
-        ty if ty.is_enum(standard_library) => section.global(
-            global_type,
-            &ConstExpr::ref_null(HeapType::Concrete(gc.index(ty))),
-        ),
+        Type::Standard(StdlibTypeId::String) => {
+            section.global(global_type, &ConstExpr::ref_null(GC_NULL_HEAP_TYPE))
+        }
+        ty if ty.is_enum(standard_library) => {
+            section.global(global_type, &ConstExpr::ref_null(GC_NULL_HEAP_TYPE))
+        }
         _ => unreachable!(),
     };
 }

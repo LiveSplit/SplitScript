@@ -97,6 +97,15 @@ use crate::intrinsic_registry::RuntimeHelperId;
 
 const STATE_TYPE: u32 = 0;
 
+/// The null-only subtype of every unshared GC reference. Unlike a concrete
+/// type index, its heap-type encoding is always one byte. Source callables
+/// are GC wrapper structs too; raw function and extern references must use
+/// their own null types instead.
+const GC_NULL_HEAP_TYPE: HeapType = HeapType::Abstract {
+    shared: false,
+    ty: AbstractHeapType::None,
+};
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum MemoryByteOrder {
     Little,
@@ -2060,7 +2069,7 @@ fn emit_default(function: &mut Function, ty: Type, gc: &GcLayout) {
         ValType::I64 => Instruction::I64Const(0),
         ValType::F32 => Instruction::F32Const(0.0.into()),
         ValType::F64 => Instruction::F64Const(0.0.into()),
-        ValType::Ref(reference) => Instruction::RefNull(reference.heap_type),
+        ValType::Ref(_) => Instruction::RefNull(GC_NULL_HEAP_TYPE),
         ValType::V128 => unreachable!(),
     });
 }
@@ -2089,9 +2098,7 @@ fn emit_monotonic_nanoseconds(function: &mut Function, abi: &Abi, destination: i
 fn emit_result_success(function: &mut Function, result: ResultTypeId, gc: &GcLayout) {
     function
         .instruction(&Instruction::I32Const(0))
-        .instruction(&Instruction::RefNull(HeapType::Concrete(
-            gc.standard_index(StdlibTypeId::String),
-        )))
+        .instruction(&Instruction::RefNull(GC_NULL_HEAP_TYPE))
         .instruction(&Instruction::StructNew(gc.index(Type::Result(result))));
 }
 
@@ -2108,9 +2115,7 @@ fn emit_result_error(
     if failure_payloads.is_demanded(result) {
         emit_string_literal(function, message, gc);
     } else {
-        function.instruction(&Instruction::RefNull(HeapType::Concrete(
-            gc.standard_index(StdlibTypeId::String),
-        )));
+        function.instruction(&Instruction::RefNull(GC_NULL_HEAP_TYPE));
     }
     function.instruction(&Instruction::StructNew(gc.index(Type::Result(result))));
 }
@@ -2137,9 +2142,7 @@ fn emit_failure_value(
             emit_error(function);
             function.instruction(&Instruction::Drop);
         }
-        function.instruction(&Instruction::RefNull(HeapType::Concrete(
-            gc.standard_index(StdlibTypeId::String),
-        )));
+        function.instruction(&Instruction::RefNull(GC_NULL_HEAP_TYPE));
     }
     function.instruction(&Instruction::StructNew(gc.index(Type::Result(target))));
 }

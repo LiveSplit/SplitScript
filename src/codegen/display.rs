@@ -1,8 +1,9 @@
 //! Lazy structural and opaque `Debug` body generation used by `Display` fallback.
 
+use crate::codegen::GC_NULL_HEAP_TYPE;
 use std::collections::HashMap;
 
-use wasm_encoder::{BlockType, Function, HeapType, Instruction, ValType};
+use wasm_encoder::{BlockType, Function, Instruction, ValType};
 
 use crate::{
     ast::{Program, RangeKind, ValueId},
@@ -700,9 +701,7 @@ fn compile_map(
         .instruction(&Instruction::I32Add);
     array_value::emit_wrap_loaded(&mut function, inputs.gc.index(Type::Array(strings)));
     function
-        .instruction(&Instruction::RefNull(HeapType::Concrete(
-            inputs.gc.standard_index(StdlibTypeId::String),
-        )))
+        .instruction(&Instruction::RefNull(GC_NULL_HEAP_TYPE))
         .instruction(&Instruction::Call(
             inputs.helpers.function(RuntimeHelperId::JoinStrings),
         ));
@@ -791,9 +790,7 @@ fn compile_sequence(
         .instruction(&Instruction::I32Add);
     array_value::emit_wrap_loaded(&mut function, inputs.gc.index(Type::Array(strings)));
     function
-        .instruction(&Instruction::RefNull(HeapType::Concrete(
-            inputs.gc.standard_index(StdlibTypeId::String),
-        )))
+        .instruction(&Instruction::RefNull(GC_NULL_HEAP_TYPE))
         .instruction(&Instruction::Call(
             inputs.helpers.function(RuntimeHelperId::JoinStrings),
         ));
@@ -1037,9 +1034,7 @@ fn join_pieces(function: &mut Function, count: u32, inputs: &DisplayInputs<'_>) 
         .expect("derived Display requires the runtime String array layout");
     array_value::emit_new_fixed(function, inputs.gc, strings.id, count);
     function
-        .instruction(&Instruction::RefNull(HeapType::Concrete(
-            inputs.gc.standard_index(StdlibTypeId::String),
-        )))
+        .instruction(&Instruction::RefNull(GC_NULL_HEAP_TYPE))
         .instruction(&Instruction::Call(
             inputs.helpers.function(RuntimeHelperId::JoinStrings),
         ));

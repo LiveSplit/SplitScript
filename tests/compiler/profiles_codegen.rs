@@ -4,6 +4,67 @@ use super::catalogs_types::TypedExpressionCounter;
 use super::*;
 
 #[test]
+fn gc_nulls_use_compact_encoding_in_both_profiles() {
+    fn check_nulls(mut reader: wasmparser::OperatorsReader<'_>) -> usize {
+        let mut count = 0;
+        while !reader.eof() {
+            let start = reader.original_position();
+            if let wasmparser::Operator::RefNull { hty } = reader.read().unwrap() {
+                assert!(
+                    matches!(hty, wasmparser::HeapType::Abstract { shared: false, .. }),
+                    "null still carries a concrete type index: {hty:?}"
+                );
+                assert_eq!(reader.original_position() - start, 2);
+                count += 1;
+            }
+        }
+        count
+    }
+
+    // Exercise large type indices, nested optional collections, runtime helper
+    // failures and suspension-frame resets as well as global initializers.
+    for source in [
+        include_str!("../managed_nested_map.split"),
+        include_str!("../async_failure.split"),
+    ] {
+        for profile in [
+            splitscript::BuildProfile::Debug,
+            splitscript::BuildProfile::Release,
+        ] {
+            let wasm = splitscript::compile_with_options(
+                source,
+                splitscript::CompilerOptions {
+                    profile,
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+            Validator::new_with_features(WasmFeatures::all())
+                .validate_all(&wasm)
+                .unwrap();
+            let mut body_nulls = 0;
+            let mut global_nulls = 0;
+            for payload in Parser::new(0).parse_all(&wasm) {
+                match payload.unwrap() {
+                    Payload::CodeSectionEntry(body) => {
+                        body_nulls += check_nulls(body.get_operators_reader().unwrap());
+                    }
+                    Payload::GlobalSection(globals) => {
+                        for global in globals {
+                            global_nulls +=
+                                check_nulls(global.unwrap().init_expr.get_operators_reader());
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            assert!(body_nulls > 0);
+            assert!(global_nulls > 0);
+        }
+    }
+}
+
+#[test]
 fn never_statements_stop_synchronous_and_async_emission_in_both_profiles() {
     let source = r#"
         state "game.exe" {}

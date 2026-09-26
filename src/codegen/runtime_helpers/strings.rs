@@ -1,5 +1,6 @@
 //! String host-boundary, formatting, and concatenation runtime helpers.
 
+use crate::codegen::GC_NULL_HEAP_TYPE;
 use wasm_encoder::{BlockType, Function, HeapType, Instruction, RefType, ValType};
 
 use crate::{abi::AbiImportId, stdlib::StdlibTypeId};
@@ -206,9 +207,7 @@ pub(in crate::codegen::runtime_helpers) fn compile_format_i64(gc: &GcLayout) -> 
         .instruction(&Instruction::If(BlockType::Result(
             gc.val_type(Type::Standard(StdlibTypeId::String)),
         )))
-        .instruction(&Instruction::RefNull(HeapType::Concrete(
-            gc.standard_index(StdlibTypeId::String),
-        )))
+        .instruction(&Instruction::RefNull(GC_NULL_HEAP_TYPE))
         .instruction(&Instruction::Else)
         .instruction(&Instruction::LocalGet(signed))
         .instruction(&Instruction::LocalGet(input))
@@ -1167,7 +1166,7 @@ pub(in crate::codegen::runtime_helpers) fn compile_string_replace_all(
         .instruction(&Instruction::LocalTee(search_len))
         .instruction(&Instruction::I32Eqz)
         .instruction(&Instruction::If(BlockType::Empty));
-    emit_null_string(&mut function, string_type);
+    emit_null_string(&mut function);
     function
         .instruction(&Instruction::Return)
         .instruction(&Instruction::End)
@@ -1216,7 +1215,7 @@ pub(in crate::codegen::runtime_helpers) fn compile_string_replace_all(
         .instruction(&Instruction::I32DivU)
         .instruction(&Instruction::I32GtU)
         .instruction(&Instruction::If(BlockType::Empty));
-    emit_null_string(&mut function, string_type);
+    emit_null_string(&mut function);
     function
         .instruction(&Instruction::Return)
         .instruction(&Instruction::End)
@@ -1355,7 +1354,7 @@ pub(in crate::codegen::runtime_helpers) fn compile_string_split(
         .instruction(&Instruction::LocalTee(delimiter_len))
         .instruction(&Instruction::I32Eqz)
         .instruction(&Instruction::If(BlockType::Empty))
-        .instruction(&Instruction::RefNull(HeapType::Concrete(strings_array)))
+        .instruction(&Instruction::RefNull(GC_NULL_HEAP_TYPE))
         .instruction(&Instruction::Return)
         .instruction(&Instruction::End)
         .instruction(&Instruction::I32Const(1))
@@ -1377,7 +1376,7 @@ pub(in crate::codegen::runtime_helpers) fn compile_string_split(
         .instruction(&Instruction::LocalTee(segment_count))
         .instruction(&Instruction::I32Eqz)
         .instruction(&Instruction::If(BlockType::Empty))
-        .instruction(&Instruction::RefNull(HeapType::Concrete(strings_array)))
+        .instruction(&Instruction::RefNull(GC_NULL_HEAP_TYPE))
         .instruction(&Instruction::Return)
         .instruction(&Instruction::End)
         .instruction(&Instruction::LocalGet(match_index))
@@ -1448,7 +1447,7 @@ pub(in crate::codegen::runtime_helpers) fn compile_string_split(
         .instruction(&Instruction::LocalSet(segment_start))
         .instruction(&Instruction::Br(0))
         .instruction(&Instruction::End)
-        .instruction(&Instruction::RefNull(HeapType::Concrete(strings_array)))
+        .instruction(&Instruction::RefNull(GC_NULL_HEAP_TYPE))
         .instruction(&Instruction::End);
     function
 }
@@ -1914,7 +1913,7 @@ pub(in crate::codegen::runtime_helpers) fn compile_string_slice(gc: &GcLayout) -
         .instruction(&Instruction::I32GtU)
         .instruction(&Instruction::I32Or)
         .instruction(&Instruction::If(BlockType::Empty));
-    emit_null_string(&mut function, string_type);
+    emit_null_string(&mut function);
     function
         .instruction(&Instruction::Return)
         .instruction(&Instruction::End)
@@ -1933,7 +1932,7 @@ pub(in crate::codegen::runtime_helpers) fn compile_string_slice(gc: &GcLayout) -
         .instruction(&Instruction::I32Const(0x80))
         .instruction(&Instruction::I32Eq)
         .instruction(&Instruction::If(BlockType::Empty));
-    emit_null_string(&mut function, string_type);
+    emit_null_string(&mut function);
     function
         .instruction(&Instruction::Return)
         .instruction(&Instruction::End)
@@ -1951,7 +1950,7 @@ pub(in crate::codegen::runtime_helpers) fn compile_string_slice(gc: &GcLayout) -
         .instruction(&Instruction::I32Const(0x80))
         .instruction(&Instruction::I32Eq)
         .instruction(&Instruction::If(BlockType::Empty));
-    emit_null_string(&mut function, string_type);
+    emit_null_string(&mut function);
     function
         .instruction(&Instruction::Return)
         .instruction(&Instruction::End)
@@ -2416,8 +2415,8 @@ fn emit_is_ascii_whitespace(function: &mut Function, byte: u32) {
         .instruction(&Instruction::I32Or);
 }
 
-fn emit_null_string(function: &mut Function, string_type: u32) {
-    function.instruction(&Instruction::RefNull(HeapType::Concrete(string_type)));
+fn emit_null_string(function: &mut Function) {
+    function.instruction(&Instruction::RefNull(GC_NULL_HEAP_TYPE));
 }
 
 pub(in crate::codegen::runtime_helpers) fn compile_join_strings(
@@ -2624,9 +2623,7 @@ pub(in crate::codegen::runtime_helpers) fn compile_wrap_debug_entry(
         .instruction(&Instruction::I32Const(3));
     super::super::array_value::emit_wrap_loaded(&mut function, string_array);
     function
-        .instruction(&Instruction::RefNull(HeapType::Concrete(
-            gc.standard_index(StdlibTypeId::String),
-        )))
+        .instruction(&Instruction::RefNull(GC_NULL_HEAP_TYPE))
         .instruction(&Instruction::Call(join))
         .instruction(&Instruction::End);
     function
@@ -2654,9 +2651,7 @@ pub(in crate::codegen::runtime_helpers) fn compile_wrap_debug_variant(
         .instruction(&Instruction::I32Const(4));
     super::super::array_value::emit_wrap_loaded(&mut function, string_array);
     function
-        .instruction(&Instruction::RefNull(HeapType::Concrete(
-            gc.standard_index(StdlibTypeId::String),
-        )))
+        .instruction(&Instruction::RefNull(GC_NULL_HEAP_TYPE))
         .instruction(&Instruction::Call(join))
         .instruction(&Instruction::End);
     function

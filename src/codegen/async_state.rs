@@ -1,5 +1,6 @@
 //! Wasm-IR async state-machine, suspension, retry, and cancellation emission.
 
+use crate::codegen::GC_NULL_HEAP_TYPE;
 use std::collections::HashMap;
 
 use wasm_encoder::{BlockType, Function, HeapType, Instruction, ValType};
@@ -676,7 +677,7 @@ fn compile_continuation_body(
             }
         };
         if falls_through {
-            emit_continuation_fallthrough(&mut function, bare_return, context.gc);
+            emit_continuation_fallthrough(&mut function, bare_return);
         }
         if !table_dispatch {
             function.instruction(&Instruction::End);
@@ -685,10 +686,10 @@ fn compile_continuation_body(
     if table_dispatch {
         function.instruction(&Instruction::End);
     }
-    emit_continuation_result(&mut function, bare_return, context.gc);
+    emit_continuation_result(&mut function, bare_return);
     function.instruction(&Instruction::Return);
     function.instruction(&Instruction::End);
-    emit_continuation_result(&mut function, bare_return, context.gc);
+    emit_continuation_result(&mut function, bare_return);
     function.instruction(&Instruction::End);
     function
 }
@@ -717,10 +718,10 @@ fn mark_future_complete(function: &mut Function, target: BareReturn) {
     }
 }
 
-fn emit_continuation_result(function: &mut Function, target: BareReturn, gc: &super::GcLayout) {
+fn emit_continuation_result(function: &mut Function, target: BareReturn) {
     match target {
-        BareReturn::Generator { step, .. } => {
-            function.instruction(&Instruction::RefNull(HeapType::Concrete(gc.index(step))));
+        BareReturn::Generator { .. } => {
+            function.instruction(&Instruction::RefNull(GC_NULL_HEAP_TYPE));
         }
         BareReturn::AsyncAction { .. } | BareReturn::AsyncFuture { .. } => {
             function.instruction(&Instruction::I32Const(1));
@@ -731,18 +732,14 @@ fn emit_continuation_result(function: &mut Function, target: BareReturn, gc: &su
     }
 }
 
-fn emit_continuation_fallthrough(
-    function: &mut Function,
-    target: BareReturn,
-    gc: &super::GcLayout,
-) {
+fn emit_continuation_fallthrough(function: &mut Function, target: BareReturn) {
     emit_async_action_default(function, target);
-    emit_continuation_return(function, target, gc);
+    emit_continuation_return(function, target);
 }
 
-fn emit_continuation_return(function: &mut Function, target: BareReturn, gc: &super::GcLayout) {
+fn emit_continuation_return(function: &mut Function, target: BareReturn) {
     mark_future_complete(function, target);
-    emit_continuation_result(function, target, gc);
+    emit_continuation_result(function, target);
     function.instruction(&Instruction::Return);
 }
 
@@ -2324,9 +2321,7 @@ fn compile_suspension_poll(
                     .instruction(&Instruction::If(BlockType::Result(
                         context.gc.val_type(Type::Option(option)),
                     )))
-                    .instruction(&Instruction::RefNull(HeapType::Concrete(
-                        context.gc.index(Type::Option(option)),
-                    )))
+                    .instruction(&Instruction::RefNull(GC_NULL_HEAP_TYPE))
                     .instruction(&Instruction::Else)
                     .instruction(&Instruction::LocalGet(scratch[3]))
                     .instruction(&Instruction::StructNew(
@@ -2899,7 +2894,7 @@ fn compile_source_future_poll(
     context: &ExprContext<'_>,
 ) {
     let (child_field, child_type) = parent_layout.children[&expression];
-    let Type::Async(child_future) = child_type else {
+    let Type::Async(_) = child_type else {
         unreachable!("source async calls produce future values")
     };
     let parent = context.locals.frame();
@@ -2947,7 +2942,7 @@ fn compile_source_future_poll(
         .instruction(&Instruction::Return)
         .instruction(&Instruction::End);
 
-    clear_child_future(function, parent, child_field, child_future, context);
+    clear_child_future(function, parent, child_field);
 }
 
 /// Polls one erased first-class future and leaves `0` for pending or `1` for
@@ -3235,18 +3230,10 @@ fn emit_future_poll_status(
         .instruction(&Instruction::End);
 }
 
-fn clear_child_future(
-    function: &mut Function,
-    parent: AsyncFrameRef,
-    field: u32,
-    future: crate::ast::AsyncTypeId,
-    context: &ExprContext<'_>,
-) {
+fn clear_child_future(function: &mut Function, parent: AsyncFrameRef, field: u32) {
     parent.emit(function);
     function
-        .instruction(&Instruction::RefNull(HeapType::Concrete(
-            context.gc.index(Type::Async(future)),
-        )))
+        .instruction(&Instruction::RefNull(GC_NULL_HEAP_TYPE))
         .instruction(&Instruction::StructSet {
             struct_type_index: parent.struct_type,
             field_index: field,
@@ -4043,7 +4030,7 @@ fn compile_async_flow(
             // action's source-level bare-return default above. Only lexical
             // fallthrough applies the continuation default here; doing so a
             // second time would overwrite `return false` in `whileAttached`.
-            emit_continuation_return(function, context.bare_return, context.gc);
+            emit_continuation_return(function, context.bare_return);
         }
         wasm_ir::Terminator::Yield {
             value,

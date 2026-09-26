@@ -7,6 +7,7 @@
 //! the slots while assembling a candidate state; calls outside that boundary
 //! always perform a fresh read.
 
+use crate::codegen::GC_NULL_HEAP_TYPE;
 use std::collections::{HashMap, HashSet};
 
 use wasm_encoder::{ConstExpr, GlobalSection, GlobalType, RefType, ValType};
@@ -126,7 +127,7 @@ pub(super) fn encode(
                     mutable: true,
                     shared: false,
                 },
-                &ConstExpr::ref_null(reference.heap_type),
+                &ConstExpr::ref_null(GC_NULL_HEAP_TYPE),
             );
             Some(ManagedStateReadStorage {
                 class,

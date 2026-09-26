@@ -4,7 +4,8 @@
 //! composition below, and every successful `path_open` is paired with
 //! `fd_close` before control returns to user code.
 
-use wasm_encoder::{BlockType, Function, HeapType, Instruction, ValType};
+use crate::codegen::GC_NULL_HEAP_TYPE;
+use wasm_encoder::{BlockType, Function, Instruction, ValType};
 
 use crate::{abi::AbiImportId, ast::ArrayTypeId, stdlib::StdlibTypeId};
 
@@ -316,7 +317,7 @@ pub(super) fn compile_read_all_storage(
         .instruction(&Instruction::I32Const(-1))
         .instruction(&Instruction::I32Eq)
         .instruction(&Instruction::If(BlockType::Empty));
-    emit_storage_read_failure(&mut function, storage_type, None, abi);
+    emit_storage_read_failure(&mut function, None, abi);
     function
         .instruction(&Instruction::End)
         .instruction(&Instruction::End);
@@ -328,7 +329,7 @@ pub(super) fn compile_read_all_storage(
         .instruction(&Instruction::I32Const(0))
         .instruction(&Instruction::I32LtS)
         .instruction(&Instruction::If(BlockType::Empty));
-    emit_storage_read_failure(&mut function, storage_type, None, abi);
+    emit_storage_read_failure(&mut function, None, abi);
     function
         .instruction(&Instruction::End)
         .instruction(&Instruction::I32Const(0))
@@ -351,7 +352,7 @@ pub(super) fn compile_read_all_storage(
         .instruction(&Instruction::I32Const(bytes_read_pointer))
         .instruction(&Instruction::Call(abi.function(AbiImportId::WasiFdRead)))
         .instruction(&Instruction::If(BlockType::Empty));
-    emit_storage_read_failure(&mut function, storage_type, Some(descriptor), abi);
+    emit_storage_read_failure(&mut function, Some(descriptor), abi);
     function
         .instruction(&Instruction::End)
         .instruction(&Instruction::I32Const(bytes_read_pointer))
@@ -360,7 +361,7 @@ pub(super) fn compile_read_all_storage(
         .instruction(&Instruction::I32Const(FILE_READ_CHUNK))
         .instruction(&Instruction::I32GtU)
         .instruction(&Instruction::If(BlockType::Empty));
-    emit_storage_read_failure(&mut function, storage_type, Some(descriptor), abi);
+    emit_storage_read_failure(&mut function, Some(descriptor), abi);
     function
         .instruction(&Instruction::End)
         .instruction(&Instruction::LocalGet(bytes_read))
@@ -373,7 +374,7 @@ pub(super) fn compile_read_all_storage(
         .instruction(&Instruction::LocalGet(length))
         .instruction(&Instruction::I32LtU)
         .instruction(&Instruction::If(BlockType::Empty));
-    emit_storage_read_failure(&mut function, storage_type, Some(descriptor), abi);
+    emit_storage_read_failure(&mut function, Some(descriptor), abi);
     function
         .instruction(&Instruction::End)
         .instruction(&Instruction::LocalGet(required))
@@ -461,7 +462,7 @@ pub(super) fn compile_read_all_storage(
         .instruction(&Instruction::LocalGet(descriptor))
         .instruction(&Instruction::Call(abi.function(AbiImportId::WasiFdClose)))
         .instruction(&Instruction::If(BlockType::Empty));
-    emit_storage_read_failure(&mut function, storage_type, None, abi);
+    emit_storage_read_failure(&mut function, None, abi);
     function
         .instruction(&Instruction::End)
         .instruction(&Instruction::I32Const(1))
@@ -497,7 +498,7 @@ pub(super) fn compile_read_all_bytes(
         .instruction(&Instruction::I32Eqz)
         .instruction(&Instruction::If(BlockType::Empty))
         .instruction(&Instruction::I32Const(0))
-        .instruction(&Instruction::RefNull(HeapType::Concrete(array_type)))
+        .instruction(&Instruction::RefNull(GC_NULL_HEAP_TYPE))
         .instruction(&Instruction::Return)
         .instruction(&Instruction::End)
         .instruction(&Instruction::LocalGet(length))
@@ -581,7 +582,7 @@ pub(super) fn compile_utf8_string_from_storage(gc: &GcLayout) -> Function {
         .instruction(&Instruction::I32Const(4))
         .instruction(&Instruction::LocalSet(width))
         .instruction(&Instruction::Else);
-    emit_utf8_failure(&mut function, string_type);
+    emit_utf8_failure(&mut function);
     function
         .instruction(&Instruction::End)
         .instruction(&Instruction::End)
@@ -593,7 +594,7 @@ pub(super) fn compile_utf8_string_from_storage(gc: &GcLayout) -> Function {
         .instruction(&Instruction::LocalGet(width))
         .instruction(&Instruction::I32LtU)
         .instruction(&Instruction::If(BlockType::Empty));
-    emit_utf8_failure(&mut function, string_type);
+    emit_utf8_failure(&mut function);
     function.instruction(&Instruction::End);
 
     function
@@ -604,7 +605,7 @@ pub(super) fn compile_utf8_string_from_storage(gc: &GcLayout) -> Function {
     emit_array_byte_at_offset(&mut function, backing, index, 1, second, string_type);
     emit_continuation_test(&mut function, second);
     function.instruction(&Instruction::If(BlockType::Empty));
-    emit_utf8_failure(&mut function, string_type);
+    emit_utf8_failure(&mut function);
     function.instruction(&Instruction::End);
     function
         .instruction(&Instruction::LocalGet(first))
@@ -639,7 +640,7 @@ pub(super) fn compile_utf8_string_from_storage(gc: &GcLayout) -> Function {
         .instruction(&Instruction::I32And)
         .instruction(&Instruction::I32Or)
         .instruction(&Instruction::If(BlockType::Empty));
-    emit_utf8_failure(&mut function, string_type);
+    emit_utf8_failure(&mut function);
     function.instruction(&Instruction::End);
     function.instruction(&Instruction::End);
 
@@ -651,7 +652,7 @@ pub(super) fn compile_utf8_string_from_storage(gc: &GcLayout) -> Function {
     emit_array_byte_at_offset(&mut function, backing, index, 2, third, string_type);
     emit_continuation_test(&mut function, third);
     function.instruction(&Instruction::If(BlockType::Empty));
-    emit_utf8_failure(&mut function, string_type);
+    emit_utf8_failure(&mut function);
     function.instruction(&Instruction::End);
     function.instruction(&Instruction::End);
 
@@ -663,7 +664,7 @@ pub(super) fn compile_utf8_string_from_storage(gc: &GcLayout) -> Function {
     emit_array_byte_at_offset(&mut function, backing, index, 3, fourth, string_type);
     emit_continuation_test(&mut function, fourth);
     function.instruction(&Instruction::If(BlockType::Empty));
-    emit_utf8_failure(&mut function, string_type);
+    emit_utf8_failure(&mut function);
     function.instruction(&Instruction::End);
     function.instruction(&Instruction::End);
 
@@ -719,7 +720,6 @@ pub(super) fn compile_read_all_text(
     utf8_string_from_storage: u32,
     gc: &GcLayout,
 ) -> Function {
-    let string_type = gc.standard_index(StdlibTypeId::String);
     let string_value = gc.val_type(Type::Standard(StdlibTypeId::String));
     let mut function = Function::new([(1, ValType::I32), (1, string_value)]);
     let path = 0;
@@ -733,7 +733,7 @@ pub(super) fn compile_read_all_text(
         .instruction(&Instruction::I32Eqz)
         .instruction(&Instruction::If(BlockType::Empty))
         .instruction(&Instruction::I32Const(0))
-        .instruction(&Instruction::RefNull(HeapType::Concrete(string_type)))
+        .instruction(&Instruction::RefNull(GC_NULL_HEAP_TYPE))
         .instruction(&Instruction::Return)
         .instruction(&Instruction::End)
         .instruction(&Instruction::LocalGet(storage))
@@ -807,12 +807,7 @@ fn emit_open_failure(function: &mut Function) {
         .instruction(&Instruction::Return);
 }
 
-fn emit_storage_read_failure(
-    function: &mut Function,
-    array_type: u32,
-    descriptor: Option<u32>,
-    abi: &Abi,
-) {
+fn emit_storage_read_failure(function: &mut Function, descriptor: Option<u32>, abi: &Abi) {
     if let Some(descriptor) = descriptor {
         function
             .instruction(&Instruction::LocalGet(descriptor))
@@ -821,7 +816,7 @@ fn emit_storage_read_failure(
     }
     function
         .instruction(&Instruction::I32Const(0))
-        .instruction(&Instruction::RefNull(HeapType::Concrete(array_type)))
+        .instruction(&Instruction::RefNull(GC_NULL_HEAP_TYPE))
         .instruction(&Instruction::I32Const(0))
         .instruction(&Instruction::Return);
 }
@@ -881,9 +876,9 @@ fn emit_continuation_test(function: &mut Function, local: u32) {
         .instruction(&Instruction::I32Or);
 }
 
-fn emit_utf8_failure(function: &mut Function, string_type: u32) {
+fn emit_utf8_failure(function: &mut Function) {
     function
         .instruction(&Instruction::I32Const(0))
-        .instruction(&Instruction::RefNull(HeapType::Concrete(string_type)))
+        .instruction(&Instruction::RefNull(GC_NULL_HEAP_TYPE))
         .instruction(&Instruction::Return);
 }

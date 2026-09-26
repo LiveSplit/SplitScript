@@ -1,5 +1,19 @@
 # SplitScript roadmap
 
+## 2026-09-26: compact GC null encoding
+
+- Emit GC null constants with the one-byte `none` heap type instead of a
+  concrete struct/array type index, including global initializers and frame
+  resets. Source callable values are GC wrapper structs; this does not change
+  the separate Wasm function-reference or extern-reference hierarchies.
+- This direct codegen improvement applies to Debug and Release, removes
+  unnecessary type lookups and introduces no optimization pass.
+- On top of the earlier non-returning-expression fix, Release files shrink
+  by 41 bytes for Lunistice, 631 for automatic Unity live identity, 668 for
+  managed maps and 671 for nested managed maps. The other four size-corpus
+  fixtures are unchanged. Regression coverage checks compact null encoding
+  and validates large managed schemas and async failures in both profiles.
+
 ## 2026-09-11: every runtime value has lazy Debug formatting
 
 - Made `Debug` a total capability for concrete runtime values and preserved

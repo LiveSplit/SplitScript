@@ -6,7 +6,8 @@
 //! cancellation therefore cannot strand a WASI descriptor. If the file
 //! changes between polls, hashing restarts from the initial MD5 state.
 
-use wasm_encoder::{BlockType, Function, HeapType, Instruction, ValType};
+use crate::codegen::GC_NULL_HEAP_TYPE;
+use wasm_encoder::{BlockType, Function, Instruction, ValType};
 
 use crate::{abi::AbiImportId, stdlib::StdlibTypeId};
 
@@ -37,7 +38,6 @@ struct PollStateLocals {
     mtime: u32,
     packed_ab: u32,
     packed_cd: u32,
-    string_type: u32,
 }
 
 const SHIFTS: [i32; 64] = [
@@ -354,7 +354,6 @@ pub(super) fn compile_module_poll(
     let new_offset_pointer = stat_pointer + 80;
     let bytes_start = stat_pointer + STAGING_PREFIX;
     let staging_end = bytes_start + BYTES_PER_POLL + 128;
-    let string_type = gc.standard_index(StdlibTypeId::String);
     let string_value = gc.val_type(Type::Standard(StdlibTypeId::String));
 
     // Parameters: path, initialized, offset, size, mtime, packed AB, packed CD.
@@ -391,7 +390,6 @@ pub(super) fn compile_module_poll(
         mtime: expected_mtime,
         packed_ab,
         packed_cd,
-        string_type,
     };
 
     emit_ensure_capacity(&mut function, staging_end, required_pages);
@@ -780,7 +778,7 @@ fn emit_return(function: &mut Function, poll: PollStateLocals, status: i32, hash
     if let Some(hash) = hash {
         function.instruction(&Instruction::LocalGet(hash));
     } else {
-        function.instruction(&Instruction::RefNull(HeapType::Concrete(poll.string_type)));
+        function.instruction(&Instruction::RefNull(GC_NULL_HEAP_TYPE));
     }
     function.instruction(&Instruction::Return);
 }
