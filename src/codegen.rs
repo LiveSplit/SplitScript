@@ -53,8 +53,13 @@ mod managed_references;
 mod managed_snapshots;
 mod managed_state_reads;
 mod memory_plan;
+mod merging;
 mod module_assembly;
 mod module_start;
+mod optimization;
+#[cfg(test)]
+mod optimization_tests;
+mod peephole;
 mod pointer_prefixes;
 mod reachability;
 mod runtime_helper_registry;
@@ -398,7 +403,7 @@ impl std::ops::Deref for BackendProgram<'_> {
 }
 
 pub fn compile(inputs: BackendProgram<'_>) -> Vec<u8> {
-    compile_internal(inputs, None)
+    compile_internal(inputs, None, OptimizationMode::Size)
 }
 
 /// Sidecar information from the same plan that emitted the module. Requesting
@@ -417,11 +422,22 @@ pub struct CodegenReport {
 
 pub(crate) fn compile_with_report(inputs: BackendProgram<'_>) -> (Vec<u8>, CodegenReport) {
     let mut report = CodegenReport::default();
-    let wasm = compile_internal(inputs, Some(&mut report));
+    let wasm = compile_internal(inputs, Some(&mut report), OptimizationMode::Size);
     (wasm, report)
 }
 
-fn compile_internal(inputs: BackendProgram<'_>, report: Option<&mut CodegenReport>) -> Vec<u8> {
+#[derive(Clone, Copy)]
+enum OptimizationMode {
+    #[cfg(test)]
+    None,
+    Size,
+}
+
+fn compile_internal(
+    inputs: BackendProgram<'_>,
+    mut report: Option<&mut CodegenReport>,
+    optimizations: OptimizationMode,
+) -> Vec<u8> {
     // These contracts describe immutable compiler-owned tables, independent of
     // the source, profile, or injected standard-library graph.
     static VALIDATED_CONTRACTS: std::sync::OnceLock<()> = std::sync::OnceLock::new();
@@ -1167,7 +1183,7 @@ fn compile_internal(inputs: BackendProgram<'_>, report: Option<&mut CodegenRepor
         })
     });
 
-    if let Some(report) = report {
+    if let Some(report) = report.as_deref_mut() {
         let memory = static_data.layout();
         *report = CodegenReport {
             functions: function_debug_names,
@@ -1183,7 +1199,7 @@ fn compile_internal(inputs: BackendProgram<'_>, report: Option<&mut CodegenRepor
         };
     }
 
-    module_assembly::finish(
+    let wasm = module_assembly::finish(
         module_assembly::Sections {
             types,
             imports,
@@ -1206,7 +1222,16 @@ fn compile_internal(inputs: BackendProgram<'_>, report: Option<&mut CodegenRepor
         start_function,
         update_function,
         debug_artifacts.as_ref(),
-    )
+    );
+    // Debug/hot-reload compilation bypasses every optimizer scan.
+    if wasm_ir.profile() != crate::BuildProfile::Release {
+        return wasm;
+    }
+    match optimizations {
+        #[cfg(test)]
+        OptimizationMode::None => wasm,
+        OptimizationMode::Size => optimization::optimize(wasm, report),
+    }
 }
 
 fn resolved_intrinsic(target: &wasm_ir::CallTarget) -> Option<IntrinsicId> {

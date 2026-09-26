@@ -978,15 +978,18 @@ concepts rather than maintaining a parallel inventory.
 
 ## P1 — reduce generated Wasm size with Release-only compiler optimizations
 
-Schedule this as a separate compiler project after the current Unity goal is
-finished. It is not part of Unity parity or a prerequisite for fixing the size
-regressions introduced by that work. Optimize final Wasm byte size; leave
-execution-speed optimization to the WebAssembly engine. Keep Debug builds out
-of these passes so stepping and source correspondence remain straightforward.
+The [promoted size pipeline](docs/WASM_SIZE_OPTIMIZATION.md) performs bounded
+Release-only instruction, integer-constant, dead-code, local and control-flow
+cleanup, shared returns, and sharing of bodies differing in integer constants.
+It saves 7.0% / 7.2% on Minish Cap / Lunistice. Debug bypasses all passes.
+Inlining, temporary sinking and propagation remain on the experimental branch;
+their remaining real-script benefit does not yet justify promotion. Prefer
+measured savings on real scripts over large synthetic fixtures. Direct emitter
+fixes that add no analysis may apply to both profiles.
 
 Implement in this order:
 
-1. [ ] Establish a representative Release size corpus, including small native
+1. [x] Establish a representative Release size corpus, including small native
    scripts, explicit-profile and automatic-profile Unity scripts, nested managed
    collections, and async code. Record final module bytes and section sizes
    under one fixed emission pipeline, with optimization enabled and disabled.
@@ -998,10 +1001,10 @@ Implement in this order:
    and observable effects. Reuse existing constant evaluation where its
    semantics match runtime evaluation; never evaluate process reads or other
    host effects at compile time.
-3. [ ] Add size-driven inlining, beginning with non-recursive functions that
-   have one reachable call site. Inline only when the estimated total module
-   cost falls, accounting for removal of the original function, call overhead,
-   locals, and any retained dependencies. Treat recursive calls and suspension
+3. [ ] Establish useful additional savings from size-driven inlining before
+   promoting the existing experiment. Account for removal of the original
+   function, call overhead, locals, retained dependencies, and cleanup already
+   performed by the promoted pipeline. Treat recursion and suspension
    boundaries conservatively. Do not use hotness or runtime-speed heuristics.
 4. [ ] Recompute reachability after simplification and inlining so newly unused
    functions, runtime helpers, imports, types, static data, and scratch regions
