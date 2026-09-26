@@ -339,13 +339,9 @@ fn compile_struct_equality(
             unreachable!()
         };
         let ty = struct_field_type(field_id, semantics);
-        function
-            .instruction(&Instruction::LocalGet(0))
-            .instruction(&Instruction::RefAsNonNull);
+        function.instruction(&Instruction::LocalGet(0));
         emit_typed_struct_get(&mut function, type_index, field_index as u32, ty);
-        function
-            .instruction(&Instruction::LocalGet(1))
-            .instruction(&Instruction::RefAsNonNull);
+        function.instruction(&Instruction::LocalGet(1));
         emit_typed_struct_get(&mut function, type_index, field_index as u32, ty);
         emit_value_equality(&mut function, ty, equality_functions, string_eq);
         function.instruction(&Instruction::I32And);
@@ -374,9 +370,7 @@ fn compile_managed_class_equality(
         };
         let ty = managed_snapshot_field_type(field_id, semantics);
         let get = |function: &mut Function, object| {
-            function
-                .instruction(&Instruction::LocalGet(object))
-                .instruction(&Instruction::RefAsNonNull);
+            function.instruction(&Instruction::LocalGet(object));
             emit_typed_struct_get(function, type_index, field_index as u32, ty);
         };
         // Inactive conditional fields contain defaults. Reference defaults are
@@ -433,13 +427,9 @@ fn compile_standard_struct_equality(
     for (field_index, field) in gc.standard_library.fields_of(structure).enumerate() {
         equality_functions.charge(&mut function);
         let field_ty = standard_field_type(field.id, semantics);
-        function
-            .instruction(&Instruction::LocalGet(0))
-            .instruction(&Instruction::RefAsNonNull);
+        function.instruction(&Instruction::LocalGet(0));
         emit_typed_struct_get(&mut function, type_index, field_index as u32, field_ty);
-        function
-            .instruction(&Instruction::LocalGet(1))
-            .instruction(&Instruction::RefAsNonNull);
+        function.instruction(&Instruction::LocalGet(1));
         emit_typed_struct_get(&mut function, type_index, field_index as u32, field_ty);
         emit_value_equality(&mut function, field_ty, equality_functions, string_eq);
         function.instruction(&Instruction::I32And);
@@ -463,14 +453,11 @@ fn compile_enum_equality(
     };
     let type_index = gc.index(Type::Enum(enum_id));
 
-    function
-        .instruction(&Instruction::LocalGet(0))
-        .instruction(&Instruction::RefAsNonNull);
+    function.instruction(&Instruction::LocalGet(0));
     emit_typed_struct_get(&mut function, type_index, 0, Type::I32);
     function
         .instruction(&Instruction::LocalTee(tag))
-        .instruction(&Instruction::LocalGet(1))
-        .instruction(&Instruction::RefAsNonNull);
+        .instruction(&Instruction::LocalGet(1));
     emit_typed_struct_get(&mut function, type_index, 0, Type::I32);
     function
         .instruction(&Instruction::I32Ne)
@@ -495,13 +482,9 @@ fn compile_enum_equality(
             };
             let ty = enum_variant_payload(variant_id, semantics)
                 .expect("payload variants have backend types");
-            function
-                .instruction(&Instruction::LocalGet(0))
-                .instruction(&Instruction::RefAsNonNull);
+            function.instruction(&Instruction::LocalGet(0));
             emit_typed_struct_get(&mut function, type_index, variant_index as u32 + 1, ty);
-            function
-                .instruction(&Instruction::LocalGet(1))
-                .instruction(&Instruction::RefAsNonNull);
+            function.instruction(&Instruction::LocalGet(1));
             emit_typed_struct_get(&mut function, type_index, variant_index as u32 + 1, ty);
             emit_value_equality(&mut function, ty, equality_functions, string_eq);
         } else {
@@ -543,12 +526,9 @@ fn compile_option_equality(
         .instruction(&Instruction::I32Const(0))
         .instruction(&Instruction::Return)
         .instruction(&Instruction::End)
-        .instruction(&Instruction::LocalGet(0))
-        .instruction(&Instruction::RefAsNonNull);
+        .instruction(&Instruction::LocalGet(0));
     emit_typed_struct_get(&mut function, type_index, 0, value_type);
-    function
-        .instruction(&Instruction::LocalGet(1))
-        .instruction(&Instruction::RefAsNonNull);
+    function.instruction(&Instruction::LocalGet(1));
     emit_typed_struct_get(&mut function, type_index, 0, value_type);
     emit_value_equality(&mut function, value_type, equality_functions, string_eq);
     function.instruction(&Instruction::End);
@@ -568,14 +548,11 @@ fn compile_result_equality(
     let type_index = gc.index(Type::Result(result));
     let value_type = result_value_type(result, semantics);
 
-    function
-        .instruction(&Instruction::LocalGet(0))
-        .instruction(&Instruction::RefAsNonNull);
+    function.instruction(&Instruction::LocalGet(0));
     emit_typed_struct_get(&mut function, type_index, 1, Type::I32);
     function
         .instruction(&Instruction::LocalTee(tag))
-        .instruction(&Instruction::LocalGet(1))
-        .instruction(&Instruction::RefAsNonNull);
+        .instruction(&Instruction::LocalGet(1));
     emit_typed_struct_get(&mut function, type_index, 1, Type::I32);
     function
         .instruction(&Instruction::I32Ne)
@@ -585,17 +562,14 @@ fn compile_result_equality(
         .instruction(&Instruction::End)
         .instruction(&Instruction::LocalGet(tag))
         .instruction(&Instruction::If(BlockType::Empty))
-        .instruction(&Instruction::LocalGet(0))
-        .instruction(&Instruction::RefAsNonNull);
+        .instruction(&Instruction::LocalGet(0));
     emit_typed_struct_get(
         &mut function,
         type_index,
         2,
         Type::Standard(StdlibTypeId::String),
     );
-    function
-        .instruction(&Instruction::LocalGet(1))
-        .instruction(&Instruction::RefAsNonNull);
+    function.instruction(&Instruction::LocalGet(1));
     emit_typed_struct_get(
         &mut function,
         type_index,
@@ -611,12 +585,9 @@ fn compile_result_equality(
     function
         .instruction(&Instruction::Return)
         .instruction(&Instruction::End)
-        .instruction(&Instruction::LocalGet(0))
-        .instruction(&Instruction::RefAsNonNull);
+        .instruction(&Instruction::LocalGet(0));
     emit_typed_struct_get(&mut function, type_index, 0, value_type);
-    function
-        .instruction(&Instruction::LocalGet(1))
-        .instruction(&Instruction::RefAsNonNull);
+    function.instruction(&Instruction::LocalGet(1));
     emit_typed_struct_get(&mut function, type_index, 0, value_type);
     emit_value_equality(&mut function, value_type, equality_functions, string_eq);
     function.instruction(&Instruction::End);

@@ -1416,6 +1416,9 @@ fn emit_struct_get(function: &mut Function, field_index: u32, ty: Type) {
     emit_typed_struct_get(function, STATE_TYPE, field_index, ty);
 }
 
+/// Consumes a nullable struct reference and traps on null. Callers should not
+/// emit `ref.as_non_null` before this read: all three struct.get variants
+/// perform the same check without evaluating any further operands.
 fn emit_typed_struct_get(
     function: &mut Function,
     struct_type_index: u32,

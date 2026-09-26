@@ -140,8 +140,7 @@ pub(super) fn compile(
                 .instruction(&I::RefAsNonNull)
                 .instruction(&I::LocalGet(index));
             if let Some(entry) = entry {
-                f.instruction(&I::ArrayGet(storage_index))
-                    .instruction(&I::RefAsNonNull);
+                f.instruction(&I::ArrayGet(storage_index));
                 emit_typed_struct_get(f, gc.index(entry), field_index, ty);
             } else {
                 emit_array_get(f, storage_index, ty, gc);

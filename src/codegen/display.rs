@@ -187,9 +187,7 @@ fn emit_state_field_segment(
         .value_type(storage)
         .expect("checked state fields have semantic types");
     let field_type = semantic_type(field_type_id, inputs.semantics);
-    function
-        .instruction(&Instruction::LocalGet(0))
-        .instruction(&Instruction::RefAsNonNull);
+    function.instruction(&Instruction::LocalGet(0));
     emit_typed_struct_get(function, STATE_TYPE, field_index, field_type);
     emit_value(function, field_type_id, field_type, inputs);
     function.instruction(&Instruction::Call(
@@ -304,9 +302,7 @@ fn compile_catalog_struct(
             .instantiated_catalog_type(field.ty, &variables)
             .expect("concrete catalog struct fields have semantic layouts");
         let field_type = semantic_type(field_type_id, inputs.semantics);
-        function
-            .instruction(&Instruction::LocalGet(0))
-            .instruction(&Instruction::RefAsNonNull);
+        function.instruction(&Instruction::LocalGet(0));
         emit_typed_struct_get(
             &mut function,
             inputs.gc.index(Type::Application(application)),
@@ -351,9 +347,7 @@ fn compile_struct(structure: &StructuralType, inputs: &DisplayInputs<'_>) -> Fun
         };
         let field_type_id = field.ty.expect("struct fields have semantic types");
         let field_type = struct_field_type(field_id, inputs.semantics);
-        function
-            .instruction(&Instruction::LocalGet(0))
-            .instruction(&Instruction::RefAsNonNull);
+        function.instruction(&Instruction::LocalGet(0));
         emit_typed_struct_get(&mut function, type_index, field_index as u32, field_type);
         emit_value(&mut function, field_type_id, field_type, inputs);
         function.instruction(&Instruction::Call(
@@ -441,9 +435,7 @@ fn emit_managed_field_segment(
         .ty
         .expect("managed snapshot fields have semantic types");
     let field_type = managed_snapshot_field_type(field_id, inputs.semantics);
-    function
-        .instruction(&Instruction::LocalGet(0))
-        .instruction(&Instruction::RefAsNonNull);
+    function.instruction(&Instruction::LocalGet(0));
     emit_typed_struct_get(function, type_index, field_index, field_type);
     emit_value(function, field_type_id, field_type, inputs);
     function.instruction(&Instruction::Call(
@@ -461,9 +453,7 @@ fn compile_enum(enumeration: &StructuralType, inputs: &DisplayInputs<'_>) -> Fun
         unreachable!()
     };
     let type_index = inputs.gc.index(Type::Enum(enum_id));
-    function
-        .instruction(&Instruction::LocalGet(0))
-        .instruction(&Instruction::RefAsNonNull);
+    function.instruction(&Instruction::LocalGet(0));
     emit_typed_struct_get(&mut function, type_index, 0, Type::I32);
     function.instruction(&Instruction::LocalSet(tag));
 
@@ -619,9 +609,7 @@ fn compile_map(
     let entry_index = inputs.gc.index(Type::Application(*entry_layout));
 
     begin_recursion_guard(&mut function, inputs);
-    function
-        .instruction(&Instruction::LocalGet(0))
-        .instruction(&Instruction::RefAsNonNull);
+    function.instruction(&Instruction::LocalGet(0));
     emit_typed_struct_get(&mut function, map_index, 0, Type::Array(*entries_array));
     array_value::emit_length(&mut function, inputs.gc, *entries_array);
     function
@@ -641,8 +629,7 @@ fn compile_map(
         .instruction(&Instruction::LocalGet(length))
         .instruction(&Instruction::I32GeU)
         .instruction(&Instruction::BrIf(1))
-        .instruction(&Instruction::LocalGet(0))
-        .instruction(&Instruction::RefAsNonNull);
+        .instruction(&Instruction::LocalGet(0));
     emit_typed_struct_get(&mut function, map_index, 0, Type::Array(*entries_array));
     array_value::emit_backing(&mut function, inputs.gc, *entries_array);
     function.instruction(&Instruction::LocalGet(index));
@@ -660,14 +647,11 @@ fn compile_map(
         .instruction(&Instruction::LocalGet(index))
         .instruction(&Instruction::I32Const(1))
         .instruction(&Instruction::I32Add)
-        .instruction(&Instruction::LocalGet(entry))
-        .instruction(&Instruction::RefAsNonNull);
+        .instruction(&Instruction::LocalGet(entry));
     emit_typed_struct_get(&mut function, entry_index, 0, key_backend);
     emit_value(&mut function, key, key_backend, inputs);
     emit_string_literal(&mut function, ": ", inputs.gc);
-    function
-        .instruction(&Instruction::LocalGet(entry))
-        .instruction(&Instruction::RefAsNonNull);
+    function.instruction(&Instruction::LocalGet(entry));
     emit_typed_struct_get(&mut function, entry_index, 1, value_backend);
     emit_value(&mut function, value, value_backend, inputs);
     join_pieces(&mut function, 3, inputs);
@@ -837,16 +821,12 @@ fn compile_result(
     let mut function = Function::new([]);
     begin_recursion_guard(&mut function, inputs);
     let type_index = inputs.gc.index(Type::Result(result));
-    function
-        .instruction(&Instruction::LocalGet(0))
-        .instruction(&Instruction::RefAsNonNull);
+    function.instruction(&Instruction::LocalGet(0));
     emit_typed_struct_get(&mut function, type_index, 1, Type::I32);
     function.instruction(&Instruction::If(BlockType::Result(
         inputs.gc.val_type(Type::Standard(StdlibTypeId::String)),
     )));
-    function
-        .instruction(&Instruction::LocalGet(0))
-        .instruction(&Instruction::RefAsNonNull);
+    function.instruction(&Instruction::LocalGet(0));
     emit_typed_struct_get(
         &mut function,
         type_index,
@@ -886,9 +866,7 @@ fn compile_range(
     begin_recursion_guard(&mut function, inputs);
     let backend = super::semantic_type(bound, inputs.semantics);
     let type_index = inputs.gc.index(Type::Range(range));
-    function
-        .instruction(&Instruction::LocalGet(0))
-        .instruction(&Instruction::RefAsNonNull);
+    function.instruction(&Instruction::LocalGet(0));
     emit_typed_struct_get(&mut function, type_index, 0, backend);
     emit_value(&mut function, bound, backend, inputs);
     emit_string_literal(
@@ -899,9 +877,7 @@ fn compile_range(
         },
         inputs.gc,
     );
-    function
-        .instruction(&Instruction::LocalGet(0))
-        .instruction(&Instruction::RefAsNonNull);
+    function.instruction(&Instruction::LocalGet(0));
     emit_typed_struct_get(&mut function, type_index, 1, backend);
     emit_value(&mut function, bound, backend, inputs);
     join_pieces(&mut function, 3, inputs);

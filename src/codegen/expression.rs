@@ -182,7 +182,6 @@ impl ClosureEnvironment<'_> {
 }
 
 fn emit_capture_cell_get(function: &mut Function, ty: Type, gc: &GcLayout) {
-    function.instruction(&Instruction::RefAsNonNull);
     emit_typed_struct_get(function, gc.capture_cell_index(ty), 0, ty);
 }
 
@@ -735,9 +734,7 @@ pub(super) fn compile_fallback_condition(
                 .instruction(&Instruction::RefIsNull);
         }
         Type::Result(result) => {
-            function
-                .instruction(&Instruction::LocalGet(input_local))
-                .instruction(&Instruction::RefAsNonNull);
+            function.instruction(&Instruction::LocalGet(input_local));
             emit_typed_struct_get(
                 function,
                 context.gc.index(Type::Result(result)),
@@ -768,15 +765,11 @@ fn compile_fallback_success(
     let input_local = context.matches.fallback_values[&source.id];
     match context.expression_type(value) {
         Type::Option(option) => {
-            function
-                .instruction(&Instruction::LocalGet(input_local))
-                .instruction(&Instruction::RefAsNonNull);
+            function.instruction(&Instruction::LocalGet(input_local));
             emit_typed_struct_get(function, context.gc.index(Type::Option(option)), 0, ty);
         }
         Type::Result(result) => {
-            function
-                .instruction(&Instruction::LocalGet(input_local))
-                .instruction(&Instruction::RefAsNonNull);
+            function.instruction(&Instruction::LocalGet(input_local));
             emit_typed_struct_get(function, context.gc.index(Type::Result(result)), 0, ty);
         }
         _ => unreachable!("typed fallback inputs are optional or result values"),
@@ -900,7 +893,6 @@ impl PatternValue {
         {
             match *projection {
                 PatternProjection::Field { owner, index, ty } => {
-                    function.instruction(&Instruction::RefAsNonNull);
                     emit_typed_struct_get(function, context.gc.index(owner), index, ty);
                 }
                 PatternProjection::ArrayElement { array, index, ty } => {
@@ -1046,7 +1038,6 @@ fn compile_projected_pattern(
                     .gc
                     .enum_variant_index(*enumeration, *variant, context.enums);
             value.emit(function, context);
-            function.instruction(&Instruction::RefAsNonNull);
             emit_typed_struct_get(function, context.gc.index(value.ty), 0, Type::I32);
             function
                 .instruction(&Instruction::I32Const(variant_index as i32))
@@ -1138,7 +1129,6 @@ fn compile_projected_pattern(
             ];
             for (component_index, (field, component)) in fields.iter().zip(components).enumerate() {
                 value.emit(function, context);
-                function.instruction(&Instruction::RefAsNonNull);
                 emit_typed_struct_get(
                     function,
                     context.gc.index(value.ty),
@@ -1188,7 +1178,6 @@ fn compile_projected_pattern(
         wasm_ir::LoweredPattern::ResultSuccess { payload, .. }
         | wasm_ir::LoweredPattern::ResultError { payload, .. } => {
             value.emit(function, context);
-            function.instruction(&Instruction::RefAsNonNull);
             emit_typed_struct_get(function, context.gc.index(value.ty), 1, Type::I32);
             let is_error = matches!(pattern, wasm_ir::LoweredPattern::ResultError { .. });
             function
@@ -1550,9 +1539,7 @@ pub(super) fn compile_state_assignment(
         .instruction(&Instruction::GlobalGet(context.runtime_globals.current))
         .instruction(&Instruction::RefAsNonNull);
     compile_assignment_value(function, operation, value, ty, context, |function| {
-        function
-            .instruction(&Instruction::GlobalGet(context.runtime_globals.current))
-            .instruction(&Instruction::RefAsNonNull);
+        function.instruction(&Instruction::GlobalGet(context.runtime_globals.current));
         emit_typed_struct_get(function, STATE_TYPE, field_index, ty);
     });
     function.instruction(&Instruction::StructSet {
@@ -1911,14 +1898,12 @@ pub(super) fn compile_resolved_path(
                 .find(|(_, field)| field.name == name)
                 .expect("provider binding structs contain every reachable context");
             let field_type = struct_field_type(field.id, context.semantics);
-            function
-                .instruction(&Instruction::GlobalGet(
-                    context
-                        .runtime_globals
-                        .provider_preparation_value
-                        .expect("provider contexts require preparation storage"),
-                ))
-                .instruction(&Instruction::RefAsNonNull);
+            function.instruction(&Instruction::GlobalGet(
+                context
+                    .runtime_globals
+                    .provider_preparation_value
+                    .expect("provider contexts require preparation storage"),
+            ));
             emit_typed_struct_get(
                 function,
                 context.gc.index(Type::Struct(structure.id)),
@@ -2399,7 +2384,6 @@ pub(super) fn compile_for_init(
             });
             compile_value_set(function, index_value, context, |function| {
                 compile_value_get(function, iterable_value, context);
-                function.instruction(&Instruction::RefAsNonNull);
                 emit_typed_struct_get(function, context.gc.index(Type::Range(range)), 0, bound);
             });
         }
@@ -2501,7 +2485,6 @@ pub(super) fn compile_for_has_next(
         let emit_end = |function: &mut Function| match collection {
             ForCollection::Range { range, .. } => {
                 compile_value_get(function, iterable_value, context);
-                function.instruction(&Instruction::RefAsNonNull);
                 emit_typed_struct_get(function, context.gc.index(Type::Range(range)), 1, bound);
             }
             ForCollection::DirectRange { .. } => {
@@ -2584,7 +2567,6 @@ pub(super) fn compile_for_bind_and_advance(
     if let ForCollection::Iterator { step } = collection {
         compile_value_set(function, binding, context, |function| {
             compile_value_get(function, index_value, context);
-            function.instruction(&Instruction::RefAsNonNull);
             emit_typed_struct_get(
                 function,
                 context.gc.index(Type::Application(step)),
@@ -2605,7 +2587,6 @@ pub(super) fn compile_for_bind_and_advance(
         let emit_end = |function: &mut Function| match collection {
             ForCollection::Range { range, bound } => {
                 compile_value_get(function, iterable_value, context);
-                function.instruction(&Instruction::RefAsNonNull);
                 emit_typed_struct_get(function, context.gc.index(Type::Range(range)), 1, bound);
             }
             ForCollection::DirectRange { .. } => {
@@ -2852,7 +2833,6 @@ pub(super) fn emit_path_fields(
         if field_type == Type::None && !context.materialize_none {
             function.instruction(&Instruction::Drop);
         } else {
-            function.instruction(&Instruction::RefAsNonNull);
             emit_typed_struct_get(function, struct_type_index, field_index, field_type);
         }
         current_type = field_type;
@@ -3238,14 +3218,12 @@ pub(super) fn emit_managed_binding_field(
         .find(|(_, field)| field.name == name)
         .expect("managed binding structs contain every generated metadata field");
     let field_type = struct_field_type(field.id, context.semantics);
-    function
-        .instruction(&Instruction::GlobalGet(
-            context
-                .runtime_globals
-                .provider_preparation_value
-                .expect("managed schemas require provider preparation storage"),
-        ))
-        .instruction(&Instruction::RefAsNonNull);
+    function.instruction(&Instruction::GlobalGet(
+        context
+            .runtime_globals
+            .provider_preparation_value
+            .expect("managed schemas require provider preparation storage"),
+    ));
     emit_typed_struct_get(
         function,
         context.gc.index(Type::Struct(structure.id)),
@@ -3737,9 +3715,7 @@ fn compile_expr_unconverted(
                     compile_expr(function, *fallback, &nested_context);
                     function.instruction(&Instruction::Else);
                     if ty != Type::None || context.materialize_none {
-                        function
-                            .instruction(&Instruction::LocalGet(input_local))
-                            .instruction(&Instruction::RefAsNonNull);
+                        function.instruction(&Instruction::LocalGet(input_local));
                         emit_typed_struct_get(
                             function,
                             context.gc.index(Type::Option(option)),
@@ -3750,9 +3726,7 @@ fn compile_expr_unconverted(
                     function.instruction(&Instruction::End);
                 }
                 Type::Result(result_type) => {
-                    function
-                        .instruction(&Instruction::LocalGet(input_local))
-                        .instruction(&Instruction::RefAsNonNull);
+                    function.instruction(&Instruction::LocalGet(input_local));
                     emit_typed_struct_get(
                         function,
                         context.gc.index(Type::Result(result_type)),
@@ -3764,9 +3738,7 @@ fn compile_expr_unconverted(
                     compile_expr(function, *fallback, &nested_context);
                     function.instruction(&Instruction::Else);
                     if ty != Type::None || context.materialize_none {
-                        function
-                            .instruction(&Instruction::LocalGet(input_local))
-                            .instruction(&Instruction::RefAsNonNull);
+                        function.instruction(&Instruction::LocalGet(input_local));
                         emit_typed_struct_get(
                             function,
                             context.gc.index(Type::Result(result_type)),
@@ -3833,8 +3805,7 @@ fn compile_expr_unconverted(
             compile_expr(function, *value, context);
             function
                 .instruction(&Instruction::LocalSet(input_local))
-                .instruction(&Instruction::LocalGet(input_local))
-                .instruction(&Instruction::RefAsNonNull);
+                .instruction(&Instruction::LocalGet(input_local));
             emit_typed_struct_get(
                 function,
                 context.gc.index(Type::Result(input_result)),
@@ -3848,9 +3819,7 @@ fn compile_expr_unconverted(
                         unreachable!("propagation targets are result values")
                     };
                     emit_failure_return(function, target_result, context, false, |function| {
-                        function
-                            .instruction(&Instruction::LocalGet(input_local))
-                            .instruction(&Instruction::RefAsNonNull);
+                        function.instruction(&Instruction::LocalGet(input_local));
                         emit_typed_struct_get(
                             function,
                             context.gc.index(Type::Result(input_result)),
@@ -3867,9 +3836,7 @@ fn compile_expr_unconverted(
             }
             function.instruction(&Instruction::End);
             if ty != Type::None || context.materialize_none {
-                function
-                    .instruction(&Instruction::LocalGet(input_local))
-                    .instruction(&Instruction::RefAsNonNull);
+                function.instruction(&Instruction::LocalGet(input_local));
                 emit_typed_struct_get(
                     function,
                     context.gc.index(Type::Result(input_result)),
@@ -4229,9 +4196,7 @@ fn compile_expr_unconverted(
                 };
                 function.instruction(&Instruction::LocalSet(local));
                 for (field, field_type) in [(0, Type::Address), (1, Type::I32)] {
-                    function
-                        .instruction(&Instruction::LocalGet(local))
-                        .instruction(&Instruction::RefAsNonNull);
+                    function.instruction(&Instruction::LocalGet(local));
                     emit_typed_struct_get(
                         function,
                         context.gc.index(Type::Result(helper_layout)),
@@ -4240,9 +4205,7 @@ fn compile_expr_unconverted(
                     );
                 }
                 if context.failure_payloads.is_demanded(output_result) {
-                    function
-                        .instruction(&Instruction::LocalGet(local))
-                        .instruction(&Instruction::RefAsNonNull);
+                    function.instruction(&Instruction::LocalGet(local));
                     emit_typed_struct_get(
                         function,
                         context.gc.index(Type::Result(helper_layout)),
@@ -5372,9 +5335,7 @@ fn emit_iterator_constructor(
             };
             let bound = range_bound_type(range, context.semantics);
             for field in [0, 1] {
-                function
-                    .instruction(&Instruction::LocalGet(source))
-                    .instruction(&Instruction::RefAsNonNull);
+                function.instruction(&Instruction::LocalGet(source));
                 emit_typed_struct_get(function, context.gc.index(Type::Range(range)), field, bound);
             }
             if intrinsic == IntrinsicId::InclusiveRangeIterator {
@@ -5510,7 +5471,6 @@ fn emit_generator_next(
     for (frame_type, tag, next) in candidates {
         function
             .instruction(&Instruction::LocalGet(cursor))
-            .instruction(&Instruction::RefAsNonNull)
             .instruction(&Instruction::StructGet {
                 struct_type_index: context.gc.index(iterator_type),
                 field_index: CONTINUATION_TAG_FIELD,
@@ -5758,9 +5718,7 @@ fn emit_range_iterator_next(
 }
 
 fn emit_cursor_field(function: &mut Function, cursor: u32, cursor_type: u32, field: u32, ty: Type) {
-    function
-        .instruction(&Instruction::LocalGet(cursor))
-        .instruction(&Instruction::RefAsNonNull);
+    function.instruction(&Instruction::LocalGet(cursor));
     emit_typed_struct_get(function, cursor_type, field, ty);
 }
 
@@ -6744,10 +6702,8 @@ fn compile_intrinsic_equality(
 
     if matches!(operand_type, Type::Standard(_)) && operand_type.is_enum(context.standard_library) {
         compile_receiver(function, target, context);
-        function.instruction(&Instruction::RefAsNonNull);
         emit_typed_struct_get(function, context.gc.index(operand_type), 0, Type::I32);
         compile_expr(function, other, context);
-        function.instruction(&Instruction::RefAsNonNull);
         emit_typed_struct_get(function, context.gc.index(operand_type), 0, Type::I32);
         function.instruction(&Instruction::I32Eq);
     } else if matches!(

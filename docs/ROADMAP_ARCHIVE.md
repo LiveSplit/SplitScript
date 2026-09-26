@@ -1,5 +1,21 @@
 # SplitScript roadmap
 
+## 2026-09-26: omit duplicate checks before GC field reads
+
+- Remove null assertions immediately before GC field reads, including calls
+  through shared typed-field helpers. The read itself traps on null. Keep
+  assertions needed for non-null result types or before evaluating further
+  operands, where changing trap order could change observable effects.
+- This applies during ordinary emission in both profiles. On top of compact
+  null encoding it saves 452 Release bytes for Lunistice, 1,403 for automatic
+  Unity live identity, 2,396 for managed maps and 2,737 for nested maps. The
+  four native/async fixtures also shrink by 3–264 bytes.
+- The historical Unity gate already fails on the pre-change master commit
+  `f85f1dd`, including the same 475 generated-name diagnostics. Comparing both
+  new emitter fixes against that exact parent passes the unchanged gate,
+  including per-function and per-section checks and Lunistice base/DLC runtime
+  behavior. The historical baseline is not overwritten.
+
 ## 2026-09-26: compact GC null encoding
 
 - Emit GC null constants with the one-byte `none` heap type instead of a

@@ -332,8 +332,7 @@ impl Reader<'_, '_> {
         field: u32,
         ty: Type,
     ) {
-        f.instruction(&I::LocalGet(local))
-            .instruction(&I::RefAsNonNull);
+        f.instruction(&I::LocalGet(local));
         emit_typed_struct_get(f, self.lowering.gc.index(Type::Result(result)), field, ty);
     }
 
@@ -403,7 +402,7 @@ impl Reader<'_, '_> {
             0,
             Type::Standard(StdlibTypeId::UnityListLayout),
         );
-        f.instruction(&I::RefAsNonNull).instruction(&I::StructGet {
+        f.instruction(&I::StructGet {
             struct_type_index: l.gc.standard_index(StdlibTypeId::UnityListLayout),
             field_index: l
                 .gc
@@ -422,7 +421,6 @@ impl Reader<'_, '_> {
         f.instruction(&I::GlobalGet(
             l.runtime_globals.provider_preparation_value.unwrap(),
         ))
-        .instruction(&I::RefAsNonNull)
         .instruction(&I::StructGet {
             struct_type_index: l.gc.index(Type::Struct(structure)),
             field_index: field,
@@ -496,13 +494,12 @@ impl Reader<'_, '_> {
             0,
             Type::Standard(StdlibTypeId::UnityListLayout),
         );
-        f.instruction(&I::RefAsNonNull)
-            .instruction(&I::StructGet {
-                struct_type_index: l.gc.standard_index(StdlibTypeId::UnityListLayout),
-                field_index: l.gc.standard_field_index(field),
-            })
-            .instruction(&I::I64ExtendI32U)
-            .instruction(&I::LocalSet(14));
+        f.instruction(&I::StructGet {
+            struct_type_index: l.gc.standard_index(StdlibTypeId::UnityListLayout),
+            field_index: l.gc.standard_field_index(field),
+        })
+        .instruction(&I::I64ExtendI32U)
+        .instruction(&I::LocalSet(14));
         super::runtime_helpers::process::emit_invalid_managed_span(f, 15, 2, |f| {
             f.instruction(&I::LocalGet(14));
             if count {
@@ -568,7 +565,6 @@ impl Reader<'_, '_> {
         f.instruction(&I::GlobalGet(
             l.runtime_globals.provider_preparation_value.unwrap(),
         ))
-        .instruction(&I::RefAsNonNull)
         .instruction(&I::StructGet {
             struct_type_index: l.gc.index(Type::Struct(structure)),
             field_index: field,
@@ -631,7 +627,6 @@ impl Reader<'_, '_> {
         f.instruction(&I::GlobalGet(
             l.runtime_globals.provider_preparation_value.unwrap(),
         ))
-        .instruction(&I::RefAsNonNull)
         .instruction(&I::StructGet {
             struct_type_index: l.gc.index(Type::Struct(structure.id)),
             field_index: field,

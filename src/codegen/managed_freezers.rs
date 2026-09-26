@@ -98,7 +98,6 @@ pub(super) fn compile(ty: TypeId, l: &EmissionContext<'_>) -> Function {
             for (index, field) in layout.fields.iter().enumerate() {
                 if let Some(child) = l.managed_freezers.get(&field.ty) {
                     f.instruction(&I::LocalGet(0))
-                        .instruction(&I::RefAsNonNull)
                         .instruction(&I::StructGet {
                             struct_type_index: l.gc.index(semantic_type(ty, l.semantics)),
                             field_index: index as u32,

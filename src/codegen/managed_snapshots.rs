@@ -222,9 +222,7 @@ pub(super) fn compile(
         }
 
         let local = index as u32 + parameter_count;
-        function
-            .instruction(&Instruction::LocalTee(local))
-            .instruction(&Instruction::RefAsNonNull);
+        function.instruction(&Instruction::LocalTee(local));
         emit_typed_struct_get(
             &mut function,
             lowering.gc.index(Type::Result(field_result)),
@@ -232,9 +230,7 @@ pub(super) fn compile(
             Type::I32,
         );
         function.instruction(&Instruction::If(BlockType::Empty));
-        function
-            .instruction(&Instruction::LocalGet(local))
-            .instruction(&Instruction::RefAsNonNull);
+        function.instruction(&Instruction::LocalGet(local));
         emit_typed_struct_get(
             &mut function,
             lowering.gc.index(Type::Result(field_result)),
@@ -279,9 +275,7 @@ pub(super) fn compile(
     }
     for (index, field) in fields.iter().enumerate() {
         let field_result = result_for(field.snapshot_type, lowering);
-        function
-            .instruction(&Instruction::LocalGet(index as u32 + parameter_count))
-            .instruction(&Instruction::RefAsNonNull);
+        function.instruction(&Instruction::LocalGet(index as u32 + parameter_count));
         emit_typed_struct_get(
             &mut function,
             lowering.gc.index(Type::Result(field_result)),
@@ -348,7 +342,6 @@ fn emit_class_check(
     f.instruction(&I::GlobalGet(
         l.runtime_globals.provider_preparation_value.unwrap(),
     ))
-    .instruction(&I::RefAsNonNull)
     .instruction(&I::StructGet {
         struct_type_index: l.gc.index(Type::Struct(structure)),
         field_index: field,
@@ -362,7 +355,6 @@ fn emit_class_check(
     .instruction(&I::GlobalGet(
         l.runtime_globals.provider_preparation_value.unwrap(),
     ))
-    .instruction(&I::RefAsNonNull)
     .instruction(&I::StructGet {
         struct_type_index: l.gc.index(Type::Struct(structure)),
         field_index: class_field,
@@ -380,12 +372,10 @@ fn emit_class_check(
             field_index: 0,
         })
         .instruction(&I::CallRef(l.gc.callable_function_index(callable)))
-        .instruction(&I::LocalTee(result_local))
-        .instruction(&I::RefAsNonNull);
+        .instruction(&I::LocalTee(result_local));
     emit_typed_struct_get(f, l.gc.index(Type::Result(result)), 1, Type::I32);
     f.instruction(&I::If(BlockType::Empty))
-        .instruction(&I::LocalGet(result_local))
-        .instruction(&I::RefAsNonNull);
+        .instruction(&I::LocalGet(result_local));
     emit_typed_struct_get(
         f,
         l.gc.index(Type::Result(result)),
@@ -396,8 +386,7 @@ fn emit_class_check(
         .instruction(&I::Br(1))
         .instruction(&I::End);
     if remember {
-        f.instruction(&I::LocalGet(result_local))
-            .instruction(&I::RefAsNonNull);
+        f.instruction(&I::LocalGet(result_local));
         emit_typed_struct_get(f, l.gc.index(Type::Result(result)), 0, Type::Address);
         f.instruction(&I::LocalSet(actual_local));
     }
@@ -433,7 +422,6 @@ fn emit_field_read(
         let live_gc = context.gc.index(Type::Result(live_result));
         function
             .instruction(&Instruction::LocalTee(local))
-            .instruction(&Instruction::RefAsNonNull)
             .instruction(&Instruction::StructGet {
                 struct_type_index: live_gc,
                 field_index: 1,
@@ -449,7 +437,6 @@ fn emit_field_read(
         function
             .instruction(&Instruction::I32Const(1))
             .instruction(&Instruction::LocalGet(local))
-            .instruction(&Instruction::RefAsNonNull)
             .instruction(&Instruction::StructGet {
                 struct_type_index: live_gc,
                 field_index: 2,
@@ -459,7 +446,6 @@ fn emit_field_read(
             ))
             .instruction(&Instruction::Else)
             .instruction(&Instruction::LocalGet(local))
-            .instruction(&Instruction::RefAsNonNull)
             .instruction(&Instruction::StructGet {
                 struct_type_index: live_gc,
                 field_index: 0,
@@ -489,12 +475,10 @@ fn emit_field_read(
             function
                 .instruction(&Instruction::Else)
                 .instruction(&Instruction::LocalGet(local))
-                .instruction(&Instruction::RefAsNonNull)
                 .instruction(&Instruction::StructGet {
                     struct_type_index: live_gc,
                     field_index: 0,
                 })
-                .instruction(&Instruction::RefAsNonNull)
                 .instruction(&Instruction::StructGet {
                     struct_type_index: context.gc.index(Type::Option(*live_option)),
                     field_index: 0,
@@ -513,7 +497,6 @@ fn emit_field_read(
             let child_local = child_local.expect("optional child decoding has a result local");
             function
                 .instruction(&Instruction::LocalTee(child_local))
-                .instruction(&Instruction::RefAsNonNull)
                 .instruction(&Instruction::StructGet {
                     struct_type_index: child_gc,
                     field_index: 1,
@@ -525,7 +508,6 @@ fn emit_field_read(
             function
                 .instruction(&Instruction::I32Const(1))
                 .instruction(&Instruction::LocalGet(child_local))
-                .instruction(&Instruction::RefAsNonNull)
                 .instruction(&Instruction::StructGet {
                     struct_type_index: child_gc,
                     field_index: 2,
@@ -535,7 +517,6 @@ fn emit_field_read(
                 ))
                 .instruction(&Instruction::Else)
                 .instruction(&Instruction::LocalGet(child_local))
-                .instruction(&Instruction::RefAsNonNull)
                 .instruction(&Instruction::StructGet {
                     struct_type_index: child_gc,
                     field_index: 0,

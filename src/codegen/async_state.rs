@@ -3339,9 +3339,7 @@ fn compile_retry_poll(
     let result_local = context.matches.suspension_temps[&expression];
 
     compile_expr(function, expression, context);
-    function
-        .instruction(&Instruction::LocalTee(result_local))
-        .instruction(&Instruction::RefAsNonNull);
+    function.instruction(&Instruction::LocalTee(result_local));
     emit_typed_struct_get(
         function,
         context.gc.index(Type::Result(*result)),
@@ -3357,9 +3355,7 @@ fn compile_retry_poll(
     if let Some((field, stored_type)) = frame.field(destination) {
         debug_assert_eq!(stored_type, semantic_type(*result_value, context.semantics));
         context.locals.frame().emit(function);
-        function
-            .instruction(&Instruction::LocalGet(result_local))
-            .instruction(&Instruction::RefAsNonNull);
+        function.instruction(&Instruction::LocalGet(result_local));
         emit_typed_struct_get(
             function,
             context.gc.index(Type::Result(*result)),

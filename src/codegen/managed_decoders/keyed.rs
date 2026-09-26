@@ -209,7 +209,7 @@ pub(super) fn compile(
         F::UnityKeyedReadSlots,
     );
     f.instruction(&I::LocalSet(8));
-    f.instruction(&I::LocalGet(8)).instruction(&I::RefAsNonNull);
+    f.instruction(&I::LocalGet(8));
     super::super::array_value::emit_length(&mut f, l.gc, slots);
     f.instruction(&I::LocalSet(17));
     f.instruction(&I::LocalGet(CONTEXT));
@@ -273,8 +273,7 @@ pub(super) fn compile(
     f.instruction(&I::Block(BlockType::Empty))
         .instruction(&I::Loop(BlockType::Empty))
         .instruction(&I::LocalGet(16))
-        .instruction(&I::LocalGet(9))
-        .instruction(&I::RefAsNonNull);
+        .instruction(&I::LocalGet(9));
     super::super::array_value::emit_length(&mut f, l.gc, backing);
     f.instruction(&I::I32GeU).instruction(&I::BrIf(1));
     array_element(&mut f, l, backing, 9, 16);
@@ -377,8 +376,7 @@ pub(super) fn compile(
         .instruction(&I::RefAsNonNull)
         .instruction(&I::LocalGet(18));
     if let Some(entry_type) = entry_type {
-        f.instruction(&I::ArrayGet(storage_index))
-            .instruction(&I::RefAsNonNull);
+        f.instruction(&I::ArrayGet(storage_index));
         emit_typed_struct_get(&mut f, l.gc.index(entry_type), 0, key_type);
     } else {
         super::super::emit_array_get(&mut f, storage_index, key_type, l.gc);
@@ -466,8 +464,7 @@ fn field_array(l: &EmissionContext<'_>, field: F) -> crate::ast::ArrayTypeId {
     *layout
 }
 fn get(f: &mut Function, l: &EmissionContext<'_>, local: u32, owner: StdlibTypeId, field: F) {
-    f.instruction(&I::LocalGet(local))
-        .instruction(&I::RefAsNonNull);
+    f.instruction(&I::LocalGet(local));
     emit_typed_struct_get(
         f,
         l.gc.standard_index(owner),
@@ -482,8 +479,7 @@ fn array_element(
     local: u32,
     index: u32,
 ) {
-    f.instruction(&I::LocalGet(local))
-        .instruction(&I::RefAsNonNull);
+    f.instruction(&I::LocalGet(local));
     super::super::array_value::emit_backing(f, l.gc, array);
     f.instruction(&I::LocalGet(index));
     let storage = super::super::array_value::storage_id(array, l.arrays, l.semantics);
@@ -541,7 +537,6 @@ pub(super) fn callback_start(f: &mut Function, l: &EmissionContext<'_>, name: &s
     f.instruction(&I::GlobalGet(
         l.runtime_globals.provider_preparation_value.unwrap(),
     ))
-    .instruction(&I::RefAsNonNull)
     .instruction(&I::StructGet {
         struct_type_index: l.gc.index(Type::Struct(structure)),
         field_index: field,

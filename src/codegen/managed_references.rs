@@ -99,7 +99,6 @@ pub(super) fn compile(value: TypeId, l: &EmissionContext<'_>) -> Function {
     f.instruction(&I::GlobalGet(
         l.runtime_globals.provider_preparation_value.unwrap(),
     ))
-    .instruction(&I::RefAsNonNull)
     .instruction(&I::StructGet {
         struct_type_index: l.gc.index(Type::Struct(structure)),
         field_index: field,
@@ -123,7 +122,6 @@ pub(super) fn compile(value: TypeId, l: &EmissionContext<'_>) -> Function {
     f.instruction(&I::GlobalGet(
         l.runtime_globals.provider_preparation_value.unwrap(),
     ))
-    .instruction(&I::RefAsNonNull)
     .instruction(&I::StructGet {
         struct_type_index: l.gc.index(Type::Struct(structure)),
         field_index: expected,
@@ -131,7 +129,6 @@ pub(super) fn compile(value: TypeId, l: &EmissionContext<'_>) -> Function {
     .instruction(&I::I64Const(0))
     .instruction(&I::LocalGet(3))
     .instruction(&I::LocalGet(5))
-    .instruction(&I::RefAsNonNull)
     .instruction(&I::StructGet {
         struct_type_index: callable_type,
         field_index: 0,
@@ -146,7 +143,6 @@ pub(super) fn compile(value: TypeId, l: &EmissionContext<'_>) -> Function {
     emit_default(&mut f, value_type, l.gc);
     f.instruction(&I::I32Const(1))
         .instruction(&I::LocalGet(6))
-        .instruction(&I::RefAsNonNull)
         .instruction(&I::StructGet {
             struct_type_index: l.gc.index(Type::Result(address_result)),
             field_index: 2,

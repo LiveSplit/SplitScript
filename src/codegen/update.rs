@@ -335,8 +335,7 @@ fn emit_selected_process_attachment(
         emit_reject_process_candidate(function, lowering);
         function
             .instruction(&Instruction::Else)
-            .instruction(&Instruction::LocalGet(locals.result))
-            .instruction(&Instruction::RefAsNonNull);
+            .instruction(&Instruction::LocalGet(locals.result));
         emit_typed_struct_get(function, result_struct, 0, Type::Bool);
         function
             .instruction(&Instruction::If(BlockType::Empty))
@@ -1411,9 +1410,7 @@ fn emit_layout_evidence_condition(
         .find(|(_, candidate)| candidate.name == name)
         .expect("shape evidence has generated presence storage");
     let field_type = struct_field_type(declaration.id, lowering.semantics);
-    function
-        .instruction(&Instruction::GlobalGet(bindings_global))
-        .instruction(&Instruction::RefAsNonNull);
+    function.instruction(&Instruction::GlobalGet(bindings_global));
     emit_typed_struct_get(
         function,
         lowering.gc.index(Type::Struct(bindings.id)),
@@ -1662,9 +1659,7 @@ fn emit_managed_field_presence_validation(
             function.instruction(&Instruction::If(BlockType::Empty));
             for (field_index, presence) in present_fields {
                 let presence_type = struct_field_type(presence.id, lowering.semantics);
-                function
-                    .instruction(&Instruction::GlobalGet(bindings_global))
-                    .instruction(&Instruction::RefAsNonNull);
+                function.instruction(&Instruction::GlobalGet(bindings_global));
                 emit_typed_struct_get(
                     function,
                     lowering.gc.index(Type::Struct(bindings.id)),
@@ -1717,9 +1712,7 @@ fn emit_automatic_shape_selection(
                     .find(|(_, candidate)| candidate.name == name)
                     .expect("shape evidence has generated presence storage");
                 let field_type = struct_field_type(declaration.id, lowering.semantics);
-                function
-                    .instruction(&Instruction::GlobalGet(bindings_global))
-                    .instruction(&Instruction::RefAsNonNull);
+                function.instruction(&Instruction::GlobalGet(bindings_global));
                 emit_typed_struct_get(
                     function,
                     lowering.gc.index(Type::Struct(bindings_struct.id)),
@@ -1866,8 +1859,7 @@ fn emit_dynamic_shape_transition_seeding(
         function
             .instruction(&Instruction::GlobalGet(lowering.runtime_globals.current))
             .instruction(&Instruction::RefAsNonNull)
-            .instruction(&Instruction::LocalGet(candidate_state))
-            .instruction(&Instruction::RefAsNonNull);
+            .instruction(&Instruction::LocalGet(candidate_state));
         emit_typed_struct_get(function, STATE_TYPE, field_index, field_type);
         function
             .instruction(&Instruction::StructSet {
@@ -2086,8 +2078,7 @@ fn emit_state_field_poll(
         .instruction(&Instruction::End)
         .instruction(&Instruction::LocalGet(context.candidate_state))
         .instruction(&Instruction::RefAsNonNull)
-        .instruction(&Instruction::GlobalGet(lowering.runtime_globals.current))
-        .instruction(&Instruction::RefAsNonNull);
+        .instruction(&Instruction::GlobalGet(lowering.runtime_globals.current));
     emit_typed_struct_get(function, STATE_TYPE, field_index, field_type);
     function
         .instruction(&Instruction::StructSet {
@@ -2150,9 +2141,7 @@ fn emit_poll_value(
     field_type: Type,
     lowering: &UpdateContext<'_>,
 ) {
-    function
-        .instruction(&Instruction::LocalGet(poll_result_local))
-        .instruction(&Instruction::RefAsNonNull);
+    function.instruction(&Instruction::LocalGet(poll_result_local));
     emit_typed_struct_get(
         function,
         lowering.gc.index(Type::Result(result_type)),
