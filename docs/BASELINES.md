@@ -945,7 +945,7 @@ Run the gate after each Unity implementation step:
 cargo xtask unity-baseline
 ```
 
-It builds the runner with Cargo's `max-opt` profile, compiles 17 fixtures with
+It builds the runner with Cargo's `max-opt` profile, compiles 38 fixtures with
 SplitScript's Release profile, validates the modules, and runs the Lunistice
 base and DLC synthetic host scenarios. `cargo xtask conformance` and
 `cargo xtask check` include this gate. The automatic Unity Lunistice variant
@@ -963,8 +963,9 @@ defined-function/type counts, individual function body sizes, retained
 runtime helpers, scratch bytes, static data bounds, and initial memory pages.
 Section sizes include framing and sum to the module size minus its eight-byte
 header. Function body sizes exclude their LEB length prefixes. The standard
-`splitscript` custom section is counted; no name or DWARF sections or external
-Wasm optimization are added for measurement. The source fingerprint is
+`splitscript` custom section is counted. Measurements include the compiler's
+built-in Release size optimizer; no name or DWARF sections or external Wasm
+optimization are added. The source fingerprint is
 FNV-1a 64-bit for reproducibility, not a cryptographic identity.
 
 The compiler sidecar comes from the same plan that emits the Release artifact.
@@ -973,8 +974,11 @@ verify that requesting it leaves Release bytes unchanged. Names alone do not
 prove pruning: the gate also examines actual section sizes and memory demand.
 An increase in any tracked section, function body, memory demand, function/type count, or a
 new helper/function requires review even if an unrelated saving reduces the
-total size. Source changes, added/removed fixtures, and changed toolchain/build
-mode also require review. A single compilation duration is recorded for
+total size. Source changes, added/removed fixtures, and changed compiler build
+mode also require review. Rust and Node versions are recorded and differences
+are printed as provenance; version changes alone do not fail the gate because
+CI follows stable Rust and Node 24 across platforms. Artifact checks remain
+enforced under the new tools. A single compilation duration is recorded for
 diagnosis, including first-use initialization and reporting; it is not a
 stable performance threshold. Use the warmed runner above for latency work.
 
@@ -1001,6 +1005,39 @@ fixtures expose existing metadata-binding overhead without retaining a string
 decoder. All initial fixtures reserve **22,528 scratch bytes**, including the
 1,009-byte empty native artifact. These are measured shortcomings to remove,
 not acceptable reasons to retain unused managed collection support later.
+
+### 2026-09-28: review the promoted Release optimizer
+
+The September 26 optimizer promotion changed emitted Release code but did not
+refresh this gate's reviewed baseline. CI correctly rejected the new shared
+functions and section changes, although no complete module grew. It also
+rejected toolchain differences: the report records Node 24.14.0 while the CI
+jobs used 24.19.0–24.21.0. Tool versions now remain diagnostic provenance;
+compiler build mode and all artifact budgets still require review. The rolling
+report now describes `release-size-optimized-wasm`; the initial report retains
+its original profile and measurements.
+
+All 38 source fingerprints are unchanged. The empty native module remains
+597 bytes; the other 37 shrink. Explicit Lunistice changes from 32,121 to
+29,163 bytes, automatic Lunistice from 142,234 to 122,513, and nested Unity
+metadata from 132,785 to 113,920. All artifacts validate and both Lunistice
+edition scenarios pass before recording.
+
+The reviewed function/type increases come from shared integer-constant bodies:
+managed byte/element/scan charging adds one function and signature to each
+affected array/List/Map/Set fixture, and automatic Mono profile construction
+adds two. Corresponding type sections grow by 9–25 bytes and function sections
+by 2–4 bytes while code sections shrink. Explicit Linux Mono also has a
+two-byte type-section increase with unchanged function/type counts. No other
+section grows. Runtime helper sets, scratch/read capacities, static-data
+bounds, and initial memory pages are unchanged. Internal expression/type IDs
+shifted since the old report; matching function names without those numeric
+IDs identifies only the shared functions as additions.
+
+The comparator retains its strict per-section, body, function, and memory
+checks. The preceding report and reproduced failure remain under ignored
+`target/unity-baseline/before-release-optimizer.json` and
+`target/unity-baseline/reproduced-report.json`. The initial baseline is unchanged.
 
 ### Demand-driven scratch allocation
 
