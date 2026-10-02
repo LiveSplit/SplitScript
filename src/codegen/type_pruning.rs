@@ -120,12 +120,13 @@ pub(super) fn optimize(wasm: &[u8]) -> Vec<u8> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use super::optimize;
     use wasm_encoder::{
         CodeSection, CompositeInnerType, CompositeType, ExportKind, ExportSection, FieldType,
-        Function, FunctionSection, HeapType, Instruction, RefType, StorageType, StructType,
-        SubType, ValType,
+        Function, FunctionSection, HeapType, Instruction, Module, RefType, StorageType, StructType,
+        SubType, TypeSection, ValType,
     };
+    use wasmparser::{Parser, Payload};
 
     #[test]
     fn live_recursive_groups_keep_unused_members_and_remap_all_references() {
