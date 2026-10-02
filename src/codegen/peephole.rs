@@ -7,6 +7,7 @@ use wasm_encoder::{
 use wasmparser::{CompositeInnerType, Parser, Payload};
 
 mod control;
+mod fallthrough;
 #[cfg(test)]
 mod instruction_tests;
 mod propagation;
@@ -35,6 +36,7 @@ pub(super) fn optimize(wasm: &[u8], passes: Passes) -> Vec<u8> {
     let mut type_results = Vec::new();
     let mut results = Vec::new();
     let mut struct_fields = Vec::new();
+    let mut arities = fallthrough::Types::default();
     for payload in Parser::new(0).parse_all(wasm) {
         match payload.unwrap() {
             Payload::TypeSection(section) => {
@@ -54,12 +56,24 @@ pub(super) fn optimize(wasm: &[u8], passes: Passes) -> Vec<u8> {
                             CompositeInnerType::Func(ty) => ty.params().len(),
                             _ => 0,
                         });
+                        arities.types.push(ty);
+                    }
+                }
+            }
+            Payload::ImportSection(section) => {
+                for import in section.into_imports() {
+                    if let wasmparser::TypeRef::Func(ty) | wasmparser::TypeRef::FuncExact(ty) =
+                        import.unwrap().ty
+                    {
+                        arities.functions.push(ty);
+                        arities.imported += 1;
                     }
                 }
             }
             Payload::FunctionSection(section) => {
                 for ty in section {
                     let ty = ty.unwrap() as usize;
+                    arities.functions.push(ty as u32);
                     parameters.push(type_parameters[ty]);
                     if passes.returns {
                         results.push(type_results[ty]);
@@ -76,6 +90,7 @@ pub(super) fn optimize(wasm: &[u8], passes: Passes) -> Vec<u8> {
         next_body: 0,
         results,
         struct_fields,
+        arities,
     }
     .parse_core_module(&mut module, Parser::new(0), wasm)
     .unwrap();
@@ -93,6 +108,7 @@ struct Cleanup {
     next_body: usize,
     results: Vec<usize>,
     struct_fields: Vec<Option<usize>>,
+    arities: fallthrough::Types,
 }
 
 impl Reencode for Cleanup {
@@ -117,8 +133,26 @@ impl Cleanup {
         self.next_body += 1;
         let mut ops = Vec::new();
         let mut dead = None;
-        for op in body.get_operators_reader()? {
+        let fallthroughs = if self.passes.control {
+            fallthrough::find(&body, &self.arities, self.next_body - 1)
+        } else {
+            Vec::new()
+        };
+        let mut fallthroughs = fallthroughs.into_iter().peekable();
+        for (at, op) in body.get_operators_reader()?.into_iter().enumerate() {
             let op = op?;
+            let op = if fallthroughs
+                .peek()
+                .is_some_and(|&(position, _)| position == at)
+            {
+                if fallthroughs.next().unwrap().1 {
+                    wasmparser::Operator::Drop
+                } else {
+                    continue;
+                }
+            } else {
+                op
+            };
             // These constructs introduce control boundaries not modeled by
             // the structured dead-code scan. The compiler does not currently
             // emit them, but preserve a future such body verbatim.

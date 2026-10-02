@@ -428,6 +428,97 @@ node scripts/binaryen-pass-attribution.mjs C:/Projekte/binaryen/bin/wasm-opt.exe
 This writes per-prefix, standalone and disabled-family modules plus `report.json`
 under `target/binaryen-attribution`. Binaryen is an offline reference tool only.
 
+## Conditional expressions and fallthrough — 2026-10-02
+
+Further Binaryen source/output inspection separated the effects of inlining
+from the cleanup it triggers. On `1091435`, standalone plain inlining grew
+Minish Cap / Lunistice / Celeste to 33,034 / 31,225 / 31,290 bytes, whereas
+optimizing inlining reached 30,101 / 26,718 / 29,139. Restricting the latter to
+single-caller candidates (plus Binaryen's trivial-wrapper rule) retained almost
+all its savings. The missing ingredient is still cleanup around expanded code.
+
+Two local experiments were not promoted:
+
+- Retrying the earlier inliner against all defined functions, including generated
+  helpers, with the current local/control cleanup saved only 167 / 95 / 115 bytes
+  on the primary scripts. Trying all call sites improved Celeste by only another
+  six bytes. That gain does not yet justify importing the inlining machinery.
+- Inferring integer arguments identical at every direct call saved only
+  7 / 8 / 7 bytes on the primary scripts. Larger automatic-Unity and collection
+  savings did not justify another whole-module analysis.
+
+The selected change extends structured control cleanup. Short, closed integer
+expressions and reference reads can replace an `if`/`else` with a `select` when
+both arms are nontrapping and effect-free. Arm and condition scans are bounded;
+condition writes to an arm's locals prevent reordering. Calls, stores, loads,
+division, casts that can trap, and allocations are not speculated. Reference
+results use typed `select`. A separate three-byte gain from recognizing calls
+inside conditions was discarded rather than adding call metadata for it.
+
+Fallthrough cleanup removes a branch/return only when the immediately following
+block/function ends reach the same destination. It uses wasmparser's instruction
+arities and tracks structured operand-stack heights. Every crossed frame must
+have the same stack base and exact result types; equal arity alone is insufficient
+for GC reference subtypes. Conditional branches become a drop of the evaluated
+condition. Loop backedges, branches that discard extra operands, and unsupported
+exception/continuation control remain intact. This adds a Release-only body
+analysis inside the existing bounded cleanup, with the existing body/module size
+gates. It does not change function indices, signatures or Debug emission.
+
+| Real script | Previous master | New Release | Additional saving | Binaryen `-Oz` | Remaining gap |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Minish Cap | 31,532 | 31,477 | 55 | 29,651 | 1,826 |
+| Lunistice | 28,632 | 28,530 | 102 | 26,351 | 2,179 |
+| Celeste external port | 30,648 | 30,502 | 146 | 28,882 | 1,620 |
+| Neon White | 4,664 | 4,646 | 18 | 3,936 | 710 |
+| A Hat in Time | 44,120 | 43,943 | 177 | 42,014 | 1,929 |
+
+No measured fixture grows. Conditional-expression selection alone accounts for
+26 / 50 / 108 / 116 bytes on Minish Cap / Lunistice / Celeste / A Hat in Time;
+fallthrough cleanup provides the remaining gains. This is a smaller incremental
+step than globals, and the measurements do not claim it closes the inlining gap.
+The wider inliner and constant-argument trial are preserved only as local
+experiments under `target`, not enabled compiler passes.
+
+Six new runtime tests cover conditional arithmetic, mutations in the condition,
+unselected calls and traps, nullable reference selections, branch conditions and
+effects, discarded stack operands, loop backedges, typed block parameters,
+multiple results, and incompatible intermediate reference-result types.
+All 523 library, 696 compiler, 20 binary and five example tests pass. The corpus
+passes its Debug equivalence checks and all 36 maintained runtime invocations;
+the external Celeste port validates and remains unchanged, without a maintained
+gameplay harness here.
+
+All 176 maintained modules validate, all 211 runtime scenarios and the
+Debug/Release profile check pass, as do Clippy, the browser compiler check and
+the Unity size gate including Lunistice base/DLC behavior. No Unity baseline
+refresh was needed. The optimized host reproduces identical sizes for all ten
+corpus fixtures.
+
+Seven warmed, alternating optimized-host samples measured these backend medians:
+
+| Real script | Passes disabled | Complete Release backend |
+| --- | ---: | ---: |
+| Minish Cap | 2.986 ms | 8.335 ms |
+| Lunistice | 16.096 ms | 21.148 ms |
+| Celeste | 4.851 ms | 11.682 ms |
+| Neon White | 0.517 ms | 1.423 ms |
+| A Hat in Time | 4.629 ms | 10.575 ms |
+
+These include lowering/emission and exclude parsing/type checking. They measure
+the entire pipeline, not the isolated cost of this change. Cross-run timing
+variation, particularly in Celeste's passes-disabled baseline, prevents treating
+differences from the previous measurement as this pass's cost. Debug still
+bypasses all optimization passes.
+
+A separate diagnostic Binaryen run with `--closed-world -Oz --converge` reached
+28,834 / 24,196 / 28,297 / 40,104 bytes for Minish Cap / Lunistice / Celeste /
+A Hat in Time. These reference modules validate in Node but were not run through
+the behavioral harness. They are not the ordinary `-Oz` comparison in the table
+above. The larger reduction, especially in Lunistice, motivates further study
+of interacting type/call simplification and repeated cleanup; it does not imply
+that a single missing pass will achieve it.
+
 ## Original promotion compiler cost
 
 Optimized-host seven-sample medians for the promoted pipeline:

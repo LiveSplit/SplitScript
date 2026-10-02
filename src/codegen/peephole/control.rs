@@ -1,6 +1,6 @@
 //! Conservative structured-control simplification for compiler-emitted Wasm.
 //! Preserve effects, traps and branch destinations; final body size gates apply.
-use wasm_encoder::Instruction as I;
+use wasm_encoder::{BlockType, Instruction as I};
 
 /// With an empty if signature, a bare branch cannot carry values from below
 /// the if frame. Its only operand is the already evaluated condition.
@@ -93,6 +93,7 @@ pub(super) fn remove_unused_labels(ops: &mut Vec<I<'_>>) {
         return;
     }
     constant_selections(ops);
+    expression_selections(ops);
     simplify_if_arms(ops);
     conditional_branches(ops);
     // The implicit function label is always retained.
@@ -510,4 +511,162 @@ fn constant_selections(ops: &mut Vec<I<'_>>) {
             ops.push(op);
         }
     }
+}
+/// Eagerly evaluate only closed, nontrapping arms. Their local/global reads
+/// must not move ahead of a condition that can change those values.
+fn expression_selections(ops: &mut Vec<I<'_>>) {
+    let mut frames = Vec::new();
+    let mut changes = Vec::new();
+    for (end, op) in ops.iter().enumerate() {
+        match op {
+            I::Block(_) | I::Loop(_) | I::If(_) => frames.push((end, None)),
+            I::Else => {
+                if let Some(frame) = frames.last_mut() {
+                    frame.1 = Some(end);
+                }
+            }
+            I::End => {
+                let Some((start, Some(alternate))) = frames.pop() else {
+                    continue;
+                };
+                let I::If(BlockType::Result(ty)) = ops[start] else {
+                    continue;
+                };
+                let yes = &ops[start + 1..alternate];
+                let no = &ops[alternate + 1..end];
+                if !closed_pure_expression(yes) || !closed_pure_expression(no) {
+                    continue;
+                }
+                let reads = yes
+                    .iter()
+                    .chain(no)
+                    .filter_map(|op| match op {
+                        I::LocalGet(i) => Some(*i),
+                        _ => None,
+                    })
+                    .collect::<Vec<_>>();
+                let mut condition = start;
+                let mut needed = 1;
+                while condition > start.saturating_sub(256) && needed != 0 {
+                    let op = &ops[condition - 1];
+                    let Some(inputs) = condition_inputs(op) else {
+                        break;
+                    };
+                    if matches!(op, I::LocalTee(i) if reads.contains(i)) {
+                        break;
+                    }
+                    needed = needed - 1 + inputs;
+                    condition -= 1;
+                }
+                if needed != 0
+                    || changes
+                        .last()
+                        .is_some_and(|&(_, previous_end, _)| condition <= previous_end)
+                {
+                    continue;
+                }
+                let mut replacement = Vec::new();
+                replacement.extend_from_slice(yes);
+                replacement.extend_from_slice(no);
+                replacement.extend_from_slice(&ops[condition..start]);
+                replacement.push(if matches!(ty, wasm_encoder::ValType::Ref(_)) {
+                    I::TypedSelect(ty)
+                } else {
+                    I::Select
+                });
+                if super::encoded_size(&replacement) < super::encoded_size(&ops[condition..=end]) {
+                    changes.push((condition, end, replacement));
+                }
+            }
+            _ => {}
+        }
+    }
+    if changes.is_empty() {
+        return;
+    }
+    let original = std::mem::take(ops);
+    let mut copied = 0;
+    for (start, end, replacement) in changes {
+        ops.extend_from_slice(&original[copied..start]);
+        ops.extend(replacement);
+        copied = end + 1;
+    }
+    ops.extend_from_slice(&original[copied..]);
+}
+
+fn closed_pure_expression(ops: &[I<'_>]) -> bool {
+    if ops.is_empty() || ops.len() > 32 {
+        return false;
+    }
+    let mut needed = 1;
+    for op in ops.iter().rev() {
+        if needed == 0 {
+            return false;
+        }
+        let Some(inputs) = pure_expression_inputs(op) else {
+            return false;
+        };
+        needed = needed - 1 + inputs;
+    }
+    needed == 0
+}
+
+fn pure_expression_inputs(op: &I<'_>) -> Option<usize> {
+    Some(match op {
+        I::I32Const(_)
+        | I::I64Const(_)
+        | I::F32Const(_)
+        | I::F64Const(_)
+        | I::LocalGet(_)
+        | I::GlobalGet(_)
+        | I::RefNull(_)
+        | I::RefFunc(_) => 0,
+        I::I32Eqz
+        | I::I64Eqz
+        | I::I32WrapI64
+        | I::I64ExtendI32S
+        | I::I64ExtendI32U
+        | I::RefIsNull
+        | I::RefTestNonNull(_)
+        | I::RefTestNullable(_) => 1,
+        I::I32Eq
+        | I::I32Ne
+        | I::I32LtS
+        | I::I32LtU
+        | I::I32GtS
+        | I::I32GtU
+        | I::I32LeS
+        | I::I32LeU
+        | I::I32GeS
+        | I::I32GeU
+        | I::I64Eq
+        | I::I64Ne
+        | I::I64LtS
+        | I::I64LtU
+        | I::I64GtS
+        | I::I64GtU
+        | I::I64LeS
+        | I::I64LeU
+        | I::I64GeS
+        | I::I64GeU
+        | I::I32Add
+        | I::I32Sub
+        | I::I32Mul
+        | I::I32And
+        | I::I32Or
+        | I::I32Xor
+        | I::I32Shl
+        | I::I32ShrS
+        | I::I32ShrU
+        | I::I64Add
+        | I::I64Sub
+        | I::I64Mul
+        | I::I64And
+        | I::I64Or
+        | I::I64Xor
+        | I::I64Shl
+        | I::I64ShrS
+        | I::I64ShrU => 2,
+        _ => return None,
+    })
 }
