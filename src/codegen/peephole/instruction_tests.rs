@@ -85,6 +85,337 @@ fn instantiate(
     (store, instance)
 }
 
+fn cleanup(wasm: &[u8]) -> Vec<u8> {
+    optimize(
+        wasm,
+        Passes {
+            instructions: true,
+            control: true,
+            ..Default::default()
+        },
+    )
+}
+
+#[test]
+fn constant_arms_preserve_typed_parameters_effects_and_branch_payloads() {
+    let engine = wasmtime::Engine::default();
+    for condition in [0, 1, -7] {
+        let mut types = TypeSection::new();
+        types.ty().function([], [ValType::I64, ValType::I32]);
+        types
+            .ty()
+            .function([ValType::I64], [ValType::I64, ValType::I32]);
+        types.ty().function([ValType::I64], [ValType::I64]);
+        let baseline = module(
+            types,
+            0,
+            &[],
+            &[
+                I::I64Const(40),
+                I::I32Const(condition),
+                I::If(BlockType::FunctionType(1)),
+                I::I64Const(2),
+                I::I64Add,
+                I::Call(0),
+                I::I32Const(7),
+                I::Br(0),
+                I::Else,
+                I::I64Const(59),
+                I::I64Add,
+                I::Call(0),
+                I::I32Const(8),
+                I::End,
+                I::End,
+            ],
+            &[("effect", 2)],
+        );
+        let optimized = cleanup(&baseline);
+        assert!(optimized.len() < baseline.len());
+        for wasm in [&baseline, &optimized] {
+            let (mut store, instance) = instantiate(&engine, wasm);
+            let expected = if condition == 0 { (99, 8) } else { (42, 7) };
+            assert_eq!(
+                instance
+                    .get_typed_func::<(), (i64, i32)>(&mut store, "run")
+                    .unwrap()
+                    .call(&mut store, ())
+                    .unwrap(),
+                expected
+            );
+            assert_eq!(store.data(), &[expected.0]);
+        }
+        let baseline = numeric(
+            &[],
+            &[
+                I::Block(BlockType::Result(ValType::I64)),
+                I::I32Const(condition),
+                I::If(BlockType::Empty),
+                I::I64Const(42),
+                I::Br(1),
+                I::Else,
+                I::I64Const(99),
+                I::Br(1),
+                I::End,
+                I::Unreachable,
+                I::End,
+                I::End,
+            ],
+        );
+        let optimized = cleanup(&baseline);
+        assert!(optimized.len() < baseline.len());
+        for wasm in [&baseline, &optimized] {
+            assert_eq!(
+                super::tests::execute(&engine, wasm),
+                Ok(if condition == 0 { 99 } else { 42 })
+            );
+        }
+    }
+}
+
+#[test]
+fn constant_arms_keep_selected_traps_and_discard_unselected_traps() {
+    let engine = wasmtime::Engine::default();
+    for condition in [0, 1, -1] {
+        let baseline = numeric(
+            &[],
+            &[
+                I::I32Const(condition),
+                I::If(BlockType::Result(ValType::I64)),
+                I::Unreachable,
+                I::Else,
+                I::I64Const(42),
+                I::End,
+                I::End,
+            ],
+        );
+        let optimized = cleanup(&baseline);
+        assert!(optimized.len() < baseline.len());
+        for wasm in [&baseline, &optimized] {
+            assert_eq!(
+                super::tests::execute(&engine, wasm),
+                if condition == 0 { Ok(42) } else { Err(()) }
+            );
+        }
+        let baseline = numeric(
+            &[],
+            &[
+                I::I32Const(condition),
+                I::If(BlockType::Empty),
+                I::Unreachable,
+                I::End,
+                I::I64Const(42),
+                I::End,
+            ],
+        );
+        let optimized = cleanup(&baseline);
+        assert!(optimized.len() < baseline.len());
+        for wasm in [&baseline, &optimized] {
+            assert_eq!(
+                super::tests::execute(&engine, wasm),
+                if condition == 0 { Ok(42) } else { Err(()) }
+            );
+        }
+    }
+}
+
+#[test]
+fn empty_arms_preserve_conditions_and_implicit_typed_else_values() {
+    let engine = wasmtime::Engine::default();
+    for condition in [0, 7] {
+        let mut types = TypeSection::new();
+        types.ty().function([], [ValType::I64]);
+        types.ty().function([ValType::I32], [ValType::I32]);
+        let baseline = module(
+            types,
+            0,
+            &[],
+            &[
+                I::I32Const(condition),
+                I::Call(0),
+                I::If(BlockType::Empty),
+                I::Else,
+                I::End,
+                I::I64Const(42),
+                I::End,
+            ],
+            &[("condition", 1)],
+        );
+        let optimized = cleanup(&baseline);
+        assert!(optimized.len() < baseline.len());
+        for wasm in [&baseline, &optimized] {
+            let (mut store, instance) = instantiate(&engine, wasm);
+            assert_eq!(
+                instance
+                    .get_typed_func::<(), i64>(&mut store, "run")
+                    .unwrap()
+                    .call(&mut store, ())
+                    .unwrap(),
+                42
+            );
+            assert_eq!(store.data(), &[i64::from(condition)]);
+        }
+    }
+    let mut types = TypeSection::new();
+    types.ty().function([ValType::I32], [ValType::I64]);
+    types.ty().function([ValType::I64], [ValType::I64]);
+    let baseline = module(
+        types,
+        0,
+        &[],
+        &[
+            I::I64Const(42),
+            I::LocalGet(0),
+            I::If(BlockType::FunctionType(1)),
+            I::I64Const(1),
+            I::I64Add,
+            I::Else,
+            I::End,
+            I::End,
+        ],
+        &[],
+    );
+    let optimized = cleanup(&baseline);
+    assert!(optimized.len() < baseline.len());
+    for wasm in [&baseline, &optimized] {
+        let (mut store, instance) = instantiate(&engine, wasm);
+        let run = instance
+            .get_typed_func::<i32, i64>(&mut store, "run")
+            .unwrap();
+        for condition in [0, 1, -1] {
+            assert_eq!(
+                run.call(&mut store, condition).unwrap(),
+                if condition == 0 { 42 } else { 43 }
+            );
+        }
+    }
+    let baseline = numeric(
+        &[],
+        &[
+            I::I64Const(1),
+            I::I64Const(0),
+            I::I64DivU,
+            I::I64Eqz,
+            I::If(BlockType::Empty),
+            I::End,
+            I::I64Const(42),
+            I::End,
+        ],
+    );
+    let optimized = cleanup(&baseline);
+    assert!(optimized.len() < baseline.len());
+    for wasm in [&baseline, &optimized] {
+        assert_eq!(super::tests::execute(&engine, wasm), Err(()));
+    }
+}
+
+#[test]
+fn constant_arms_preserve_nondefaultable_local_initialization() {
+    let mut config = wasmtime::Config::new();
+    config.wasm_gc(true).wasm_function_references(true);
+    let engine = wasmtime::Engine::new(&config).unwrap();
+    for condition in [0, 1] {
+        let mut types = TypeSection::new();
+        types.ty().struct_([wasm_encoder::FieldType {
+            element_type: wasm_encoder::StorageType::Val(ValType::I64),
+            mutable: false,
+        }]);
+        types.ty().function([], [ValType::I64]);
+        let locals = [(
+            1,
+            ValType::Ref(wasm_encoder::RefType {
+                nullable: false,
+                heap_type: wasm_encoder::HeapType::Concrete(0),
+            }),
+        )];
+        let baseline = module(
+            types,
+            1,
+            &locals,
+            &[
+                I::I32Const(condition),
+                I::If(BlockType::Result(ValType::I64)),
+                I::I64Const(42),
+                I::StructNew(0),
+                I::LocalSet(0),
+                I::LocalGet(0),
+                I::StructGet {
+                    struct_type_index: 0,
+                    field_index: 0,
+                },
+                I::Else,
+                I::I64Const(99),
+                I::StructNew(0),
+                I::LocalSet(0),
+                I::LocalGet(0),
+                I::StructGet {
+                    struct_type_index: 0,
+                    field_index: 0,
+                },
+                I::End,
+                I::End,
+            ],
+            &[],
+        );
+        let optimized = cleanup(&baseline);
+        assert!(optimized.len() < baseline.len());
+        for wasm in [&baseline, &optimized] {
+            assert_eq!(
+                super::tests::execute(&engine, wasm),
+                Ok(if condition == 0 { 99 } else { 42 })
+            );
+        }
+    }
+}
+
+#[test]
+fn discarded_global_reads_do_not_remove_global_writes() {
+    use wasm_encoder::{ConstExpr, GlobalSection, GlobalType};
+    let mut types = TypeSection::new();
+    types.ty().function([], [ValType::I64]);
+    let mut functions = FunctionSection::new();
+    functions.function(0);
+    let mut globals = GlobalSection::new();
+    globals.global(
+        GlobalType {
+            val_type: ValType::I64,
+            mutable: true,
+            shared: false,
+        },
+        &ConstExpr::i64_const(7),
+    );
+    let mut exports = ExportSection::new();
+    exports.export("run", ExportKind::Func, 0);
+    let mut body = Function::new([]);
+    for op in [
+        I::GlobalGet(0),
+        I::Drop,
+        I::I64Const(99),
+        I::GlobalSet(0),
+        I::GlobalGet(0),
+        I::Drop,
+        I::GlobalGet(0),
+        I::End,
+    ] {
+        body.instruction(&op);
+    }
+    let mut code = CodeSection::new();
+    code.function(&body);
+    let mut module = Module::new();
+    module
+        .section(&types)
+        .section(&functions)
+        .section(&globals)
+        .section(&exports)
+        .section(&code);
+    let baseline = module.finish();
+    let optimized = cleanup(&baseline);
+    assert_eq!(baseline.len() - optimized.len(), 6);
+    let engine = wasmtime::Engine::default();
+    for wasm in [&baseline, &optimized] {
+        assert_eq!(super::tests::execute(&engine, wasm), Ok(99));
+    }
+}
+
 #[test]
 fn inverted_integer_comparisons_preserve_signedness_and_boundaries() {
     let engine = wasmtime::Engine::default();

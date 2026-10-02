@@ -348,7 +348,9 @@ fn simplify(ops: &mut Vec<I<'_>>) {
         [.., I::LocalSet(a), I::LocalGet(b)] if a == b => Some(Some(I::LocalTee(*a))),
         [.., I::LocalTee(a), I::Drop] => Some(Some(I::LocalSet(*a))),
         [.., I::LocalGet(a), I::LocalSet(b)] if a == b => Some(None),
-        [.., producer, I::Drop] if pure_push(producer) => Some(None),
+        [.., producer, I::Drop] if nontrapping_operand(producer) => Some(None),
+        [.., I::Else, I::End] => Some(Some(I::End)),
+        [.., I::If(wasm_encoder::BlockType::Empty), I::End] => Some(Some(I::Drop)),
         [
             ..,
             I::I32Const(0),

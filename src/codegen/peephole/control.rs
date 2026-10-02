@@ -160,6 +160,11 @@ pub(super) fn remove_unused_labels(ops: &mut Vec<I<'_>>) {
 /// if with a block preserves branch depths, block parameters and return paths.
 fn simplify_if_arms(ops: &mut Vec<I<'_>>) {
     use wasm_encoder::Encode;
+    enum Change {
+        Constant(bool),
+        Identical(bool),
+        Swap,
+    }
     let mut stack = Vec::new();
     let mut changes = Vec::new();
     for (at, op) in ops.iter().enumerate() {
@@ -167,9 +172,19 @@ fn simplify_if_arms(ops: &mut Vec<I<'_>>) {
             I::Block(_) | I::Loop(_) | I::If(_) => stack.push((at, None)),
             I::Else => stack.last_mut().unwrap().1 = Some(at),
             I::End => {
-                let Some((start, Some(alternate))) = stack.pop() else {
+                let Some((start, alternate)) = stack.pop() else {
                     continue;
                 };
+                if !matches!(ops[start], I::If(_)) {
+                    continue;
+                }
+                if start != 0
+                    && let I::I32Const(value) = ops[start - 1]
+                {
+                    changes.push((start, alternate, at, Change::Constant(value != 0)));
+                    continue;
+                }
+                let Some(alternate) = alternate else { continue };
                 let count = alternate - start - 1;
                 // Bound comparisons even for deeply nested candidate arms.
                 let mut identical = false;
@@ -186,7 +201,16 @@ fn simplify_if_arms(ops: &mut Vec<I<'_>>) {
                 }
                 let negate = start != 0 && matches!(ops[start - 1], I::I32Eqz);
                 if identical || negate {
-                    changes.push((start, alternate, at, identical, negate));
+                    changes.push((
+                        start,
+                        Some(alternate),
+                        at,
+                        if identical {
+                            Change::Identical(negate)
+                        } else {
+                            Change::Swap
+                        },
+                    ));
                 }
             }
             _ => {}
@@ -197,27 +221,42 @@ fn simplify_if_arms(ops: &mut Vec<I<'_>>) {
     }
     // Prefer the outermost match; overlapping inner matches can wait for the
     // next bounded cleanup sweep. Never splice using already-shifted indices.
-    changes.sort_unstable_by_key(|&(start, _, _, _, _)| start);
+    changes.sort_unstable_by_key(|&(start, _, _, _)| start);
     let original = std::mem::take(ops);
     let mut copied = 0;
-    for (start, alternate, end, identical, negate) in changes {
+    for (start, alternate, end, change) in changes {
         if start < copied {
             continue;
         }
         let I::If(ty) = original[start] else {
             unreachable!()
         };
-        ops.extend_from_slice(&original[copied..start - usize::from(negate)]);
-        if identical {
-            ops.extend([I::Drop, I::Block(ty)]);
-            ops.extend_from_slice(&original[start + 1..alternate]);
-        } else {
-            // Swapping complete arms leaves their typed label and every
-            // nested relative branch depth unchanged.
-            ops.push(I::If(ty));
-            ops.extend_from_slice(&original[alternate + 1..end]);
-            ops.push(I::Else);
-            ops.extend_from_slice(&original[start + 1..alternate]);
+        let remove_condition = !matches!(change, Change::Identical(false));
+        ops.extend_from_slice(&original[copied..start - usize::from(remove_condition)]);
+        match change {
+            Change::Constant(taken) => {
+                // Keep the original typed label, including block parameters
+                // and branch payloads. Label cleanup can remove it if unused.
+                ops.push(I::Block(ty));
+                if taken {
+                    ops.extend_from_slice(&original[start + 1..alternate.unwrap_or(end)]);
+                } else if let Some(alternate) = alternate {
+                    ops.extend_from_slice(&original[alternate + 1..end]);
+                }
+            }
+            Change::Identical(_) => {
+                ops.extend([I::Drop, I::Block(ty)]);
+                ops.extend_from_slice(&original[start + 1..alternate.unwrap()]);
+            }
+            Change::Swap => {
+                let alternate = alternate.unwrap();
+                // Swapping complete arms leaves their typed label and every
+                // nested relative branch depth unchanged.
+                ops.push(I::If(ty));
+                ops.extend_from_slice(&original[alternate + 1..end]);
+                ops.push(I::Else);
+                ops.extend_from_slice(&original[start + 1..alternate]);
+            }
         }
         ops.push(I::End);
         copied = end + 1;

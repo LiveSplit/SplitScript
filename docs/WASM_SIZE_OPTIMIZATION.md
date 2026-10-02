@@ -188,6 +188,80 @@ simplification still saves 194 / 193 bytes, local simplification/coalescing
 leaving a 2,433 / 2,583-byte gap. These pass results are diagnostic and do not
 compose additively; Binaryen's own final output can change with input shape.
 
+## Control cleanup and Celeste follow-up — 2026-10-02
+
+A local-copy propagation trial was rejected: running it early slightly grew
+all four original real-script outputs, and moving it after control cleanup
+saved only 0 / 4 / 0 / 12 bytes. Collection-fixture gains did not justify that
+additional analysis. Binaryen's `--vacuum` instead exposed inexpensive missing
+rules in the existing cleanup: empty else arms, discarded global reads, and
+general constant-condition branches.
+
+The promoted rules remove an empty `else`, replace a completely empty untyped
+`if` with a drop of its condition, and discard unused global reads. They retain
+condition calls and traps, global writes and typed block parameters. A literal
+condition selects one complete arm; the replacement initially retains the
+original typed block label, so branch payloads and depths remain valid. Existing
+label cleanup then removes unused labels. This extends the existing bounded
+scans, without another pass or any Debug work.
+
+| Real script | Previous master | New Release | Additional saving |
+| --- | ---: | ---: | ---: |
+| Minish Cap | 32,086 | 31,965 | 121 |
+| Lunistice | 28,933 | 28,684 | 249 |
+| Celeste external port | 32,364 | 32,275 | 89 |
+| Neon White | 4,692 | 4,675 | 17 |
+| A Hat in Time | 48,325 | 48,173 | 152 |
+
+The Celeste source is `live_split_celeste_port.split` from the sibling porting
+workspace, SHA-256
+`B8C09AD7A525B2200F58FE1902D365D11B07A6A2FE4A0467891BD59DA0D9378A`.
+Its unoptimized Release is 35,462 bytes: the complete pipeline saves 3,187 bytes
+(9.0%). The other primary scripts now save 9.0% / 8.7% relative to pre-optimizer
+master. None of the ten measured scripts grows. Celeste's baseline and optimized
+modules validate in both wasmparser and Node, and its Debug equivalence check
+passes. There is no maintained Celeste behavioral harness in this repository.
+
+Five new runtime tests cover typed parameters and multi-value branch payloads,
+truthy non-Boolean constants, outer branch targets, selected and unselected
+traps, condition effects, implicit typed else values, non-defaultable local
+initialization, and retained global writes. The earlier assignment-factoring
+test now uses an opaque local condition so it continues to test factoring,
+rather than having the new constant-arm rule erase the conditional first.
+All 512 library, 696 compiler, 20 binary and five example tests pass, along with
+Clippy, formatting and the browser-target check.
+All 176 maintained modules validate, all 211 runtime scenarios and the
+Debug/Release profile check pass, and all 36 baseline-versus-optimized corpus
+runtime invocations pass. The runner additionally validates both Celeste modules
+and reports its missing behavioral harness explicitly.
+The unchanged Unity size gate passes, including per-function/type budgets and
+Lunistice base/DLC behavior; no baseline refresh was needed.
+
+Optimized-host seven-sample medians, with no concurrent build or runtime suite:
+
+| Primary script | Passes disabled | Complete Release backend |
+| --- | ---: | ---: |
+| Minish Cap | 3.050 ms | 6.681 ms |
+| Lunistice | 16.682 ms | 19.842 ms |
+| Celeste | 2.577 ms | 5.293 ms |
+
+These include lowering/emission and exclude parsing/type checking. The totals
+remain in the previous pipeline's range; cross-run variation does not isolate
+the incremental cost of individual rules. Debug bypasses all these scans.
+
+On the new output, Binaryen's instruction pass saves another 194 / 186 / 412
+bytes on Minish Cap / Lunistice / Celeste, after subtracting its no-pass
+roundtrip. Local simplification/coalescing saves 160 / 116 / 43, code folding
+92 / 114 / 92, and global simplification 60 / 3 / 252. Full `-Oz` reaches
+29,653 / 26,354 / 28,882 bytes, leaving gaps of 2,312 / 2,330 / 3,393 bytes.
+Instruction simplification, with Celeste included, is the next largest common
+opportunity among these measured individual passes; results do not add linearly.
+Celeste's instruction diff includes repeated all-zero struct constructors
+replaced by `struct.new_default` (eleven six-field and six three-field examples),
+108 removed null assertions, and eleven load/widen pairs combined into
+`i64.load32_u`. Default struct construction is a concrete candidate for a direct
+emitter improvement that could benefit both profiles without adding a pass.
+
 ## Original promotion compiler cost
 
 Optimized-host seven-sample medians for the promoted pipeline:

@@ -621,6 +621,13 @@ fn conditional_jumps_preserve_conditions_and_loop_back_edges() {
 #[test]
 fn factoring_if_assignments_keeps_arm_effects_and_early_exits() {
     let engine = wasmtime::Engine::default();
+    // Keep the condition opaque to constant-arm folding so these assertions
+    // continue to exercise assignment factoring specifically.
+    let module = |ops: &[I<'_>]| {
+        let mut opaque = vec![ops[0].clone(), I::LocalSet(1), I::LocalGet(1)];
+        opaque.extend_from_slice(&ops[1..]);
+        module_with_locals(&[], &[(1, ValType::I64), (1, ValType::I32)], &opaque)
+    };
     for condition in [0, 1] {
         let baseline = module(&[
             I::I32Const(condition),
