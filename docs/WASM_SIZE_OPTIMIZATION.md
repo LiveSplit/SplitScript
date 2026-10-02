@@ -5,6 +5,10 @@ reload bypass all optimizer scans. The objective is a smaller complete Wasm
 file; execution-speed optimization remains the engine's job. Binaryen is not a
 compiler dependency.
 
+Direct emission also uses `struct.new_default` for payload-free first enum
+variants in both profiles. This skips explicit zero/null operands without
+adding an analysis pass.
+
 ## Promoted pipeline
 
 Two cleanup sweeps simplify integer instructions, fold adjacent integer
@@ -262,6 +266,62 @@ replaced by `struct.new_default` (eleven six-field and six three-field examples)
 `i64.load32_u`. Default struct construction is a concrete candidate for a direct
 emitter improvement that could benefit both profiles without adding a pass.
 
+## Default enum emission follow-up — 2026-10-02
+
+For a payload-free first enum variant, the tag is zero and every payload slot
+already receives its Wasm default. Emitting `struct.new_default` replaces those
+explicit operands and `struct.new`, retaining the same type and fresh allocation.
+This is a constant-time choice at the constructor site, skips the old field
+emission loop, and applies to Debug as well as Release. Constructors with payload
+expressions retain their existing emission, including effects and negative zero.
+Contextual optional/result conversions still run outside this emission routine.
+
+| Real script | Previous Release | New Release | Release saving | Debug code-section saving |
+| --- | ---: | ---: | ---: | ---: |
+| Minish Cap | 31,965 | 31,933 | 32 | 32 |
+| Lunistice | 28,684 | 28,660 | 24 | 25 |
+| Celeste external port | 32,275 | 32,117 | 158 | 223 |
+| Neon White | 4,675 | 4,675 | 0 | 0 |
+| A Hat in Time | 48,173 | 47,785 | 388 | 388 |
+
+Debug savings above use executable code rather than varying DWARF metadata.
+No measured module grows. Automatic Unity and the two collection fixtures also
+save 1,610 / 1,746 / 1,746 Release bytes; the real-script results justify the
+change independently. Existing optimization passes can amplify or absorb direct
+emission savings, so Debug and Release deltas need not match.
+
+Relative to the original pre-optimizer outputs, cumulative savings are now
+3,178 bytes (9.1%) for Minish Cap, 2,753 (8.8%) for Lunistice, and 3,345 (9.4%)
+for Celeste. These include the emitter improvement; the current pass-disabled
+outputs themselves are smaller than the original baseline.
+
+The added source-level regression runs with both profiles and with optimization
+enabled/disabled. It checks mixed and packed payload fields, nonzero tags,
+effectful zero payloads, the sign of negative zero, and optional/result wrapping.
+All 513 library, 696 compiler, 20 binary and five example tests pass, alongside
+Clippy and the browser-target check. The corpus runner passes all 36 maintained
+behavioral invocations and validates Celeste, which still lacks a maintained
+gameplay harness here. Its external source remains unchanged.
+
+All 176 maintained modules validate, all 211 runtime scenarios and the
+Debug/Release profile check pass. The Unity gate required a reviewed baseline
+refresh: four automatic-profile fixtures gain four shared IL2CPP helpers and
+lose one shared Mono helper, adding three function/type entries (20 type-section
+bytes and six function-section bytes). The two Mono Linux build bodies change
+from 28-byte wrappers plus a 98-byte shared helper to 95/105-byte direct bodies,
+a local 46-byte cost. The changed constructor shapes enable different sharing
+groups; no new runtime dependency, scratch memory or source fixture is retained.
+Against the immediately previous compiler, the three automatic-profile/metadata
+fixtures shrink by 1,592 bytes each and automatic Lunistice by 1,628 bytes.
+The baseline is refreshed to the measured output, tightening the complete-module
+budgets as well. Its recheck and Lunistice base/DLC behavioral checks pass.
+
+Binaryen `-Oz` still produces 29,653 / 26,354 / 28,882 bytes for Minish Cap /
+Lunistice / Celeste, leaving gaps of 2,280 / 2,306 / 3,235 bytes. Instruction
+simplification now saves 162 / 162 / 254 bytes relative to Binaryen's no-pass
+roundtrip. Widened loads remain a possible direct-emission follow-up. No new
+compiler timing claim is made for this shortcut; it introduces no optimizer scan.
+
 ## Original promotion compiler cost
 
 Optimized-host seven-sample medians for the promoted pipeline:
@@ -294,8 +354,9 @@ sizes, validates baseline and optimized modules, and checks Debug equivalence.
 DWARF `.debug_info` variable entries already have nondeterministic ordering in
 unoptimized builds, so that comparison excludes only this section; executable
 code, names, source maps and line tables must match. A smaller deterministic
-fixture also checks the entire Debug binary byte for byte. No Debug emitter
-changes are part of this promotion.
+fixture also checks the entire Debug binary byte for byte. The original pass
+promotion made no Debug emitter changes; the later default-enum shortcut above
+intentionally benefits both profiles.
 
 Validation passes: 494 library, 696 compiler, 20 binary and four example tests;
 Clippy; formatting/diff checks; and the browser compiler's wasm32 target check.

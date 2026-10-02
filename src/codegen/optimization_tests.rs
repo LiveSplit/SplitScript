@@ -125,57 +125,112 @@ fn source_effects_gc_results_failures_and_suspension_match_without_optimization(
     .unwrap();
     assert_eq!(optimized, sized);
     for wasm in [baseline, optimized] {
-        validate(&wasm);
-        let module = wasmtime::Module::new(&engine, wasm).unwrap();
-        let mut linker = wasmtime::Linker::<Vec<String>>::new(&engine);
-        linker
-            .func_wrap("env", "process_attach", |_: i32, _: i32| 1_i64)
-            .unwrap();
-        linker
-            .func_wrap("env", "process_detach", |_: i64| {})
-            .unwrap();
-        linker
-            .func_wrap("env", "process_is_open", |_: i64| 1_i32)
-            .unwrap();
-        linker
-            .func_wrap("env", "timer_get_state", || 0_i32)
-            .unwrap();
-        linker
-            .func_wrap("env", "runtime_set_tick_rate", |_: f64| {})
-            .unwrap();
-        linker
-            .func_wrap(
-                "env",
-                "timer_set_variable",
-                |mut caller: wasmtime::Caller<'_, Vec<String>>,
-                 _: i32,
-                 _: i32,
-                 pointer: i32,
-                 length: i32| {
-                    let memory = caller.get_export("memory").unwrap().into_memory().unwrap();
-                    let value = String::from_utf8(
-                        memory.data(&caller)[pointer as usize..(pointer + length) as usize]
-                            .to_vec(),
-                    )
-                    .unwrap();
-                    caller.data_mut().push(value);
-                },
-            )
-            .unwrap();
-        let mut store = wasmtime::Store::new(&engine, Vec::new());
-        let instance = linker.instantiate(&mut store, &module).unwrap();
-        instance
-            .get_typed_func::<(), ()>(&mut store, "_start")
-            .unwrap()
-            .call(&mut store, ())
-            .unwrap();
-        let update = instance
-            .get_typed_func::<(), ()>(&mut store, "update")
-            .unwrap();
-        for _ in 0..4 {
-            update.call(&mut store, ()).unwrap();
+        assert_eq!(run_script(&engine, &wasm), ["8,12,4,7,42,5"]);
+    }
+}
+
+fn run_script(engine: &wasmtime::Engine, wasm: &[u8]) -> Vec<String> {
+    validate(wasm);
+    let module = wasmtime::Module::new(engine, wasm).unwrap();
+    let mut linker = wasmtime::Linker::<Vec<String>>::new(engine);
+    linker
+        .func_wrap("env", "process_attach", |_: i32, _: i32| 1_i64)
+        .unwrap();
+    linker
+        .func_wrap("env", "process_detach", |_: i64| {})
+        .unwrap();
+    linker
+        .func_wrap("env", "process_is_open", |_: i64| 1_i32)
+        .unwrap();
+    linker
+        .func_wrap("env", "timer_get_state", || 0_i32)
+        .unwrap();
+    linker
+        .func_wrap("env", "runtime_set_tick_rate", |_: f64| {})
+        .unwrap();
+    linker
+        .func_wrap(
+            "env",
+            "timer_set_variable",
+            |mut caller: wasmtime::Caller<'_, Vec<String>>,
+             _: i32,
+             _: i32,
+             pointer: i32,
+             length: i32| {
+                let memory = caller.get_export("memory").unwrap().into_memory().unwrap();
+                let value = String::from_utf8(
+                    memory.data(&caller)[pointer as usize..(pointer + length) as usize].to_vec(),
+                )
+                .unwrap();
+                caller.data_mut().push(value);
+            },
+        )
+        .unwrap();
+    let mut store = wasmtime::Store::new(engine, Vec::new());
+    let instance = linker.instantiate(&mut store, &module).unwrap();
+    instance
+        .get_typed_func::<(), ()>(&mut store, "_start")
+        .unwrap()
+        .call(&mut store, ())
+        .unwrap();
+    let update = instance
+        .get_typed_func::<(), ()>(&mut store, "update")
+        .unwrap();
+    for _ in 0..4 {
+        update.call(&mut store, ()).unwrap();
+    }
+    store.into_data()
+}
+
+#[test]
+fn default_enum_constructors_preserve_payloads_effects_and_wrapper_conversions() {
+    let source = r#"
+        state "game.exe" {}
+        enum Mixed { Empty, Byte(u8), Signed(i8), Wide(i64), Small(f32), Float(f64), Text(String) }
+        enum First { Value(i64), Empty }
+        enum Negative { Value(f64), Empty }
+        let calls = 0
+        fn zero() -> i64 { calls = calls + 1; return 0 }
+        fn optional() -> Mixed? { return Mixed.Empty }
+        fn fallible() -> Mixed! { return Mixed.Empty }
+        onAttach {
+            let empty = Mixed.Empty
+            let same = empty == Mixed.Empty
+            let byte = match Mixed.Byte(255) { Mixed.Byte(value) => value as i32, _ => -1 }
+            let first = match First.Value(zero()) { First.Value(value) => value, _ => -1 }
+            let negative = match Negative.Value(-0.0) {
+                Negative.Value(value) => 1.0 / value < 0.0,
+                _ => false,
+            }
+            let option = optional() else Mixed.Text("wrong")
+            let result = fallible() else Mixed.Text("wrong")
+            setVariable("result", `{same},{byte},{first},{negative},{calls},{option == empty},{result == empty}`)
         }
-        assert_eq!(store.data(), &["8,12,4,7,42,5"]);
+    "#;
+    let mut config = wasmtime::Config::new();
+    config.wasm_gc(true).wasm_function_references(true);
+    let engine = wasmtime::Engine::new(&config).unwrap();
+    for profile in [crate::BuildProfile::Debug, crate::BuildProfile::Release] {
+        for optimize in [false, true] {
+            let wasm = compile(source, profile, optimize);
+            let defaults = wasmparser::Parser::new(0)
+                .parse_all(&wasm)
+                .filter_map(|payload| match payload.unwrap() {
+                    wasmparser::Payload::CodeSectionEntry(body) => Some(
+                        body.get_operators_reader()
+                            .unwrap()
+                            .into_iter()
+                            .filter(|op| {
+                                matches!(op, Ok(wasmparser::Operator::StructNewDefault { .. }))
+                            })
+                            .count(),
+                    ),
+                    _ => None,
+                })
+                .sum::<usize>();
+            assert!(defaults > 0, "default constructors missing in {profile:?}");
+            assert_eq!(run_script(&engine, &wasm), ["true,255,0,true,1,true,true"]);
+        }
     }
 }
 

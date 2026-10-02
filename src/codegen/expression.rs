@@ -3588,6 +3588,13 @@ fn compile_expr_unconverted(
             let selected = context
                 .gc
                 .enum_variant_index(*enumeration, *variant, context.enums);
+            // A payload-free first variant has a zero tag and default values
+            // in every payload slot. Allocate it directly in either profile,
+            // without emitting the individual zero/null operands.
+            if selected == 0 && payload.is_none() {
+                function.instruction(&Instruction::StructNewDefault(context.gc.index(ty)));
+                return;
+            }
             function.instruction(&Instruction::I32Const(selected as i32));
             match enumeration {
                 EnumTypeId::Source(enumeration) => {
