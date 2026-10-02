@@ -11,6 +11,27 @@ const CORPUS: &[(&str, &str)] = &[
     ("async_loop", "tests/async_loop.split"),
 ];
 
+/// Optional local scripts stay outside the repository and normal test suite.
+/// The manifest is a JSON array of [artifact name, source path] pairs.
+fn measurement_corpus() -> Vec<(String, String)> {
+    let mut corpus: Vec<_> = CORPUS
+        .iter()
+        .map(|&(name, path)| (name.to_owned(), path.to_owned()))
+        .collect();
+    if let Some(path) = std::env::var_os("SPLITSCRIPT_SIZE_EXTRA_CORPUS") {
+        let extra: Vec<(String, String)> =
+            serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap();
+        for (name, path) in extra {
+            assert!(
+                !name.is_empty() && name.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_')
+            );
+            assert!(!corpus.iter().any(|(existing, _)| existing == &name));
+            corpus.push((name, path));
+        }
+    }
+    corpus
+}
+
 fn validate(wasm: &[u8]) {
     wasmparser::Validator::new_with_features(wasmparser::WasmFeatures::all())
         .validate_all(wasm)
@@ -194,8 +215,8 @@ fn write_size_corpus() {
     let output = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("target/size-check");
     std::fs::create_dir_all(&output).unwrap();
     let mut rows = Vec::new();
-    for &(name, path) in CORPUS {
-        let source = std::fs::read_to_string(path).unwrap();
+    for (name, path) in measurement_corpus() {
+        let source = std::fs::read_to_string(&path).unwrap();
         let checked = crate::check(crate::lower(crate::parse(&source).unwrap())).unwrap();
         let compile_checked = |profile, mode| {
             let options = crate::CompilerOptions {
@@ -209,6 +230,7 @@ fn write_size_corpus() {
             )
         };
         let mut row = serde_json::json!({"name": name, "source": path});
+        row["external"] = (!CORPUS.iter().any(|&(builtin, _)| builtin == name)).into();
         for (label, enabled) in [("baseline", false), ("release", true)] {
             let wasm = compile_checked(
                 crate::BuildProfile::Release,
@@ -282,7 +304,7 @@ fn measure_optimization_overhead() {
     let output = root.join("target/size-check");
     std::fs::create_dir_all(&output).unwrap();
     let mut rows = Vec::new();
-    for &(name, path) in CORPUS {
+    for (name, path) in measurement_corpus() {
         let source = std::fs::read_to_string(root.join(path)).unwrap();
         let checked = crate::check(crate::lower(crate::parse(&source).unwrap())).unwrap();
         let options = crate::CompilerOptions {

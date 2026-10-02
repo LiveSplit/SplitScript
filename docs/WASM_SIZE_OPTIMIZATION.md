@@ -245,3 +245,24 @@ Artifacts stay under `target/size-check`. Timing uses seven warmed, alternating
 samples per mode, excludes parsing/type checking, and includes lowering and
 emission. The maintained runtime runner compares baseline and optimized output
 through the existing behavioral scenarios rather than checking bytes alone.
+
+External real scripts can join these opt-in measurements without becoming
+repository fixtures. Set `SPLITSCRIPT_SIZE_EXTRA_CORPUS` to a JSON manifest of
+`[artifact_name, source_path]` pairs before either measurement command. Names
+must be unique ASCII letters/digits/underscores; paths may be absolute or
+relative to the repository. For the sibling Celeste porting workspace:
+
+```powershell
+'[["celeste", "../vibe-asl-porting/ports/live_split_celeste_port.split"]]' |
+    Set-Content target/extra-size-corpus.json
+$env:SPLITSCRIPT_SIZE_EXTRA_CORPUS = 'target/extra-size-corpus.json'
+cargo test --lib write_size_corpus --offline -- --ignored --nocapture
+node scripts/wasm-size-runtime.mjs
+cargo test --profile max-opt --lib measure_optimization_overhead --offline -- --ignored --nocapture
+```
+
+The external modules receive the same size, Wasm validation and Debug-equivalence
+checks. The runtime runner validates external modules with Node and explicitly
+reports when there is no maintained behavioral harness; this is not an in-game
+test. The source files remain untouched. Normal tests and default measurements
+do not require the external workspace.

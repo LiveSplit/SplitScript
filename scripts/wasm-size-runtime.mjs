@@ -14,7 +14,14 @@ let scenarios = 0;
 for (const row of corpus) {
     let selected = fixtures.filter(match => match[1] === row.source && match[3] === "release");
     if (!selected.length) selected = fixtures.filter(match => match[1] === row.source);
-    if (!selected.length) throw new Error(`No maintained scenarios for ${row.source}`);
+    if (!selected.length) {
+        if (!row.external) throw new Error(`No maintained scenarios for ${row.source}`);
+        for (const variant of variants) {
+            await WebAssembly.compile(fs.readFileSync(path.join(directory, `${row.name}.${variant}.wasm`)));
+        }
+        console.log(`${row.name}: validated ${variants.join(" / ")}; no maintained runtime harness`);
+        continue;
+    }
     for (const variant of variants) {
         for (const fixture of selected) {
             const args = [...fixture[5].matchAll(/"([^"]*)"/g)].map(match => match[1]);
