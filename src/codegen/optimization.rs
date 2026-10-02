@@ -14,6 +14,7 @@ pub(super) fn optimize(mut wasm: Vec<u8>, report: Option<&mut CodegenReport>) ->
                 locals: true,
                 control: true,
                 returns: true,
+                propagation: true,
             },
         );
         if candidate.len() >= wasm.len() {

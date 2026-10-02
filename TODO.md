@@ -981,10 +981,10 @@ concepts rather than maintaining a parallel inventory.
 The [promoted size pipeline](docs/WASM_SIZE_OPTIMIZATION.md) performs bounded
 Release-only instruction, integer-constant, dead-code, local and control-flow
 cleanup, shared returns, and sharing of bodies differing in integer constants.
-With the instruction-cleanup follow-up, it saves 7.5% / 7.6% on Minish Cap /
-Lunistice relative to pre-optimizer master. Debug bypasses all passes.
-Inlining, temporary sinking and propagation remain on the experimental branch;
-their remaining real-script benefit does not yet justify promotion. Prefer
+With instruction cleanup and constant-local propagation, it saves 8.6% / 7.9%
+on Minish Cap / Lunistice relative to pre-optimizer master. Debug bypasses all passes.
+Inlining, temporary sinking and the original propagation prototype remain on
+the experimental branch; their remaining real-script benefit does not yet justify promotion. Prefer
 measured savings on real scripts over large synthetic fixtures. Direct emitter
 fixes that add no analysis may apply to both profiles.
 
@@ -996,7 +996,8 @@ Implement in this order:
    under one fixed emission pipeline, with optimization enabled and disabled.
    Review actual size changes for every pass rather than assuming an IR
    simplification makes the executable smaller.
-2. [ ] Add constant folding and constant propagation over typed IR, followed by
+2. [ ] Extend the current integer folding and uniformly constant-local propagation
+   to broader constant propagation over typed IR, followed by
    unreachable-branch and unused-value elimination. Preserve integer widths,
    overflow, floating-point behavior, traps, fallible results, evaluation order,
    and observable effects. Reuse existing constant evaluation where its

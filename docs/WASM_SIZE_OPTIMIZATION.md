@@ -8,7 +8,8 @@ compiler dependency.
 ## Promoted pipeline
 
 Two cleanup sweeps simplify integer instructions, fold adjacent integer
-constants, remove unreachable code and unused locals, simplify structured
+constants and propagate uniformly constant integer locals, remove unreachable
+code and unused locals, simplify structured
 control flow, and share identical return sequences. The second sweep handles
 patterns exposed by the first. Compilation does not iterate to a fixed point,
 and it stops early when a sweep does not shrink the module.
@@ -46,8 +47,9 @@ Minish Cap / Lunistice. Inlining and temporary sinking stay experimental:
 together, they save only another 46 / 36 bytes compared with this pipeline.
 Temporary sinking alone contributes 36 / 17 bytes in the two-sweep configuration.
 The remaining size benefit does not justify promoting that additional analysis
-and maintenance surface yet. The disabled propagation experiment also stays off
-master. Redundant null rewriting is omitted because direct emitter fixes already
+and maintenance surface yet. The original straight-line propagation experiment stays off
+master; a separately measured constant-local analysis is described below.
+Redundant null rewriting is omitted because direct emitter fixes already
 provide its savings in both profiles.
 
 Integer constant folding stays because it saves 113 bytes on Minish Cap and
@@ -121,6 +123,70 @@ primary scripts. Full `-Oz` on the new output reaches 29,638 / 26,344 bytes;
 these are diagnostic comparisons, not an assertion that the remaining passes
 compose additively. The next measured candidates are constant propagation on
 Minish Cap and further instruction/local simplification on both primary scripts.
+
+## Constant-local follow-up — 2026-10-02
+
+Minish Cap retains packed constants in locals and repeatedly extracts their
+halves with shifts and truncation. Binaryen's `--precompute-propagate` exposed
+this opportunity. The new Release cleanup collects integer locals whose
+explicit assignments all store the same literal, then replaces reads dominated
+by a store. A conflicting or nonconstant write disqualifies the entire local.
+Facts become available only after a store, including for parameters and
+default-initialized locals. Scope exits and `else` discard facts established
+inside that scope, so a branch that skips initialization cannot inherit them.
+Outer facts survive calls and loops because all writes agree. Unsupported
+exception/continuation control is excluded. This is a bounded linear scan,
+without iterative control-flow analysis or heap/global assumptions.
+
+Adjacent integer wrap/extend and zero tests now fold as well. Existing arithmetic,
+local removal and branch cleanup consume the exposed constants. Large literals
+may temporarily expand individual reads; the existing strict final body and
+module size gates reject a result that does not shrink. Debug still bypasses
+all optimization scans.
+
+| Real script | Previous master | New Release | Additional saving |
+| --- | ---: | ---: | ---: |
+| Minish Cap | 32,488 | 32,086 | 402 |
+| Lunistice | 29,025 | 28,933 | 92 |
+| Neon White | 4,692 | 4,692 | 0 |
+| A Hat in Time | 48,449 | 48,325 | 124 |
+
+Constant-local propagation without the new unary folding saved 285 / 64 / 0 /
+84 bytes respectively. Together they save 8.6% / 7.9% on the primary scripts
+relative to pre-optimizer master. No fixture in the nine-script corpus grows;
+automatic Unity and the two collection fixtures save 298 / 307 / 307 additional
+bytes, and both small async fixtures are unchanged.
+
+Six new runtime tests cover packed constants, both conditional arms, skipped
+initialization through branches/tables, loop backedges, conflicting writes,
+parameter/default values, repeated equal writes, signed/unsigned conversions,
+division traps and rejection of larger expanded literals. The existing
+Never-emission test now recognizes its marker as either an i32 or i64 constant,
+because folding an extension legitimately changes the instruction width.
+
+Validation passes: 507 library tests, all 696 compiler tests (including the
+updated marker check), 20 binary tests and five example tests; Clippy; and the
+browser compiler's wasm32 target check. All 176 maintained modules validate,
+all 211 runtime scenarios and the Debug/Release profile check pass, and all 36
+baseline-versus-optimized corpus runtime invocations pass.
+The unchanged Unity size gate passes, including per-function/type budgets and
+Lunistice base/DLC behavior; no baseline refresh was needed.
+
+Optimized-host seven-sample medians, measured without a concurrent build or
+runtime suite, are 2.929 -> 6.300 ms for Minish Cap and 17.086 -> 20.343 ms for
+Lunistice (passes disabled -> complete Release backend). Neon White measures
+0.523 -> 1.112 ms and A Hat in Time 4.360 -> 7.682 ms. These include
+lowering/emission but exclude parsing/type checking; cross-run variation means
+they do not isolate the new analysis's cost. The complete primary-script
+backend remains in the same range as the preceding pipeline. The large
+synthetic timings were noisy, so they are not used to infer pass overhead.
+
+After this change Binaryen's standalone constant-propagation pass offers no net
+saving relative to its no-pass roundtrip on the primary scripts. Instruction
+simplification still saves 194 / 193 bytes, local simplification/coalescing
+161 / 155, and code folding 92 / 125. Full `-Oz` reaches 29,653 / 26,350 bytes,
+leaving a 2,433 / 2,583-byte gap. These pass results are diagnostic and do not
+compose additively; Binaryen's own final output can change with input shape.
 
 ## Original promotion compiler cost
 

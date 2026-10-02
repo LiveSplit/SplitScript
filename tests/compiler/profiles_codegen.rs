@@ -102,7 +102,13 @@ fn never_statements_stop_synchronous_and_async_emission_in_both_profiles() {
         for payload in Parser::new(0).parse_all(&wasm) {
             if let Payload::CodeSectionEntry(body) = payload.unwrap() {
                 for op in body.get_operators_reader().unwrap() {
-                    if let wasmparser::Operator::I32Const { value } = op.unwrap() {
+                    // Release may fold i32.const + i64.extend into i64.const.
+                    let value = match op.unwrap() {
+                        wasmparser::Operator::I32Const { value } => Some(i64::from(value)),
+                        wasmparser::Operator::I64Const { value } => Some(value),
+                        _ => None,
+                    };
+                    if let Some(value) = value {
                         assert_ne!(value, 918273, "unreachable tail emitted in {profile:?}");
                         reachable_marker |= value == 445566;
                     }

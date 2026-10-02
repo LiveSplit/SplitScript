@@ -9,6 +9,9 @@ use wasmparser::{CompositeInnerType, Parser, Payload};
 mod control;
 #[cfg(test)]
 mod instruction_tests;
+mod propagation;
+#[cfg(test)]
+mod propagation_tests;
 mod returns;
 #[cfg(test)]
 mod returns_tests;
@@ -23,6 +26,7 @@ pub(super) struct Passes {
     pub locals: bool,
     pub control: bool,
     pub returns: bool,
+    pub propagation: bool,
 }
 
 pub(super) fn optimize(wasm: &[u8], passes: Passes) -> Vec<u8> {
@@ -160,6 +164,9 @@ impl Cleanup {
             }
         }
         let mut locals = Vec::new();
+        if self.passes.propagation {
+            propagation::fold_locals(&mut ops);
+        }
         if self.passes.locals || self.passes.control || self.passes.returns {
             for local in body.get_locals_reader()? {
                 let (count, ty) = local?;
@@ -421,6 +428,21 @@ fn invert_integer_comparison(op: &I<'_>) -> Option<I<'static>> {
 }
 
 fn fold(ops: &mut Vec<I<'_>>) {
+    let unary = match ops.as_slice() {
+        [.., I::I64Const(value), I::I32WrapI64] => Some(I::I32Const(*value as i32)),
+        [.., I::I32Const(value), I::I64ExtendI32S] => Some(I::I64Const(i64::from(*value))),
+        [.., I::I32Const(value), I::I64ExtendI32U] => Some(I::I64Const(i64::from(*value as u32))),
+        [.., I::I32Const(value), I::I32Eqz] => Some(I::I32Const(i32::from(*value == 0))),
+        [.., I::I64Const(value), I::I64Eqz] => Some(I::I32Const(i32::from(*value == 0))),
+        _ => None,
+    };
+    if let Some(replacement) = unary
+        && encoded_size(std::slice::from_ref(&replacement)) <= encoded_size(&ops[ops.len() - 2..])
+    {
+        ops.truncate(ops.len() - 2);
+        ops.push(replacement);
+        return;
+    }
     let replacement = match ops.as_slice() {
         [.., I::I32Const(a), I::I32Const(b), op] => match op {
             I::I32Add => Some(I::I32Const(a.wrapping_add(*b))),
