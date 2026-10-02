@@ -2167,3 +2167,86 @@ fn branch_constants_keep_trapping_conditions_and_gc_null_payloads() {
         assert_eq!(results[0].i64(), Some(0));
     }
 }
+
+#[test]
+fn constant_integer_comparisons_match_wasm_signed_and_unsigned_boundaries() {
+    let engine = wasmtime::Engine::default();
+    for wide in [false, true] {
+        let comparisons = if wide {
+            [
+                I::I64Eq,
+                I::I64Ne,
+                I::I64LtS,
+                I::I64LtU,
+                I::I64LeS,
+                I::I64LeU,
+                I::I64GtS,
+                I::I64GtU,
+                I::I64GeS,
+                I::I64GeU,
+            ]
+        } else {
+            [
+                I::I32Eq,
+                I::I32Ne,
+                I::I32LtS,
+                I::I32LtU,
+                I::I32LeS,
+                I::I32LeU,
+                I::I32GtS,
+                I::I32GtU,
+                I::I32GeS,
+                I::I32GeU,
+            ]
+        };
+        let values = if wide {
+            [i64::MIN, -1, 0, 1, i64::MAX]
+        } else {
+            [i64::from(i32::MIN), -1, 0, 1, i64::from(i32::MAX)]
+        };
+        for a in values {
+            for b in values {
+                for comparison in &comparisons {
+                    let constant = |v| {
+                        if wide {
+                            I::I64Const(v)
+                        } else {
+                            I::I32Const(v as i32)
+                        }
+                    };
+                    let before = numeric(
+                        &[],
+                        &[
+                            constant(a),
+                            constant(b),
+                            comparison.clone(),
+                            I::I64ExtendI32U,
+                            I::End,
+                        ],
+                    );
+                    let after = optimize(
+                        &before,
+                        Passes {
+                            constants: true,
+                            ..Default::default()
+                        },
+                    );
+                    assert!(after.len() < before.len());
+                    let evaluate = |wasm| {
+                        let (mut store, instance) = instantiate(&engine, wasm);
+                        instance
+                            .get_typed_func::<(), i64>(&mut store, "run")
+                            .unwrap()
+                            .call(&mut store, ())
+                            .unwrap()
+                    };
+                    assert_eq!(
+                        evaluate(&before),
+                        evaluate(&after),
+                        "{a} {comparison:?} {b}"
+                    );
+                }
+            }
+        }
+    }
+}

@@ -573,6 +573,12 @@ fn fold(ops: &mut Vec<I<'_>>) {
             I::I32Ne => Some(I::I32Const(i32::from(a != b))),
             I::I32LtS => Some(I::I32Const(i32::from(a < b))),
             I::I32LtU => Some(I::I32Const(i32::from((*a as u32) < (*b as u32)))),
+            I::I32LeS => Some(I::I32Const(i32::from(a <= b))),
+            I::I32LeU => Some(I::I32Const(i32::from((*a as u32) <= (*b as u32)))),
+            I::I32GtS => Some(I::I32Const(i32::from(a > b))),
+            I::I32GtU => Some(I::I32Const(i32::from((*a as u32) > (*b as u32)))),
+            I::I32GeS => Some(I::I32Const(i32::from(a >= b))),
+            I::I32GeU => Some(I::I32Const(i32::from((*a as u32) >= (*b as u32)))),
             _ => None,
         },
         [.., I::I64Const(a), I::I64Const(b), op] => match op {
@@ -591,6 +597,14 @@ fn fold(ops: &mut Vec<I<'_>>) {
                 .map(|v| I::I64Const(v as i64)),
             I::I64Eq => Some(I::I32Const(i32::from(a == b))),
             I::I64Ne => Some(I::I32Const(i32::from(a != b))),
+            I::I64LtS => Some(I::I32Const(i32::from(a < b))),
+            I::I64LtU => Some(I::I32Const(i32::from((*a as u64) < (*b as u64)))),
+            I::I64LeS => Some(I::I32Const(i32::from(a <= b))),
+            I::I64LeU => Some(I::I32Const(i32::from((*a as u64) <= (*b as u64)))),
+            I::I64GtS => Some(I::I32Const(i32::from(a > b))),
+            I::I64GtU => Some(I::I32Const(i32::from((*a as u64) > (*b as u64)))),
+            I::I64GeS => Some(I::I32Const(i32::from(a >= b))),
+            I::I64GeU => Some(I::I32Const(i32::from((*a as u64) >= (*b as u64)))),
             _ => None,
         },
         _ => None,
@@ -600,6 +614,58 @@ fn fold(ops: &mut Vec<I<'_>>) {
     {
         ops.truncate(ops.len() - 3);
         ops.push(replacement);
+    }
+}
+
+/// Reuse module signatures and stack arities while analyzing call arguments.
+pub(super) struct CallOperands(Cleanup);
+impl CallOperands {
+    pub(super) fn new(wasm: &[u8]) -> Self {
+        Self(Cleanup::new(
+            wasm,
+            Passes {
+                instructions: true,
+                ..Default::default()
+            },
+        ))
+    }
+    /// Locate inert arguments, walking across other complete expressions but
+    /// never across control boundaries or a shared multi-result producer.
+    pub(super) fn inert_arguments(
+        &self,
+        ops: &[I<'_>],
+        at: usize,
+        params: usize,
+    ) -> Vec<Option<usize>> {
+        let mut result = vec![None; params];
+        let mut cursor = at;
+        for param in (0..params).rev() {
+            let end = cursor;
+            let mut needed = 1;
+            while cursor > at.saturating_sub(512) && needed != 0 {
+                let op = &ops[cursor - 1];
+                let arity = if pure_push(op) {
+                    Some((0, 1))
+                } else {
+                    stack_locals::arity(op, &self.0.arities, &self.0.struct_fields)
+                };
+                let Some((inputs, outputs)) = arity else {
+                    return result;
+                };
+                if outputs > needed {
+                    return result;
+                }
+                needed = needed - outputs + inputs;
+                cursor -= 1;
+            }
+            if needed != 0 {
+                return result;
+            }
+            if cursor + 1 == end && pure_push(&ops[cursor]) {
+                result[param] = Some(cursor);
+            }
+        }
+        result
     }
 }
 

@@ -982,15 +982,18 @@ The [promoted size pipeline](docs/WASM_SIZE_OPTIMIZATION.md) performs bounded
 Release-only instruction, integer-constant, dead-code, local and control-flow
 cleanup, shared returns, and sharing of bodies differing in integer constants.
 With instruction, constant-local, global and control cleanup plus direct default-enum
-emission, conditional/fallthrough cleanup and cost-based GC literals, it saves 15.3% / 14.7%
+emission, conditional/fallthrough cleanup and cost-based GC literals, it saves 15.5% / 15.0%
 on Minish Cap / Lunistice relative to pre-optimizer master. The external Celeste
-port is also measured and saves 17.0%. Debug bypasses all passes and also benefits
+port is also measured and saves 17.1%. Debug bypasses all passes and also benefits
 from the default-enum emission shortcut, which adds no analysis.
 [Single-reference inlining with control-flow liveness and type pruning](docs/WASM_SIZE_OPTIMIZATION.md#control-flow-liveness-and-inlining--2026-10-02)
 adds 523 / 865 / 533 bytes of savings on Minish Cap / Lunistice / Celeste. The
 complete module must shrink after cleanup, and all added analysis is Release-only.
 [Local layout and conditional exits](docs/WASM_SIZE_OPTIMIZATION.md#local-layout-and-conditional-exits--2026-10-02)
 add another 150 / 174 / 121 bytes on those scripts (845 on automatic Lunistice).
+[Private argument specialization](docs/WASM_SIZE_OPTIMIZATION.md#private-argument-specialization--2026-10-02)
+adds 88 / 96 / 50 more (491 on automatic Lunistice), with the original full
+pipeline retained as a size fallback.
 The earlier broader inlining/temporary-sinking and propagation prototypes remain
 on the experimental branch; their remaining real-script benefit does not yet justify promotion. Prefer
 measured savings on Minish Cap, Lunistice and Celeste over large synthetic fixtures. Direct emitter

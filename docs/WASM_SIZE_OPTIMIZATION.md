@@ -850,6 +850,91 @@ in Binaryen's argument-elimination output is specializing formatting helpers
 when every caller supplies the same numeric radix, alongside removing unused
 helper parameters. Its end-to-end size benefit still needs a separate trial.
 
+## Private argument specialization — 2026-10-02
+
+Binaryen's argument-elimination output specializes integer formatting when
+all calls pass the same radix, removes unused helper parameters, and follows
+those changes with local/constant cleanup. The new Release candidate applies
+those call-site facts before inlining, where they provide more benefit.
+
+Only private functions referenced exclusively by ordinary direct calls qualify.
+Exports, element/global `ref.func` references, tail-call targets, and unsupported
+function subtypes keep their signatures. All calls must agree on an integer
+constant before its parameter is specialized. An unused parameter can also be
+removed, even when callers supply different values. In either case, the caller's
+argument must be an inert one-instruction push: executed calls, loads, allocations
+and trapping expressions are never erased. A bounded backwards stack walk can
+locate earlier arguments across complete expressions; control boundaries,
+unknown stack effects and shared multi-result producers stop that walk.
+
+Unwritten constant parameters become literals. Written ones use initialized
+private locals, retaining fresh values for each activation; unused parameter
+stores retain their producers as drops or stack values. Function indices remain
+stable during this pass, and the existing type pruning removes unused signatures.
+Up to three shrinking rounds expose constants passed through helper chains.
+The existing integer folder now covers all signed/unsigned i32/i64 comparisons,
+so newly constant range checks can actually disappear.
+
+Early transformations can affect later inlining and function sharing. Therefore
+the compiler evaluates the existing pipeline and the specialized pipeline and
+retains only the smaller complete module, including its matching report. No
+interim signature or function-body saving is sufficient on its own. Debug
+bypasses this entire process.
+
+| Real script | Before | After | Saved | Binaryen `-Oz` on new output | Remaining gap |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Minish Cap | 29,748 | 29,660 | 88 | 28,657 | 1,003 |
+| Lunistice | 26,797 | 26,701 | 96 | 25,870 | 831 |
+| Celeste | 29,448 | 29,398 | 50 | 28,718 | 680 |
+| A Hat in Time | 43,057 | 43,031 | 26 | 42,018 | 1,013 |
+| Neon White | 4,180 | 4,149 | 31 | — | — |
+| Automatic Lunistice | 116,062 | 115,571 | 491 | — | — |
+
+Collections / nested collections save 562 / 623 bytes and async / async-loop
+save 29 / 60. All ten outputs validate, none grows, and stable Debug output
+remains identical. The external Celeste file is unchanged and still lacks a
+maintained gameplay harness.
+
+Experiments show why placement and argument analysis matter: late specialization
+with the added comparison folds saved only 59 / 35 / 36 / 0 bytes on Minish Cap /
+Lunistice / Celeste / A Hat in Time. Moving it before inlining reached
+88 / 47 / 36 / 26; allowing up to three shrinking rounds raised Lunistice to 66.
+Looking past complex later arguments reached the final results above. These
+are cumulative pipeline measurements, not additive pass contributions.
+
+Six focused argument tests exercise constant agreement, differing call sites,
+unused and overwritten parameters, local remapping, recursive calls, host
+side effects, traps, exported/referenced functions and pinned tail calls. The
+comparison regression checks every integer comparison against Wasmtime at
+signed/unsigned boundary values. Measurement and experiment logs are under
+`target/arguments`.
+
+Validation passes 555 library tests, 697 compiler tests, 20 binary tests and
+five example tests, plus Clippy with warnings denied, the browser compiler's
+wasm32 check, 176 runtime-fixture validations, 211 runtime scenarios, the profile
+check and 36 corpus runtime invocations. Both Lunistice editions and
+the refreshed Unity gate pass.
+
+The Unity baseline refresh accepts one per-body regression: `StringFind` grows
+134 to 138 bytes in nested metadata, while its complete module shrinks by 489.
+Every complete module shrinks or stays equal. Source fingerprints are unchanged;
+there is no growth in retained helper provenance, type/function counts, memory
+requirements or section budgets. No regression-gate checks are relaxed.
+
+The optimized-host comparison measured 165.9 ms for Lunistice versus 93.5 ms
+in the prior recorded baseline, 986.2 ms for automatic Lunistice versus 409.1,
+and 1,001.6 ms for nested metadata versus 547.8. These cross-run whole-compile
+measurements include the extra candidate-pipeline comparison and are not isolated
+pass timings. This is an accepted Release-only cost for enforcing the stronger
+size guard; Debug adds no analysis.
+
+A fresh standalone Binaryen comparison on the final output leaves only
+14 / 38 / 15 / 16 bytes in `dae-optimizing` beyond Binaryen's no-pass rewrite
+on Minish Cap / Lunistice / Celeste / A Hat in Time. Optimizing inlining still
+saves 743 / 0 / 395 / 461 in isolation, while local CSE saves 172 on Lunistice.
+These are candidates for the next investigation; standalone pass savings do
+not compose and are not guaranteed attainable by a single local change.
+
 ## Original promotion compiler cost
 
 Optimized-host seven-sample medians for the promoted pipeline:

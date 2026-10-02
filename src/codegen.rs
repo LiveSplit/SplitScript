@@ -24,6 +24,7 @@ use crate::types::{
 };
 use crate::wasm_ir::{self, BodyOwner};
 
+mod arguments;
 mod array_functions;
 mod array_value;
 mod async_frame;

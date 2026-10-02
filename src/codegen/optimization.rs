@@ -33,6 +33,45 @@ pub(super) fn cleanup(
 
 pub(super) fn optimize(wasm: Vec<u8>, mut report: Option<&mut CodegenReport>) -> Vec<u8> {
     let baseline = cleanup(wasm, report.as_deref_mut(), false);
+    let mut specialized = baseline.clone();
+    let mut specialized_report = report.as_deref().cloned();
+    // A changed signature can expose constants in its callers. Limit retries,
+    // and stop as soon as a round cannot reduce the complete module.
+    for _ in 0..3 {
+        let candidate = super::arguments::specialize(&specialized);
+        if candidate == specialized {
+            break;
+        }
+        let mut candidate_report = specialized_report.clone();
+        let candidate = cleanup(candidate, candidate_report.as_mut(), false);
+        let candidate = super::type_pruning::optimize(&candidate);
+        if candidate.len() >= specialized.len() {
+            break;
+        }
+        specialized = candidate;
+        specialized_report = candidate_report;
+    }
+    let mut plain_report = report.as_deref().cloned();
+    let plain = finish_inlining(baseline.clone(), plain_report.as_mut());
+    // Early specialization can interfere with later inlining and sharing.
+    // Compare both complete pipelines instead of relying on an interim saving.
+    let (result, selected_report) = if specialized.len() < baseline.len() {
+        let candidate = finish_inlining(specialized, specialized_report.as_mut());
+        if candidate.len() < plain.len() {
+            (candidate, specialized_report)
+        } else {
+            (plain, plain_report)
+        }
+    } else {
+        (plain, plain_report)
+    };
+    if let Some(report) = report {
+        *report = selected_report.unwrap();
+    }
+    result
+}
+
+fn finish_inlining(baseline: Vec<u8>, report: Option<&mut CodegenReport>) -> Vec<u8> {
     let (expanded, indices) = super::inlining::expand(&baseline);
     let mut candidate_report = report.as_deref().cloned();
     if let Some(report) = &mut candidate_report {
