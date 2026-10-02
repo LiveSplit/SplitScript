@@ -10,12 +10,14 @@ mod control;
 mod fallthrough;
 #[cfg(test)]
 mod instruction_tests;
+mod liveness;
 mod propagation;
 #[cfg(test)]
 mod propagation_tests;
 mod returns;
 #[cfg(test)]
 mod returns_tests;
+mod stack_locals;
 #[cfg(test)]
 mod tests;
 
@@ -28,74 +30,14 @@ pub(super) struct Passes {
     pub control: bool,
     pub returns: bool,
     pub propagation: bool,
+    pub flow_locals: bool,
 }
 
 pub(super) fn optimize(wasm: &[u8], passes: Passes) -> Vec<u8> {
-    let mut type_parameters = Vec::new();
-    let mut parameters = Vec::new();
-    let mut type_results = Vec::new();
-    let mut results = Vec::new();
-    let mut struct_fields = Vec::new();
-    let mut arities = fallthrough::Types::default();
-    for payload in Parser::new(0).parse_all(wasm) {
-        match payload.unwrap() {
-            Payload::TypeSection(section) => {
-                for group in section {
-                    for ty in group.unwrap().into_types() {
-                        if passes.returns {
-                            type_results.push(match &ty.composite_type.inner {
-                                CompositeInnerType::Func(ty) => ty.results().len(),
-                                _ => 0,
-                            });
-                        }
-                        if passes.returns || passes.instructions {
-                            struct_fields.push(match &ty.composite_type.inner {
-                                CompositeInnerType::Struct(ty) => Some(ty.fields.len()),
-                                _ => None,
-                            });
-                        }
-                        type_parameters.push(match &ty.composite_type.inner {
-                            CompositeInnerType::Func(ty) => ty.params().len(),
-                            _ => 0,
-                        });
-                        arities.types.push(ty);
-                    }
-                }
-            }
-            Payload::ImportSection(section) => {
-                for import in section.into_imports() {
-                    if let wasmparser::TypeRef::Func(ty) | wasmparser::TypeRef::FuncExact(ty) =
-                        import.unwrap().ty
-                    {
-                        arities.functions.push(ty);
-                        arities.imported += 1;
-                    }
-                }
-            }
-            Payload::FunctionSection(section) => {
-                for ty in section {
-                    let ty = ty.unwrap() as usize;
-                    arities.functions.push(ty as u32);
-                    parameters.push(type_parameters[ty]);
-                    if passes.returns {
-                        results.push(type_results[ty]);
-                    }
-                }
-            }
-            _ => {}
-        }
-    }
     let mut module = Module::new();
-    Cleanup {
-        passes,
-        parameters,
-        next_body: 0,
-        results,
-        struct_fields,
-        arities,
-    }
-    .parse_core_module(&mut module, Parser::new(0), wasm)
-    .unwrap();
+    Cleanup::new(wasm, passes)
+        .parse_core_module(&mut module, Parser::new(0), wasm)
+        .unwrap();
     let result = module.finish();
     if result.len() < wasm.len() {
         result
@@ -126,6 +68,70 @@ impl Reencode for Cleanup {
 }
 
 impl Cleanup {
+    fn new(wasm: &[u8], passes: Passes) -> Self {
+        let mut type_parameters = Vec::new();
+        let mut parameters = Vec::new();
+        let mut type_results = Vec::new();
+        let mut results = Vec::new();
+        let mut struct_fields = Vec::new();
+        let mut arities = fallthrough::Types::default();
+        for payload in Parser::new(0).parse_all(wasm) {
+            match payload.unwrap() {
+                Payload::TypeSection(section) => {
+                    for group in section {
+                        for ty in group.unwrap().into_types() {
+                            if passes.returns {
+                                type_results.push(match &ty.composite_type.inner {
+                                    CompositeInnerType::Func(ty) => ty.results().len(),
+                                    _ => 0,
+                                });
+                            }
+                            if passes.returns || passes.instructions {
+                                struct_fields.push(match &ty.composite_type.inner {
+                                    CompositeInnerType::Struct(ty) => Some(ty.fields.len()),
+                                    _ => None,
+                                });
+                            }
+                            type_parameters.push(match &ty.composite_type.inner {
+                                CompositeInnerType::Func(ty) => ty.params().len(),
+                                _ => 0,
+                            });
+                            arities.types.push(ty);
+                        }
+                    }
+                }
+                Payload::ImportSection(section) => {
+                    for import in section.into_imports() {
+                        if let wasmparser::TypeRef::Func(ty) | wasmparser::TypeRef::FuncExact(ty) =
+                            import.unwrap().ty
+                        {
+                            arities.functions.push(ty);
+                            arities.imported += 1;
+                        }
+                    }
+                }
+                Payload::FunctionSection(section) => {
+                    for ty in section {
+                        let ty = ty.unwrap() as usize;
+                        arities.functions.push(ty as u32);
+                        parameters.push(type_parameters[ty]);
+                        if passes.returns {
+                            results.push(type_results[ty]);
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+        Self {
+            passes,
+            parameters,
+            next_body: 0,
+            results,
+            struct_fields,
+            arities,
+        }
+    }
     fn clean_body(
         &mut self,
         body: wasmparser::FunctionBody<'_>,
@@ -229,6 +235,26 @@ impl Cleanup {
             control::merge_if_assignments(&mut ops, parameter_count, &locals);
         }
         if self.passes.locals {
+            if self.passes.flow_locals {
+                stack_locals::run(
+                    &mut ops,
+                    parameter_count + locals.len(),
+                    &self.arities,
+                    &self.struct_fields,
+                );
+                let signature = self.arities.functions[self.arities.imported + self.next_body - 1];
+                let CompositeInnerType::Func(ty) =
+                    &self.arities.types[signature as usize].composite_type.inner
+                else {
+                    unreachable!()
+                };
+                let params = ty
+                    .params()
+                    .iter()
+                    .map(|&ty| reencode::RoundtripReencoder.val_type(ty))
+                    .collect::<Result<Vec<_>, _>>()?;
+                liveness::reuse(&mut ops, &params, &locals);
+            }
             let locals = compact_locals(&mut ops, parameter_count, locals);
             if self.passes.instructions {
                 let mut simplified = Vec::with_capacity(ops.len());
@@ -570,5 +596,38 @@ fn fold(ops: &mut Vec<I<'_>>) {
     {
         ops.truncate(ops.len() - 3);
         ops.push(replacement);
+    }
+}
+
+/// Reuse module signatures across all candidate bodies in a single inlining run.
+pub(super) struct BodyCleanup(Cleanup);
+impl BodyCleanup {
+    pub(super) fn new(wasm: &[u8]) -> Self {
+        Self(Cleanup::new(
+            wasm,
+            Passes {
+                instructions: true,
+                constants: true,
+                dead_code: true,
+                locals: true,
+                control: true,
+                returns: true,
+                propagation: true,
+                flow_locals: true,
+            },
+        ))
+    }
+    pub(super) fn clean(&mut self, bytes: &[u8], defined: usize) -> Vec<u8> {
+        let mut bytes = bytes.to_vec();
+        for _ in 0..2 {
+            self.0.next_body = defined;
+            bytes = self
+                .0
+                .clean_body(wasmparser::FunctionBody::new(
+                    wasmparser::BinaryReader::new(&bytes, 0),
+                ))
+                .unwrap();
+        }
+        bytes
     }
 }

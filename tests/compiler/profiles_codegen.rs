@@ -127,7 +127,7 @@ fn explicit_il2cpp_profiles_omit_the_measured_catalog_and_version_lookup() {
         .validate_all(&wasm)
         .unwrap();
     assert!(!contains_string_literal(&wasm, b"UnityPlayer.dll"));
-    for (_, function) in &report.functions {
+    for function in report.function_names() {
         assert!(
             !function.contains("Il2CppProfileSelect") && !function.contains("Il2CppProfileUnity"),
             "custom profile retained catalog: {function}"
@@ -156,8 +156,7 @@ fn explicit_il2cpp_width_omits_opposite_discovery() {
             Validator::new_with_features(WasmFeatures::all())
                 .validate_all(&wasm)
                 .unwrap();
-            let retained =
-                |part: &str| report.functions.iter().any(|(_, name)| name.contains(part));
+            let retained = |part: &str| report.function_names().any(|name| name.contains(part));
             assert!(retained(&format!("DiscoverIl2Cpp{width}::poll")));
             assert!(!retained(&format!(
                 "DiscoverIl2Cpp{}::poll",
@@ -175,9 +174,8 @@ fn explicit_il2cpp_width_omits_opposite_discovery() {
     let (_, report) = release_emission(custom);
     assert!(
         !report
-            .functions
-            .iter()
-            .any(|(_, name)| name.contains("Il2CppProfileIsValid")),
+            .function_names()
+            .any(|name| name.contains("Il2CppProfileIsValid")),
         "Release custom profiles must omit authoring-only validation"
     );
     let checked =
@@ -191,16 +189,14 @@ fn explicit_il2cpp_width_omits_opposite_discovery() {
     );
     assert!(
         debug
-            .functions
-            .iter()
-            .any(|(_, name)| name.contains("Il2CppProfileIsValid")),
+            .function_names()
+            .any(|name| name.contains("Il2CppProfileIsValid")),
         "Debug custom profiles must retain authoring validation"
     );
     assert!(
         !report
-            .functions
-            .iter()
-            .any(|(_, name)| name.contains("Il2CppTable32::poll"))
+            .function_names()
+            .any(|name| name.contains("Il2CppTable32::poll"))
     );
 }
 
@@ -370,15 +366,13 @@ fn flat_schema_names_omit_nested_matching_and_unused_nested_declarations() {
         let (wasm, report) = release_emission(&source);
         assert!(
             !report
-                .functions
-                .iter()
-                .any(|(_, name)| name.ends_with("UnityClassNamesMatchesFlat"))
+                .function_names()
+                .any(|name| name.ends_with("UnityClassNamesMatchesFlat"))
         );
         assert!(
             !report
-                .functions
-                .iter()
-                .any(|(_, name)| name.ends_with("UnityClassNamesMatches"))
+                .function_names()
+                .any(|name| name.ends_with("UnityClassNamesMatches"))
         );
         assert!(!contains_string_literal(
             &wasm,
@@ -397,16 +391,15 @@ fn flat_schema_names_omit_nested_matching_and_unused_nested_declarations() {
                 "image \"Assembly-CSharp\" { namespace Game { class Probe { static i32 value; } } }"),
         ] {
             let (wasm, report) = release_emission(&qualified);
-            assert!(report.functions.iter().any(|(_, name)| name.ends_with("UnityClassNamesMatchesFlat")));
+            assert!(report.function_names().any(|name| name.ends_with("UnityClassNamesMatchesFlat")));
             Validator::new_with_features(WasmFeatures::all()).validate_all(&wasm).unwrap();
         }
         let nested = source.replace("class Probe {", "class Probe from \"Game.Outer+Probe\" {");
         let (wasm, report) = release_emission(&nested);
         assert!(
             report
-                .functions
-                .iter()
-                .any(|(_, name)| name.ends_with("UnityClassNamesMatches"))
+                .function_names()
+                .any(|name| name.ends_with("UnityClassNamesMatches"))
         );
         Validator::new_with_features(WasmFeatures::all())
             .validate_all(&wasm)
@@ -426,7 +419,7 @@ fn explicit_mono_families_exclude_build_identity_discovery() {
             Validator::new_with_features(WasmFeatures::all())
                 .validate_all(&wasm)
                 .unwrap();
-            for (_, name) in &report.functions {
+            for name in report.function_names() {
                 for excluded in [
                     "MonoLayoutForBuild",
                     "MonoLayoutBuild",
@@ -456,9 +449,8 @@ fn explicit_mono_families_exclude_build_identity_discovery() {
                 for name in [export, layouts] {
                     assert_eq!(
                         report
-                            .functions
-                            .iter()
-                            .any(|(_, function)| function.contains(name)),
+                            .function_names()
+                            .any(|function| function.contains(name)),
                         selector == platform,
                         "wrong platform dependency {name} for {selector}/{family}"
                     );
@@ -480,9 +472,8 @@ fn explicit_mono_families_exclude_build_identity_discovery() {
     let (_, report) = release_emission(include_str!("../mono_profiles.split"));
     assert!(
         report
-            .functions
-            .iter()
-            .any(|(_, name)| name.contains("MonoLayoutForBuild"))
+            .function_names()
+            .any(|name| name.contains("MonoLayoutForBuild"))
     );
 }
 
@@ -501,10 +492,7 @@ fn binary_identity_readers_follow_the_requested_format() {
             .unwrap();
         for reader in readers {
             assert_eq!(
-                report
-                    .functions
-                    .iter()
-                    .any(|(_, name)| name.ends_with(reader)),
+                report.function_names().any(|name| name.ends_with(reader)),
                 expected == Some(reader),
                 "unexpected demand for {reader}"
             );
@@ -595,9 +583,8 @@ fn grouped_field_binding_uses_only_demanded_fields() {
         assert_eq!(small, partial, "unused fields changed {provider}");
         assert!(
             report
-                .functions
-                .iter()
-                .all(|(_, name)| !name.contains("BindFields"))
+                .function_names()
+                .all(|name| !name.contains("BindFields"))
         );
         let (complete, report) = release_emission(&source(
             extra,
@@ -608,9 +595,8 @@ fn grouped_field_binding_uses_only_demanded_fields() {
             .unwrap();
         assert!(
             report
-                .functions
-                .iter()
-                .any(|(_, name)| name.contains("BindFields"))
+                .function_names()
+                .any(|name| name.contains("BindFields"))
         );
         let unused = format!("static Map<String, [String]> unobserved; {extra}");
         let (with_unused, unused_report) = release_emission(&source(
@@ -629,9 +615,8 @@ fn grouped_field_binding_uses_only_demanded_fields() {
         assert!(!contains_string_literal(&with_unused, b"unobserved"));
         assert!(
             unused_report
-                .functions
-                .iter()
-                .any(|(_, name)| name.contains("BindFields"))
+                .function_names()
+                .any(|name| name.contains("BindFields"))
         );
         Validator::new_with_features(WasmFeatures::all())
             .validate_all(&with_unused)
@@ -694,9 +679,8 @@ fn grouped_conditional_field_binding_prunes_unused_slots() {
         assert!(!contains_string_literal(&extra, b"unobserved"));
         assert!(
             report
-                .functions
-                .iter()
-                .any(|(_, name)| name.contains("BindFields"))
+                .function_names()
+                .any(|name| name.contains("BindFields"))
         );
     }
 }
@@ -737,18 +721,16 @@ fn class_verification_follows_reachable_snapshots_and_live_reads() {
                 .unwrap();
             assert_eq!(
                 report
-                    .functions
-                    .iter()
-                    .any(|(_, name)| name.contains("ParentClass")),
+                    .function_names()
+                    .any(|name| name.contains("ParentClass")),
                 snapshot,
                 "{selector}: {expression}"
             );
             assert!(!contains_string_literal(&wasm, b"UnusedSnapshot"));
             assert_eq!(
                 report
-                    .functions
-                    .iter()
-                    .any(|(_, name)| name.contains("ObjectClass")),
+                    .function_names()
+                    .any(|name| name.contains("ObjectClass")),
                 snapshot,
                 "{selector}: {expression}"
             );
@@ -987,30 +969,26 @@ fn release_managed_report_excludes_unused_strings_and_opposite_backend() {
         assert!(
             unused
                 .1
-                .functions
-                .iter()
-                .all(|(_, name)| !name.contains("ReadManagedString"))
+                .function_names()
+                .all(|name| !name.contains("ReadManagedString"))
         );
         assert!(
             ordinary
                 .1
-                .functions
-                .iter()
-                .all(|(_, name)| !name.contains(excluded))
+                .function_names()
+                .all(|name| !name.contains(excluded))
         );
         assert!(
             ordinary
                 .1
-                .functions
-                .iter()
-                .all(|(_, name)| !name.contains("ReadManagedString"))
+                .function_names()
+                .all(|name| !name.contains("ReadManagedString"))
         );
         let used = compile(provider, "static String text;", "text");
         assert!(
             used.1
-                .functions
-                .iter()
-                .any(|(_, name)| name.ends_with("ReadManagedStringField"))
+                .function_names()
+                .any(|name| name.ends_with("ReadManagedStringField"))
         );
         assert!(used.0.len() > ordinary.0.len());
     }
@@ -2972,23 +2950,20 @@ fn owned_managed_class_equality_is_recursive_and_demand_driven() {
         .unwrap();
     assert!(
         report
-            .functions
-            .iter()
-            .any(|(_, name)| name == "__splitscript::equals::Node")
+            .function_names()
+            .any(|name| name == "__splitscript::equals::Node")
     );
     assert!(
         !report
-            .functions
-            .iter()
-            .any(|(_, name)| name.contains("::snapshot") || name.contains("::managed::"))
+            .function_names()
+            .any(|name| name.contains("::snapshot") || name.contains("::managed::"))
     );
     let unused = source.replace("return left == right", "return true");
     let (_, report) = release_emission(&unused);
     assert!(
         !report
-            .functions
-            .iter()
-            .any(|(_, name)| name.contains("::equals::"))
+            .function_names()
+            .any(|name| name.contains("::equals::"))
     );
 }
 
@@ -3025,16 +3000,14 @@ fn snapshot_equality_composes_through_recursive_maps_and_sets() {
     for kind in ["Node", "map#", "set#"] {
         assert!(
             report
-                .functions
-                .iter()
-                .any(|(_, name)| name.starts_with(&format!("__splitscript::equals::{kind}")))
+                .function_names()
+                .any(|name| name.starts_with(&format!("__splitscript::equals::{kind}")))
         );
     }
     assert!(
         !report
-            .functions
-            .iter()
-            .any(|(_, name)| name.contains("::managed::"))
+            .function_names()
+            .any(|name| name.contains("::managed::"))
     );
 }
 
@@ -3057,9 +3030,8 @@ fn storing_nested_collections_does_not_emit_collection_equality() {
             .unwrap();
         assert!(
             !report
-                .functions
-                .iter()
-                .any(|(_, name)| name.starts_with("__splitscript::equals::map#")
+                .function_names()
+                .any(|name| name.starts_with("__splitscript::equals::map#")
                     || name.starts_with("__splitscript::equals::set#")),
             "{collection}"
         );
@@ -3101,15 +3073,13 @@ fn managed_comparison_budget_helpers_follow_read_demand() {
         .unwrap();
     assert!(
         report
-            .functions
-            .iter()
-            .any(|(_, name)| name.contains("::managed_equals::"))
+            .function_names()
+            .any(|name| name.contains("::managed_equals::"))
     );
     assert!(
         !report
-            .functions
-            .iter()
-            .any(|(_, name)| name == "__splitscript::equals::Key")
+            .function_names()
+            .any(|name| name == "__splitscript::equals::Key")
     );
 
     let (_, report) = release_emission(&format!(
@@ -3117,15 +3087,13 @@ fn managed_comparison_budget_helpers_follow_read_demand() {
     ));
     assert!(
         report
-            .functions
-            .iter()
-            .any(|(_, name)| name.contains("::managed_equals::"))
+            .function_names()
+            .any(|name| name.contains("::managed_equals::"))
     );
     assert!(
         report
-            .functions
-            .iter()
-            .any(|(_, name)| name == "__splitscript::equals::Key")
+            .function_names()
+            .any(|name| name == "__splitscript::equals::Key")
     );
 
     let local = format!(
@@ -3134,9 +3102,8 @@ fn managed_comparison_budget_helpers_follow_read_demand() {
     let (_, report) = release_emission(&local);
     assert!(
         !report
-            .functions
-            .iter()
-            .any(|(_, name)| name.contains("::managed_equals::"))
+            .function_names()
+            .any(|name| name.contains("::managed_equals::"))
     );
     assert!(
         !report

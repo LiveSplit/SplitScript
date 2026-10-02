@@ -417,8 +417,8 @@ fn compare(previous: &Report, current: &Report) -> Vec<String> {
         // when an unrelated optimization makes the complete module smaller.
         let names = |report: &FixtureReport| {
             let mut names = BTreeMap::<String, usize>::new();
-            for (_, name) in &report.emission.functions {
-                *names.entry(name.clone()).or_default() += 1;
+            for name in report.emission.function_names() {
+                *names.entry(name.to_owned()).or_default() += 1;
             }
             names
         };

@@ -47,6 +47,7 @@ mod gc_types;
 mod global_cleanup;
 mod global_plan;
 mod imports;
+mod inlining;
 mod managed_decoders;
 mod managed_demand;
 mod managed_freezers;
@@ -69,6 +70,7 @@ mod script_functions;
 mod set_functions;
 mod settings;
 mod specialization;
+mod type_pruning;
 mod update;
 
 use self::array_functions::ArrayFunctions;
@@ -412,6 +414,9 @@ pub fn compile(inputs: BackendProgram<'_>) -> Vec<u8> {
 #[derive(Debug, Default, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct CodegenReport {
     pub functions: Vec<(u32, String)>,
+    /// Emitted helper bodies absorbed into callers by Release inlining.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub inlined_functions: Vec<String>,
     pub runtime_helpers: Vec<String>,
     /// Reserved scratch banks, excluding padding before immutable data.
     pub scratch_bytes: u64,
@@ -419,6 +424,16 @@ pub struct CodegenReport {
     pub static_data_start: u32,
     pub static_data_end: u64,
     pub minimum_memory_pages: u64,
+}
+
+impl CodegenReport {
+    /// Names of materialized code, whether still a separate body or inlined.
+    pub fn function_names(&self) -> impl Iterator<Item = &str> {
+        self.functions
+            .iter()
+            .map(|(_, name)| name.as_str())
+            .chain(self.inlined_functions.iter().map(String::as_str))
+    }
 }
 
 pub(crate) fn compile_with_report(inputs: BackendProgram<'_>) -> (Vec<u8>, CodegenReport) {
@@ -1188,6 +1203,7 @@ fn compile_internal(
         let memory = static_data.layout();
         *report = CodegenReport {
             functions: function_debug_names,
+            inlined_functions: Vec::new(),
             runtime_helpers: runtime_helpers
                 .entries()
                 .map(|helper| format!("{helper:?}"))

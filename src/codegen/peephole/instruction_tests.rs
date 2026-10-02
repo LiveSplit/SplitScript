@@ -1778,3 +1778,164 @@ fn left_integer_identities_preserve_values_and_do_not_mistake_tees_for_pushes() 
         );
     }
 }
+
+fn flow_locals(wasm: &[u8]) -> Vec<u8> {
+    optimize(
+        wasm,
+        Passes {
+            locals: true,
+            instructions: true,
+            flow_locals: true,
+            ..Default::default()
+        },
+    )
+}
+
+#[test]
+fn flow_locals_preserve_loop_carried_values_defaults_and_conditional_writes() {
+    let mut types = TypeSection::new();
+    types.ty().function([ValType::I32], [ValType::I32]);
+    let ops = [
+        I::Block(BlockType::Empty),
+        I::Loop(BlockType::Empty),
+        I::LocalGet(2),
+        I::LocalGet(0),
+        I::I32GeU,
+        I::BrIf(1),
+        I::LocalGet(2),
+        I::I32Const(1),
+        I::I32And,
+        I::If(BlockType::Empty),
+        I::LocalGet(2),
+        I::I32Const(7),
+        I::I32Mul,
+        I::LocalSet(3),
+        I::End,
+        I::LocalGet(1),
+        I::LocalGet(3),
+        I::I32Add,
+        I::LocalSet(1),
+        I::LocalGet(2),
+        I::I32Const(1),
+        I::I32Add,
+        I::LocalSet(2),
+        I::Br(0),
+        I::End,
+        I::End,
+        I::LocalGet(1),
+        I::End,
+    ];
+    let before = module(types, 0, &[(3, ValType::I32)], &ops, &[]);
+    let after = flow_locals(&before);
+    let engine = wasmtime::Engine::default();
+    for wasm in [&before, &after] {
+        let (mut store, instance) = instantiate(&engine, wasm);
+        let run = instance
+            .get_typed_func::<i32, i32>(&mut store, "run")
+            .unwrap();
+        for limit in 0..40 {
+            let mut expected = 0;
+            let mut temporary = 0;
+            for i in 0..limit {
+                if i % 2 == 1 {
+                    temporary = i * 7;
+                }
+                expected += temporary;
+            }
+            assert_eq!(run.call(&mut store, limit).unwrap(), expected);
+        }
+    }
+}
+
+#[test]
+fn dead_local_stores_keep_effects_traps_and_parameter_values() {
+    let mut types = TypeSection::new();
+    types.ty().function([ValType::I64], [ValType::I64]);
+    let before = module(
+        types,
+        0,
+        &[(1, ValType::I64)],
+        &[
+            I::I64Const(17),
+            I::Call(0),
+            I::LocalSet(1),
+            I::I64Const(42),
+            I::LocalGet(0),
+            I::I64DivS,
+            I::LocalSet(1),
+            I::I64Const(23),
+            I::Call(0),
+            I::LocalSet(1),
+            I::LocalGet(0),
+            I::LocalGet(1),
+            I::I64Add,
+            I::End,
+        ],
+        &[("effect", 0)],
+    );
+    let after = flow_locals(&before);
+    assert!(after.len() < before.len());
+    let engine = wasmtime::Engine::default();
+    for wasm in [&before, &after] {
+        let (mut store, instance) = instantiate(&engine, wasm);
+        let run = instance
+            .get_typed_func::<i64, i64>(&mut store, "run")
+            .unwrap();
+        assert_eq!(run.call(&mut store, 2).unwrap(), 25);
+        assert_eq!(store.data(), &[17, 23]);
+        store.data_mut().clear();
+        assert!(run.call(&mut store, 0).is_err());
+        assert_eq!(store.data(), &[17]);
+    }
+}
+
+#[test]
+fn stack_local_cleanup_keeps_tee_dependencies_and_effect_order() {
+    let mut types = TypeSection::new();
+    types.ty().function([ValType::I64], [ValType::I64]);
+    for ops in [
+        vec![
+            I::I64Const(8),
+            I::LocalTee(0),
+            I::LocalSet(1),
+            I::LocalGet(0),
+            I::LocalGet(1),
+            I::I64Sub,
+            I::End,
+        ],
+        vec![
+            I::I64Const(8),
+            I::Call(0),
+            I::LocalSet(1),
+            I::I64Const(8),
+            I::LocalGet(1),
+            I::I64Sub,
+            I::End,
+        ],
+    ] {
+        let before = module(
+            types.clone(),
+            0,
+            &[(1, ValType::I64)],
+            &ops,
+            &[("effect", 0)],
+        );
+        let after = flow_locals(&before);
+        let engine = wasmtime::Engine::default();
+        for wasm in [&before, &after] {
+            let (mut store, instance) = instantiate(&engine, wasm);
+            let run = instance
+                .get_typed_func::<i64, i64>(&mut store, "run")
+                .unwrap();
+            assert_eq!(run.call(&mut store, 99).unwrap(), 0);
+            assert_eq!(
+                store.data().as_slice(),
+                if ops.iter().any(|op| matches!(op, I::Call(_))) {
+                    &[8][..]
+                } else {
+                    &[]
+                }
+            );
+        }
+    }
+}

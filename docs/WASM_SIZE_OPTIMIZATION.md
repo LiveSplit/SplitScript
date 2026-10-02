@@ -22,9 +22,11 @@ patterns exposed by the first. Compilation does not iterate to a fixed point,
 and it stops early when a sweep does not shrink the module.
 
 Function sharing then merges bodies that differ only in integer constants.
-Each original function remains a small wrapper passing its constants to a
-shared helper. Existing indices, signatures, exports and references remain
-intact. Reports retain the original functions and add the shared helpers.
+Function sharing initially retains each original function as a small wrapper
+passing its constants to a shared helper. The subsequent inliner can absorb
+single-reference helpers and remaps surviving function indices and reports.
+Exports and function-reference semantics remain intact; inlined origins are
+retained separately in the report.
 
 Every cleanup body and complete module must shrink. Function-sharing costs
 include wrappers, helper bodies, new signatures/declarations, and section
@@ -681,6 +683,95 @@ and 36 corpus runtime invocations. The Unity size gate and Lunistice base/DLC
 behavior passed without changing the baseline. All ten corpus fixtures validate
 and retain Debug equivalence. Celeste received compilation, validation and
 Debug-equivalence checks; no maintained gameplay harness is available here.
+
+## Control-flow liveness and inlining — 2026-10-02
+
+The follow-up developed on `experiment/wasm-multivalue-inlining` extends
+`f2ed1f2` with single-reference inlining and the cleanup that makes it profitable.
+The selected pipeline is promoted together; all additional analysis is Release-only.
+
+Binaryen's standalone optimizing inliner saved 1,395 / 1,660 / 1,181 / 1,111
+bytes beyond its no-pass rewrite on Minish Cap / Lunistice / Celeste / A Hat in
+Time. Omitting individual nested passes confirmed that the benefit spans
+local cleanup, branch cleanup, instruction rewriting and GC allocation cleanup.
+No single additional small rule explains the whole gap.
+
+The selected pipeline combines:
+
+- Single-reference direct-call inlining, including multiple results, with exact
+  argument order and fresh locals on repeated calls. Exports, `ref.func`, element
+  references, recursion and unsupported control constructs protect callees.
+- Backward liveness over the structured control-flow graph, retaining loop-carried
+  values and initial defaults. Dead stores retain their producers and their
+  effects/traps. Locals share a slot only with the same type and no conflicting
+  live value; parameter slots retain their indices.
+- Bounded straight-line copy forwarding, expression movement through pure
+  pushes, and removal of temporary set/get pairs that can stay on the stack.
+- Removal of unused whole recursive type groups. A retained group keeps all its
+  members, including unused members, preserving recursive type identity.
+
+Inlining may temporarily add up to 64 bytes to a caller/callee pair, because
+later signature removal and cleanup can recover more. The complete candidate
+is accepted only if it is strictly smaller than the existing pipeline's output.
+Candidate rewriting has a 5 MB input-body budget, local analysis has body/local
+limits and a worklist budget, and cleanup remains two bounded sweeps. Module
+signatures are parsed once for the per-candidate cleanup context.
+
+| Real script | Previous `f2ed1f2` | New Release | Saved | Binaryen `-Oz` on new output | Remaining gap |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Minish Cap | 30,421 | 29,898 | 523 | 28,658 | 1,240 |
+| Lunistice | 27,836 | 26,971 | 865 | 25,867 | 1,104 |
+| Celeste external port | 30,102 | 29,569 | 533 | 28,713 | 856 |
+| A Hat in Time | 43,667 | 43,193 | 474 | 42,022 | 1,171 |
+| Neon White | 4,451 | 4,227 | 224 | 3,813 | 414 |
+
+The new Binaryen reference differs slightly from its output on master: inlining
+and sharing choices interact. The remaining gap is measured from each new
+artifact, not obtained by subtracting savings from an old reference.
+
+Removing stack/copy cleanup produces 29,931 / 27,090 / 29,585 / 43,197 bytes on
+the four larger scripts. Removing slot coalescing produces 30,032 / 27,362 /
+29,766 / 43,302; removing liveness entirely produces 30,238 / 27,803 / 29,819 /
+43,411. Trying all call sites instead of only single-reference callees did not
+consistently improve the real scripts, so that larger trial is excluded.
+
+The sidecar report now distinguishes actual indexed function bodies from
+`inlined_functions`. `function_names()` includes both for code-demand checks;
+it does not pretend an inlined helper still has a function index. Report
+requests continue to produce identical Wasm. The Unity gate still checks both
+code provenance and actual per-body sizes, with a reviewed baseline required
+when helpers move into their callers.
+
+Validation passed: 544 library tests (the 543-test suite plus the focused
+recursive-group test), 697 compiler tests, 20 binary tests and five example
+tests; Clippy with warnings denied; browser compiler wasm32 checking; 176
+validated runtime fixtures, 211 runtime scenarios and the profile check; and
+36 corpus runtime invocations. Coverage includes argument order/traps, early
+returns and branch tables, repeated calls with fresh locals, function-reference
+nulls, multiple results, loop-carried/default values, dead-store effects,
+source-local writes inside moved expressions, and stale call edges removed by
+constant cleanup. All ten measured fixtures validate, none grows, and stable
+Debug output is unchanged.
+
+The Unity baseline was refreshed after reviewing all changes. Every complete module shrinks or stays equal; source fingerprints,
+scratch/memory requirements, type/function counts, retained helper provenance
+and section budgets have no growth. The old per-body gate correctly reports
+larger callers absorbing former helper bodies. Both Lunistice editions pass,
+and the refreshed gate passes without relaxing its checks.
+
+The extra work increases Release compilation cost. In the optimized-host Unity run, Lunistice takes 90.2 ms versus 29.7 ms in the prior
+recorded baseline; automatic Lunistice takes 383.2 versus 127.1 ms, and the nested
+metadata fixture takes 545.1 versus 111.2 ms. These are whole-compile single-run
+measurements, not an isolated same-run pass benchmark. They nonetheless show
+that repeatedly constructing instruction-level liveness graphs for expanded
+callers adds measurable work. These subsecond Release times are acceptable for
+the size benefit; they are not a promotion blocker. Debug has no added analysis.
+Future work should prioritize the remaining size gap, while keeping analysis
+bounded and checking compile times for unusually large scripts.
+
+Local comparison artifacts and ablation logs are under `target/big-savings`.
+The external Celeste file remains unchanged and has no maintained gameplay
+harness here. Debug and hot reload bypass the entire candidate pipeline.
 
 ## Original promotion compiler cost
 

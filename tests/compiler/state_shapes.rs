@@ -1089,9 +1089,8 @@ fn managed_array_budgets_follow_reachable_child_decoders() {
         }
         assert_eq!(
             report
-                .functions
-                .iter()
-                .any(|(_, name)| name.contains("ParentClass")),
+                .function_names()
+                .any(|name| name.contains("ParentClass")),
             class_fields
         );
     }
@@ -1118,9 +1117,8 @@ fn managed_inline_arrays_freeze_without_object_walk_helpers() {
         .unwrap();
     assert!(
         report
-            .functions
-            .iter()
-            .any(|(_, name)| name.contains("::managed::freeze::"))
+            .function_names()
+            .any(|name| name.contains("::managed::freeze::"))
     );
     for helper in ["ChargeManagedBytes", "ChargeManagedElements"] {
         assert!(report.runtime_helpers.iter().any(|name| name == helper));
@@ -1198,9 +1196,8 @@ fn unused_managed_collections_retain_no_reader_or_budget() {
             assert_eq!(sections(&plain), sections(&unused));
             assert!(
                 unused_report
-                    .functions
-                    .iter()
-                    .all(|(_, name)| !name.contains("ListLayout")
+                    .function_names()
+                    .all(|name| !name.contains("ListLayout")
                         && !name.contains("CollectionClass")
                         && !name.contains("Keyed")
                         && !name.contains("dictionaryLayout"))
@@ -1986,49 +1983,43 @@ fn collection_storage_resolvers_follow_the_selected_backend() {
                 .unwrap();
             assert_eq!(
                 report
-                    .functions
-                    .iter()
-                    .any(|(_, name)| name.contains("ClassFromType")),
+                    .function_names()
+                    .any(|name| name.contains("ClassFromType")),
                 collection.contains("Probe"),
                 "{selector}: {collection}"
             );
             assert_eq!(
                 report
-                    .functions
-                    .iter()
-                    .any(|(_, name)| name.contains("MonoGenericSize")),
+                    .function_names()
+                    .any(|name| name.contains("MonoGenericSize")),
                 mono && has_collection,
                 "{selector}: {collection}"
             );
             assert_eq!(
                 report
-                    .functions
-                    .iter()
-                    .any(|(_, name)| name.contains("VerifyArrayType")),
+                    .function_names()
+                    .any(|name| name.contains("VerifyArrayType")),
                 collection.starts_with("Map<") || collection.starts_with("Set<"),
                 "{selector}: {collection}"
             );
             assert_eq!(
                 report
-                    .functions
-                    .iter()
-                    .any(|(_, name)| name.contains("ArrayLayout")),
+                    .function_names()
+                    .any(|name| name.contains("ArrayLayout")),
                 has_collection,
                 "{selector}: {collection}"
             );
             assert_eq!(
                 report
-                    .functions
-                    .iter()
-                    .any(|(_, name)| name.contains("Il2CppGenericSize")),
+                    .function_names()
+                    .any(|name| name.contains("Il2CppGenericSize")),
                 !mono && has_collection,
                 "{selector}: {collection}"
             );
             assert_eq!(
                 report
-                    .functions
-                    .iter()
-                    .any(|(_, name)| name.contains("Il2CppTypeTable")),
+                    .function_names()
+                    .any(|name| name.contains("Il2CppTypeTable")),
                 !mono && has_collection,
                 "{selector}: {collection}"
             );
@@ -2078,18 +2069,16 @@ fn recursive_collection_contracts_retain_only_reachable_metadata_adapters() {
             ] {
                 assert_eq!(
                     report
-                        .functions
-                        .iter()
-                        .any(|(_, function)| function.contains(name)),
+                        .function_names()
+                        .any(|function| function.contains(name)),
                     required,
                     "{selector}/{source_type}/{name}"
                 );
             }
             assert!(
                 !report
-                    .functions
-                    .iter()
-                    .any(|(_, function)| function.contains(if mono {
+                    .function_names()
+                    .any(|function| function.contains(if mono {
                         "Il2CppGenericSize"
                     } else {
                         "MonoGenericSize"

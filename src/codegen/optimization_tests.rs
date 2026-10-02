@@ -235,7 +235,7 @@ fn default_enum_constructors_preserve_payloads_effects_and_wrapper_conversions()
 }
 
 #[test]
-fn real_scripts_shrink_and_reports_preserve_original_function_indices() {
+fn real_scripts_shrink_and_reports_track_exported_function_indices() {
     for &(_, path) in &CORPUS[..4] {
         let source = std::fs::read_to_string(path).unwrap();
         let checked = crate::check(crate::lower(crate::parse(&source).unwrap())).unwrap();
@@ -258,8 +258,35 @@ fn real_scripts_shrink_and_reports_preserve_original_function_indices() {
             optimized,
             super::compile(crate::lower_wasm_with_options(&checked, options))
         );
-        assert!(report.functions.starts_with(&original_report.functions));
+        let exported_names = |wasm: &[u8], report: &super::CodegenReport| {
+            let mut names = Vec::new();
+            for p in wasmparser::Parser::new(0).parse_all(wasm) {
+                if let wasmparser::Payload::ExportSection(exports) = p.unwrap() {
+                    for export in exports {
+                        let export = export.unwrap();
+                        if export.kind == wasmparser::ExternalKind::Func {
+                            let (_, name) = report
+                                .functions
+                                .iter()
+                                .find(|(i, _)| *i == export.index)
+                                .unwrap();
+                            names.push((export.name.to_owned(), name.clone()));
+                        }
+                    }
+                }
+            }
+            names
+        };
+        assert_eq!(
+            exported_names(&baseline, &original_report),
+            exported_names(&optimized, &report)
+        );
+        let mut indices = report.functions.iter().map(|(i, _)| *i).collect::<Vec<_>>();
+        indices.sort_unstable();
+        indices.dedup();
+        assert_eq!(indices.len(), report.functions.len());
         report.functions = original_report.functions.clone();
+        report.inlined_functions.clear();
         assert_eq!(report, original_report);
     }
 }
