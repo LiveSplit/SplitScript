@@ -44,6 +44,7 @@ mod function_plan;
 mod function_types;
 mod gc_layout;
 mod gc_types;
+mod global_cleanup;
 mod global_plan;
 mod imports;
 mod managed_decoders;

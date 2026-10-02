@@ -11,7 +11,9 @@ adding an analysis pass.
 
 ## Promoted pipeline
 
-Two cleanup sweeps simplify integer instructions, fold adjacent integer
+Before each of the two bounded cleanup sweeps, a module-wide analysis removes
+unobservable globals and substitutes short, proven constant initial values.
+The cleanup sweeps simplify integer instructions, fold adjacent integer
 constants and propagate uniformly constant integer locals, remove unreachable
 code and unused locals, simplify structured
 control flow, and share identical return sequences. The second sweep handles
@@ -321,6 +323,110 @@ Lunistice / Celeste, leaving gaps of 2,280 / 2,306 / 3,235 bytes. Instruction
 simplification now saves 162 / 162 / 254 bytes relative to Binaryen's no-pass
 roundtrip. Widened loads remain a possible direct-emission follow-up. No new
 compiler timing claim is made for this shortcut; it introduces no optimizer scan.
+
+## Global cleanup and pass attribution — 2026-10-02
+
+Looking only at isolated instruction passes underestimated the remaining
+opportunities. Binaryen 132's `src/passes/pass.cpp`, `SimplifyGlobals.cpp`, and
+`Inlining.cpp` show how its optimizing global/inlining passes rerun function
+cleanup after exposing new opportunities. A fresh experiment replayed every
+prefix of the open-world `-Oz` pipeline in one process, tested each standalone
+pass with the same optimization/shrink settings, and disabled major pass families
+within the full pipeline. Every resulting module validated in Node; each complete
+replayed pipeline matched `-Oz` in size.
+
+On master `40dd52a`, disabling these families increased `-Oz` output by:
+
+| Family disabled | Minish Cap | Lunistice | Celeste | A Hat in Time |
+| --- | ---: | ---: | ---: | ---: |
+| Local simplification, reuse and common expressions | 2,646 | 3,356 | 1,061 | 1,856 |
+| Inlining with cleanup | 504 | 898 | 571 | 533 |
+| Global simplification and ordering | 401 | 38 | 1,462 | 3,711 |
+| Branch/control simplification and folding | 533 | 848 | 826 | 933 |
+| GC/reference optimizations | 183 | -49 | 259 | 21 |
+
+These are interacting pipeline dependencies, not additive savings estimates for
+our compiler. In particular, disabling local cleanup also affects cleanup after
+inlining. Standalone optimizing inlining saved 1,396 / 1,820 / 1,466 bytes on
+Minish Cap / Lunistice / Celeste; much of that includes general function cleanup.
+The earlier narrow inlining prototype's small gain is not an upper bound.
+
+Global cleanup was selected for its large measured Celeste/A Hat in Time benefit
+and comparatively small implementation. The new Release analysis counts all
+reads and checks every write against the global's literal initializer. Private,
+unread globals can be removed; globals that only ever hold their initial value
+can also be removed when replacing reads does not increase instruction size.
+Deleted stores become `drop`, preserving evaluation, calls and traps. Existing
+instruction/control cleanup then removes redundant constants and dead branches.
+Another bounded sweep can discover globals made unread by that cleanup.
+
+A concrete source is settings storage: the emitter reserves both current and
+previous values even when no code reads the previous value. Global cleanup
+removes unused storage and maintenance writes without changing host settings
+calls. Global counts fall from 197 to 105 in Celeste, 461 to 245 in A Hat in
+Time, 84 to 52 in Minish Cap, and 20 to 17 in Lunistice.
+
+Imports, exports, shared globals and references in module initializers/offsets
+remain pinned. Unknown global-reference instructions are pinned conservatively.
+Nonliteral or allocating initializers stay intact. Floating constants are compared
+by bits; there is no floating-point arithmetic folding. Surviving indices are
+remapped through the Wasm reencoder, including module-level references. Function
+indices and report metadata remain unchanged. Each rewrite must shrink the whole
+module; Debug does not execute any of this analysis.
+
+| Real script | Previous master | New Release | Additional saving | Binaryen `-Oz` | Remaining gap |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Minish Cap | 31,933 | 31,532 | 401 | 29,653 | 1,879 |
+| Lunistice | 28,660 | 28,632 | 28 | 26,354 | 2,278 |
+| Celeste external port | 32,117 | 30,648 | 1,469 | 28,882 | 1,766 |
+| Neon White | 4,675 | 4,664 | 11 | — | — |
+| A Hat in Time | 47,785 | 44,120 | 3,665 | 42,014 | 2,106 |
+
+The ten-fixture corpus has no growth, and Debug executable/stable metadata remains
+identical with optimization enabled or disabled. The external Celeste source is
+unchanged; it receives compilation and validation, not a gameplay test. All 36
+maintained baseline/optimized runtime invocations pass. Focused tests cover calls
+and traps from removed stores, imported/exported globals, mutations between calls,
+negative zero/NaN bits, large literals, and global initializer/data-offset remapping.
+The Debug-profile compiler regression now allows additional internal globals to
+be eliminated; it still explicitly checks that the debug-only binding was erased
+from Release lowering.
+
+All 517 library, 696 compiler, 20 binary and five example tests pass, alongside
+Clippy, formatting and the browser-target check. All 176 maintained modules
+validate and all 211 runtime scenarios plus the Debug/Release profile check pass.
+The unchanged Unity size gate and Lunistice base/DLC behavior pass; no baseline
+refresh is needed.
+
+Optimized-host seven-sample medians, with no concurrent build or runtime suite:
+
+| Primary script | Passes disabled | Complete Release backend |
+| --- | ---: | ---: |
+| Minish Cap | 2.971 ms | 7.616 ms |
+| Lunistice | 16.579 ms | 20.688 ms |
+| Celeste | 2.614 ms | 6.269 ms |
+
+A Hat in Time measures 4.450 -> 9.336 ms. These include lowering/emission and
+exclude parsing/type checking. The primary-script totals are approximately
+0.85–0.98 ms above the earlier control-cleanup measurements; cross-run differences
+do not isolate this pass's cost. Large collection timing was noisy and is not
+used to infer overhead. The byte gains justify the added Release work.
+
+Rerunning Binaryen attribution on this output leaves only 11 / 11 / 0 / 53 bytes
+of benefit from its global family on Minish Cap / Lunistice / Celeste / A Hat in
+Time. This addresses the measured opportunity. The next substantial direction is
+local/control simplification that also enables profitable inlining, especially for
+Lunistice; widened loads are a much smaller priority.
+
+Reproduce the attribution with a generated size corpus (optionally including the
+external Celeste manifest):
+
+```powershell
+node scripts/binaryen-pass-attribution.mjs C:/Projekte/binaryen/bin/wasm-opt.exe
+```
+
+This writes per-prefix, standalone and disabled-family modules plus `report.json`
+under `target/binaryen-attribution`. Binaryen is an offline reference tool only.
 
 ## Original promotion compiler cost
 

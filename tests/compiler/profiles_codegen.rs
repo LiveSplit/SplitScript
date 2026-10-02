@@ -2528,7 +2528,9 @@ fn debug_statements_are_checked_but_erased_from_release_lowering() {
             })
             .unwrap()
     };
-    assert_eq!(count_globals(&debug), count_globals(&release) + 1);
+    // Lowering removes the debug binding (checked above); Release cleanup may
+    // additionally remove unused internal state globals.
+    assert!(count_globals(&debug) > count_globals(&release));
     assert!(release.len() < debug.len());
 }
 
