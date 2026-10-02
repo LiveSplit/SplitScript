@@ -1086,9 +1086,23 @@ fn typed_reference_selection_retains_null_and_nonnull_arms() {
         &[
             I::StructNewDefault(0),
             I::LocalSet(1),
+            I::LocalGet(1),
+            I::RefNull(HeapType::Abstract {
+                shared: false,
+                ty: wasm_encoder::AbstractHeapType::None,
+            }),
             I::LocalGet(0),
+            I::TypedSelect(reference),
+            I::RefIsNull,
+            I::I32Eqz,
             I::If(BlockType::Result(reference)),
             I::LocalGet(1),
+            I::RefNull(HeapType::Abstract {
+                shared: false,
+                ty: wasm_encoder::AbstractHeapType::None,
+            }),
+            I::LocalGet(0),
+            I::TypedSelect(reference),
             I::Else,
             I::RefNull(HeapType::Abstract {
                 shared: false,
@@ -1280,5 +1294,204 @@ fn fallthrough_does_not_cross_a_different_reference_result_type() {
                 .unwrap(),
             0
         );
+    }
+}
+
+#[test]
+fn early_exit_else_values_preserve_effects_stack_and_internal_labels() {
+    let engine = wasmtime::Engine::default();
+    let mut types = TypeSection::new();
+    types
+        .ty()
+        .function([ValType::I32, ValType::I32], [ValType::I64]);
+    types.ty().function([ValType::I64], [ValType::I64]);
+    types.ty().function([ValType::I32], [ValType::I32]);
+    let before = module(
+        types,
+        0,
+        &[],
+        &[
+            I::Block(BlockType::Empty),
+            I::I64Const(77),
+            I::LocalGet(0),
+            I::Call(1),
+            I::If(BlockType::Result(ValType::I64)),
+            I::Br(1),
+            I::Else,
+            I::LocalGet(1),
+            I::If(BlockType::Empty),
+            I::I64Const(17),
+            I::Call(0),
+            I::Br(1),
+            I::End,
+            I::I64Const(42),
+            I::Call(0),
+            I::End,
+            I::I64Add,
+            I::Return,
+            I::End,
+            I::I64Const(9),
+            I::End,
+        ],
+        &[("effect", 1), ("condition", 2)],
+    );
+    let after = cleanup(&before);
+    assert!(after.len() < before.len());
+    for wasm in [&before, &after] {
+        let (mut store, instance) = instantiate(&engine, wasm);
+        let run = instance
+            .get_typed_func::<(i32, i32), i64>(&mut store, "run")
+            .unwrap();
+        for condition in [0, 1, -7] {
+            for early in [0, 1] {
+                store.data_mut().clear();
+                let value = if early != 0 { 17 } else { 42 };
+                assert_eq!(
+                    run.call(&mut store, (condition, early)).unwrap(),
+                    if condition != 0 { 9 } else { 77 + value }
+                );
+                let mut effects = vec![i64::from(condition)];
+                if condition == 0 {
+                    effects.push(value);
+                }
+                assert_eq!(store.data(), &effects);
+            }
+        }
+    }
+}
+
+#[test]
+fn early_exit_else_values_preserve_loop_backedges_and_typed_parameters() {
+    let engine = wasmtime::Engine::default();
+    let before = numeric(
+        &[ValType::I32],
+        &[
+            I::Loop(BlockType::Result(ValType::I64)),
+            I::LocalGet(0),
+            I::I32Const(1),
+            I::I32Sub,
+            I::LocalTee(0),
+            I::If(BlockType::Result(ValType::I64)),
+            I::Br(1),
+            I::Else,
+            I::I64Const(13),
+            I::End,
+            I::End,
+            I::End,
+        ],
+    );
+    let after = cleanup(&before);
+    assert!(after.len() < before.len());
+    for wasm in [&before, &after] {
+        let (mut store, instance) = instantiate(&engine, wasm);
+        let run = instance
+            .get_typed_func::<i32, i64>(&mut store, "run")
+            .unwrap();
+        for iterations in [1, 2, 7] {
+            assert_eq!(run.call(&mut store, iterations).unwrap(), 13);
+        }
+    }
+
+    let mut types = TypeSection::new();
+    types.ty().function([ValType::I32], [ValType::I64]);
+    types.ty().function([ValType::I64], [ValType::I64]);
+    let before = module(
+        types,
+        0,
+        &[],
+        &[
+            I::Block(BlockType::Result(ValType::I64)),
+            I::I64Const(42),
+            I::LocalGet(0),
+            I::If(BlockType::FunctionType(1)),
+            I::Br(1),
+            I::Else,
+            I::I64Const(1),
+            I::I64Add,
+            I::End,
+            I::End,
+            I::End,
+        ],
+        &[],
+    );
+    for wasm in [&before, &cleanup(&before)] {
+        let (mut store, instance) = instantiate(&engine, wasm);
+        let run = instance
+            .get_typed_func::<i32, i64>(&mut store, "run")
+            .unwrap();
+        assert_eq!(run.call(&mut store, 0).unwrap(), 43);
+        assert_eq!(run.call(&mut store, 1).unwrap(), 42);
+    }
+}
+
+#[test]
+fn nested_selections_simplify_in_one_traversal_and_keep_condition_writes() {
+    let engine = wasmtime::Engine::default();
+    let mut ops = vec![I::LocalGet(0), I::I32Eqz];
+    for value in 1..17 {
+        ops.extend([
+            I::If(BlockType::Result(ValType::I32)),
+            I::I32Const(1),
+            I::Else,
+            I::LocalGet(0),
+            I::I32Const(value),
+            I::I32Eq,
+            I::End,
+        ]);
+    }
+    ops.extend([I::I64ExtendI32U, I::End]);
+    let before = numeric(&[ValType::I32], &ops);
+    let after = cleanup(&before);
+    assert!(after.len() < before.len());
+    for payload in wasmparser::Parser::new(0).parse_all(&after) {
+        if let wasmparser::Payload::CodeSectionEntry(body) = payload.unwrap() {
+            assert!(
+                !body
+                    .get_operators_reader()
+                    .unwrap()
+                    .into_iter()
+                    .any(|op| matches!(op.unwrap(), wasmparser::Operator::If { .. }))
+            );
+        }
+    }
+    for wasm in [&before, &after] {
+        let (mut store, instance) = instantiate(&engine, wasm);
+        let run = instance
+            .get_typed_func::<i32, i64>(&mut store, "run")
+            .unwrap();
+        for value in [-1, 0, 1, 8, 16, 17, i32::MAX] {
+            assert_eq!(
+                run.call(&mut store, value).unwrap(),
+                i64::from((0..17).contains(&value))
+            );
+        }
+    }
+    // Looking through a select in the condition must still discover writes
+    // to a local read by an arm; speculating that read would observe its old value.
+    let before = numeric(
+        &[ValType::I32],
+        &[
+            I::I32Const(1),
+            I::I32Const(0),
+            I::I32Const(7),
+            I::LocalTee(0),
+            I::Select,
+            I::If(BlockType::Result(ValType::I64)),
+            I::LocalGet(0),
+            I::I64ExtendI32S,
+            I::Else,
+            I::I64Const(99),
+            I::End,
+            I::End,
+        ],
+    );
+    for wasm in [&before, &cleanup(&before)] {
+        let (mut store, instance) = instantiate(&engine, wasm);
+        let run = instance
+            .get_typed_func::<i32, i64>(&mut store, "run")
+            .unwrap();
+        for value in [0, 1, -7] {
+            assert_eq!(run.call(&mut store, value).unwrap(), 7);
+        }
     }
 }

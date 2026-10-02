@@ -2,14 +2,19 @@
 //! Preserve effects, traps and branch destinations; final body size gates apply.
 use wasm_encoder::{BlockType, Instruction as I};
 
-/// With an empty if signature, a bare branch cannot carry values from below
-/// the if frame. Its only operand is the already evaluated condition.
+/// Without if parameters, a bare branch cannot carry values from below the
+/// if frame. Its only operand is the already evaluated condition.
 fn conditional_branches(ops: &mut Vec<I<'_>>) {
     let candidates = ops
         .windows(3)
         .enumerate()
         .filter_map(|(index, window)| match window {
-            [I::If(wasm_encoder::BlockType::Empty), I::Br(depth), I::End] => Some((index, *depth)),
+            [I::If(BlockType::Empty), I::Br(depth), I::End] => Some((index, *depth, None)),
+            [
+                I::If(ty @ (BlockType::Empty | BlockType::Result(_))),
+                I::Br(depth),
+                I::Else,
+            ] if *depth != 0 => Some((index, *depth, Some(*ty))),
             _ => None,
         })
         .collect::<Vec<_>>();
@@ -24,13 +29,19 @@ fn conditional_branches(ops: &mut Vec<I<'_>>) {
             skip -= 1;
             continue;
         }
-        if candidates.peek().is_some_and(|&(at, _)| at == index) {
-            let (_, depth) = candidates.next().unwrap();
+        if candidates.peek().is_some_and(|&(at, _, _)| at == index) {
+            let (_, depth, remainder) = candidates.next().unwrap();
             ops.push(if depth == 0 {
                 I::Drop
             } else {
                 I::BrIf(depth - 1)
             });
+            if let Some(ty) = remainder {
+                // The branch executes outside the old if label. Keep that
+                // label around the else value so its internal branches and
+                // result type remain valid; unused-label cleanup can erase it.
+                ops.push(I::Block(ty));
+            }
             skip = 2;
         } else {
             ops.push(op);
@@ -417,6 +428,7 @@ pub(super) fn condition_inputs(op: &I<'_>) -> Option<usize> {
         | I::ArrayGet(_)
         | I::ArrayGetS(_)
         | I::ArrayGetU(_) => 2,
+        I::Select | I::TypedSelect(_) => 3,
         _ => return None,
     })
 }
@@ -516,9 +528,14 @@ fn constant_selections(ops: &mut Vec<I<'_>>) {
 /// must not move ahead of a condition that can change those values.
 fn expression_selections(ops: &mut Vec<I<'_>>) {
     let mut frames = Vec::new();
-    let mut changes = Vec::new();
-    for (end, op) in ops.iter().enumerate() {
-        match op {
+    let original = std::mem::take(ops);
+    ops.reserve(original.len());
+    // Rewrite completed inner expressions before inspecting their parents.
+    // This handles chains in one traversal while retaining the scan limits.
+    for op in original {
+        let end = ops.len();
+        ops.push(op);
+        match &ops[end] {
             I::Block(_) | I::Loop(_) | I::If(_) => frames.push((end, None)),
             I::Else => {
                 if let Some(frame) = frames.last_mut() {
@@ -558,11 +575,7 @@ fn expression_selections(ops: &mut Vec<I<'_>>) {
                     needed = needed - 1 + inputs;
                     condition -= 1;
                 }
-                if needed != 0
-                    || changes
-                        .last()
-                        .is_some_and(|&(_, previous_end, _)| condition <= previous_end)
-                {
+                if needed != 0 {
                     continue;
                 }
                 let mut replacement = Vec::new();
@@ -575,23 +588,13 @@ fn expression_selections(ops: &mut Vec<I<'_>>) {
                     I::Select
                 });
                 if super::encoded_size(&replacement) < super::encoded_size(&ops[condition..=end]) {
-                    changes.push((condition, end, replacement));
+                    ops.truncate(condition);
+                    ops.extend(replacement);
                 }
             }
             _ => {}
         }
     }
-    if changes.is_empty() {
-        return;
-    }
-    let original = std::mem::take(ops);
-    let mut copied = 0;
-    for (start, end, replacement) in changes {
-        ops.extend_from_slice(&original[copied..start]);
-        ops.extend(replacement);
-        copied = end + 1;
-    }
-    ops.extend_from_slice(&original[copied..]);
 }
 
 fn closed_pure_expression(ops: &[I<'_>]) -> bool {
@@ -667,6 +670,7 @@ fn pure_expression_inputs(op: &I<'_>) -> Option<usize> {
         | I::I64Shl
         | I::I64ShrS
         | I::I64ShrU => 2,
+        I::Select | I::TypedSelect(_) => 3,
         _ => return None,
     })
 }

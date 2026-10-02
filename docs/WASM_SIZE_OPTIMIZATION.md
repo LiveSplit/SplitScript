@@ -581,6 +581,53 @@ that offset from 56 to 87. Both Lunistice editions pass before refreshing the
 baseline. The refresh also records the earlier control/global savings already
 on master; the incremental real-script table above isolates this change.
 
+## Nested selections and early exits — 2026-10-02
+
+Binaryen's remaining control-flow differences include a value-producing `if`
+whose first arm immediately branches out, and chains of pure selections. The
+existing Release cleanup now converts the first pattern into `br_if` followed
+by the other arm. It retains a typed block around that arm until ordinary label
+cleanup proves the label unused. This preserves internal branch targets, values
+below the condition, and loop backedges. The rule excludes parameterized ifs,
+whose bare branch can carry a payload, and branches to the if's own label.
+
+Expression analysis now recognizes both ordinary and typed `select` operands.
+It rewrites completed inner selections before inspecting their parents, so a
+chain can simplify in one traversal. This replaces the old deferred list of
+nonoverlapping edits; no new pass or cleanup sweep is added. The existing
+32-instruction arm and 256-instruction condition limits remain, as do the
+nontrapping/effect-free arm requirement and rejection of conflicting condition
+writes. Debug emission is unchanged.
+
+Measured against master `77bea0a`:
+
+| Real script | Previous Release | New Release | Additional saving | Binaryen `-Oz` | Remaining gap |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Minish Cap | 30,516 | 30,492 | 24 | 28,662 | 1,830 |
+| Lunistice | 27,949 | 27,920 | 29 | 25,781 | 2,139 |
+| Celeste external port | 30,352 | 30,210 | 142 | 28,721 | 1,489 |
+| Neon White | 4,488 | 4,482 | 6 | 3,775 | 707 |
+| A Hat in Time | 43,943 | 43,834 | 109 | 41,999 | 1,835 |
+
+No measured fixture grows. Early-exit rewriting alone contributes 24 / 4 / 49 /
+16 bytes on Minish Cap / Lunistice / Celeste / A Hat in Time; nested selections
+provide the remainder. The change is small in implementation scope and has its
+clearest real-script benefit in Celeste and A Hat in Time. Full Binaryen
+pass-family comparisons still show larger interacting local/inlining savings;
+this is incremental control cleanup, not a replacement for that work.
+
+Three new runtime tests cover early-exit effects, discarded stack operands,
+internal typed labels, loop backedges, parameterized-if rejection, a 17-way
+selection chain, and writes inside selection conditions. The GC reference test
+also exercises nested typed selections in both the condition and an arm.
+All 528 library, 697 compiler, 20 binary and five example tests pass, as do
+Clippy, the browser compiler check, Debug-equivalence checks, and the size
+corpus's 36 behavioral invocations. Celeste's external source remains unchanged
+and validates; it still has no maintained gameplay harness here.
+All 176 maintained modules validate, all 211 runtime scenarios and the
+Debug/Release profile check pass, and the optimized Unity gate passes both
+Lunistice editions without a baseline refresh.
+
 ## Original promotion compiler cost
 
 Optimized-host seven-sample medians for the promoted pipeline:
