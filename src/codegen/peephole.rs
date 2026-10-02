@@ -6,11 +6,13 @@ use wasm_encoder::{
 };
 use wasmparser::{CompositeInnerType, Parser, Payload};
 
+mod branch_values;
 mod control;
 mod fallthrough;
 #[cfg(test)]
 mod instruction_tests;
 mod liveness;
+mod local_layout;
 mod propagation;
 #[cfg(test)]
 mod propagation_tests;
@@ -233,6 +235,7 @@ impl Cleanup {
         if self.passes.control {
             control::remove_unused_labels(&mut ops);
             control::merge_if_assignments(&mut ops, parameter_count, &locals);
+            branch_values::fold(&mut ops, &self.arities, &self.struct_fields);
         }
         if self.passes.locals {
             if self.passes.flow_locals {
@@ -270,6 +273,7 @@ impl Cleanup {
                 }
                 ops = simplified;
             }
+            let locals = local_layout::reorder(&mut ops, parameter_count, locals);
             function = Function::new_with_locals_types(locals);
         }
         for op in &ops {

@@ -135,7 +135,7 @@ pub(super) fn run(ops: &mut Vec<I<'_>>, count: usize, types: &Types, fields: &[O
         keep
     });
 }
-fn arity(op: &I<'_>, types: &Types, fields: &[Option<usize>]) -> Option<(usize, usize)> {
+pub(super) fn arity(op: &I<'_>, types: &Types, fields: &[Option<usize>]) -> Option<(usize, usize)> {
     Some(match op {
         I::Call(f) => {
             let ty = types.functions.get(*f as usize)?;

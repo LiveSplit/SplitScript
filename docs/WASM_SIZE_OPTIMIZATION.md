@@ -773,6 +773,83 @@ Local comparison artifacts and ablation logs are under `target/big-savings`.
 The external Celeste file remains unchanged and has no maintained gameplay
 harness here. Debug and hot reload bypass the entire candidate pipeline.
 
+## Local layout and conditional exits — 2026-10-02
+
+A fresh Binaryen 132 attribution run after `b725c29` identified locals and
+control flow as the largest remaining families: disabling local passes in
+`-Oz` costs 505 / 425 / 222 / 344 bytes, and disabling control passes costs
+360 / 487 / 422 / 584 bytes on Minish Cap / Lunistice / Celeste / A Hat in
+Time. These are interacting pipeline differences, not additive estimates.
+Source inspection of Binaryen's `ReorderLocals.cpp` and the emitted branch
+sequences guided the following changes to our existing Release cleanup.
+
+- Local layout chooses the smallest encoding among the original order,
+  frequency order, type grouping, and type grouping within equal LEB-index
+  widths. The cost includes declaration groups and every local reference.
+  Parameters stay fixed, types stay exact, and no lifetimes are merged here.
+- An inert literal branch payload can move before a closed condition, turning
+  `if; literal; br; end` into `literal; condition; br_if; drop`. This preserves
+  condition calls and traps, zero-arity loop targets and values below the
+  expression. It excludes branches to the removed if label, parameterized
+  ifs, unknown stack effects and conditions exceeding the scan bound.
+- A typed block starting with an early conditional exit can become a typed
+  `if/else`. The old continuation retains its label depth. Both the condition
+  and early value must have exact, self-contained stack effects; discarded
+  extra operands and branches within these expressions disqualify the rewrite.
+- Cleanup permits up to six shrinking sweeps instead of two, stopping as soon
+  as another sweep offers no reduction. This exposes additional wins on
+  automatic-profile Unity code; it does not change the four primary results.
+
+| Real script | Before | After | Saved | Binaryen `-Oz` on new output | Remaining gap |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Minish Cap | 29,898 | 29,748 | 150 | 28,656 | 1,092 |
+| Lunistice | 26,971 | 26,797 | 174 | 25,867 | 930 |
+| Celeste | 29,569 | 29,448 | 121 | 28,715 | 733 |
+| A Hat in Time | 43,193 | 43,057 | 136 | 42,018 | 1,039 |
+| Neon White | 4,227 | 4,180 | 47 | — | — |
+
+Automatic Lunistice saves 845 bytes. Collections / nested collections save
+798 / 919; async fixtures each save eight. All ten complete modules shrink,
+validate, and retain identical stable Debug output. Extra analysis remains
+Release-only.
+
+Ablations on Minish Cap / Lunistice / Celeste / A Hat in Time:
+type grouping alone saved 12 / 61 / 10 / 18 bytes; adding literal conditional
+branches reached 130 / 167 / 112 / 84, and adding leading-exit restructuring
+reached the final 150 / 174 / 121 / 136. Frequency-aware layout selection
+retained those corpus results while protecting large local-index boundaries.
+Increasing sweeps from two to six adds another 125 bytes on automatic Lunistice
+and 211 / 317 on the collection fixtures. Each transformation remains bounded
+and subject to the existing body/module size gates.
+
+The full suite passes 548 library, 697 compiler, 20 binary and five example
+tests. Clippy with warnings denied and the browser wasm32 check pass, as do
+176 runtime-fixture validations, 211 runtime scenarios, the profile check and
+36 corpus runtime invocations. Both Lunistice editions and the refreshed Unity
+gate pass. New runtime regressions cover mixed local types
+and defaults across index 127, fixed parameters, condition effects/traps,
+function-reference null payloads, loop backedges and continuation branch depths.
+Celeste has compilation/validation coverage but no maintained gameplay harness.
+The Unity baseline was reviewed and refreshed. Every complete module shrinks
+or stays equal. Source fingerprints are unchanged, with no increases in types,
+functions, helper provenance, memory or section budgets. Two helper bodies have small
+optimization-interaction regressions: `ModuleElfIdentitySegment` grows 12 bytes,
+while its module shrinks nine; `UnityCollectionTypesArrayElementClass` grows
+five in four map/set fixtures whose modules each shrink by over 200 bytes.
+Those explicit per-body changes are accepted in the new baseline; the gate's
+checks remain unchanged.
+
+The optimized-host run measured 95.4 ms for Lunistice (previous baseline 90.2),
+406.1 ms for automatic Lunistice (383.2), and 653.9 ms for nested metadata
+(545.1). These are cross-run whole-compile measurements, not isolated pass costs.
+They remain well below the compile-time range of concern. Debug adds no work.
+
+Local measurements are under `target/local-layout`; the fresh attribution run
+is under `target/after-inline-attribution`. A concrete remaining opportunity
+in Binaryen's argument-elimination output is specializing formatting helpers
+when every caller supplies the same numeric radix, alongside removing unused
+helper parameters. Its end-to-end size benefit still needs a separate trial.
+
 ## Original promotion compiler cost
 
 Optimized-host seven-sample medians for the promoted pipeline:

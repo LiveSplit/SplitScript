@@ -6,9 +6,9 @@ pub(super) fn cleanup(
     report: Option<&mut CodegenReport>,
     flow_locals: bool,
 ) -> Vec<u8> {
-    // A second sweep simplifies patterns exposed by shared returns and control
-    // cleanup. Keep compilation bounded rather than iterating to a fixed point.
-    for _ in 0..2 {
+    // Repeat while bodies shrink: branch and local cleanup expose each other.
+    // Most modules stop early; cap the sweeps for unusually large scripts.
+    for _ in 0..6 {
         wasm = global_cleanup::optimize(&wasm);
         let candidate = peephole::optimize(
             &wasm,

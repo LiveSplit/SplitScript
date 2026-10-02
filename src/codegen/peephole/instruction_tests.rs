@@ -1939,3 +1939,231 @@ fn stack_local_cleanup_keeps_tee_dependencies_and_effect_order() {
         }
     }
 }
+
+#[test]
+fn local_layout_preserves_slots_defaults_and_parameters_across_leb_boundary() {
+    let mut types = TypeSection::new();
+    types.ty().function([ValType::I64], [ValType::I64]);
+    let locals: Vec<_> = (0..150)
+        .map(|i| {
+            (
+                1,
+                if i % 2 == 0 {
+                    ValType::I64
+                } else {
+                    ValType::I32
+                },
+            )
+        })
+        .collect();
+    let mut ops = Vec::new();
+    let mut expected = 123;
+    for i in 0..150 {
+        // Include default-initialized locals as well as explicitly set slots.
+        if i % 7 != 0 {
+            ops.push(if i % 2 == 0 {
+                I::I64Const(i as i64)
+            } else {
+                I::I32Const(i)
+            });
+            ops.push(I::LocalSet(i as u32 + 1));
+            expected += i as i64;
+        }
+    }
+    ops.push(I::LocalGet(0));
+    for i in 0..150 {
+        ops.push(I::LocalGet(i + 1));
+        if i % 2 == 1 {
+            ops.push(I::I64ExtendI32U);
+        }
+        ops.push(I::I64Add);
+    }
+    for _ in 0..40 {
+        ops.extend([I::LocalGet(150), I::I64ExtendI32U, I::I64Add]);
+        expected += 149;
+    }
+    ops.push(I::End);
+    let before = module(types, 0, &locals, &ops, &[]);
+    let after = optimize(
+        &before,
+        Passes {
+            locals: true,
+            ..Default::default()
+        },
+    );
+    assert!(after.len() + 100 < before.len());
+    let engine = wasmtime::Engine::default();
+    for wasm in [&before, &after] {
+        let (mut store, instance) = instantiate(&engine, wasm);
+        assert_eq!(
+            instance
+                .get_typed_func::<i64, i64>(&mut store, "run")
+                .unwrap()
+                .call(&mut store, 123)
+                .unwrap(),
+            expected
+        );
+    }
+}
+
+#[test]
+fn leading_exits_preserve_condition_effects_and_continuation_labels() {
+    let mut types = TypeSection::new();
+    types.ty().function([ValType::I64], [ValType::I64]);
+    let before = module(
+        types,
+        0,
+        &[],
+        &[
+            I::Block(BlockType::Result(ValType::I64)),
+            I::LocalGet(0),
+            I::Call(0),
+            I::I64Eqz,
+            I::If(BlockType::Empty),
+            I::I64Const(13),
+            I::Call(0),
+            I::Br(1),
+            I::End,
+            I::I64Const(29),
+            I::Call(0),
+            I::LocalGet(0),
+            I::I64Const(1),
+            I::I64Eq,
+            I::BrIf(0),
+            I::Drop,
+            I::I64Const(31),
+            I::Call(0),
+            I::End,
+            I::End,
+        ],
+        &[("effect", 0)],
+    );
+    let after = cleanup(&before);
+    assert!(after.len() < before.len());
+    let engine = wasmtime::Engine::default();
+    for wasm in [&before, &after] {
+        for (input, result, trace) in [
+            (0, 13, vec![0, 13]),
+            (1, 29, vec![1, 29]),
+            (2, 31, vec![2, 29, 31]),
+        ] {
+            let (mut store, instance) = instantiate(&engine, wasm);
+            assert_eq!(
+                instance
+                    .get_typed_func::<i64, i64>(&mut store, "run")
+                    .unwrap()
+                    .call(&mut store, input)
+                    .unwrap(),
+                result
+            );
+            assert_eq!(store.data(), &trace);
+        }
+    }
+}
+
+#[test]
+fn branch_constants_preserve_calls_loop_targets_and_values_below_condition() {
+    let mut types = TypeSection::new();
+    types.ty().function([ValType::I64], [ValType::I64]);
+    let before = module(
+        types,
+        0,
+        &[],
+        &[
+            I::I64Const(100),
+            I::Block(BlockType::Result(ValType::I64)),
+            I::Loop(BlockType::Empty),
+            I::LocalGet(0),
+            I::Call(0),
+            I::I64Eqz,
+            I::If(BlockType::Empty),
+            I::I64Const(7),
+            I::Br(2),
+            I::End,
+            I::LocalGet(0),
+            I::I64Const(1),
+            I::I64Sub,
+            I::LocalTee(0),
+            I::I64Eqz,
+            // The literal is discarded when branching back to a zero-arity loop.
+            I::If(BlockType::Empty),
+            I::I64Const(9),
+            I::Br(1),
+            I::End,
+            I::I64Const(11),
+            I::Br(1),
+            I::End,
+            I::Unreachable,
+            I::End,
+            I::I64Add,
+            I::End,
+        ],
+        &[("effect", 0)],
+    );
+    let after = cleanup(&before);
+    assert!(after.len() < before.len());
+    let engine = wasmtime::Engine::default();
+    for wasm in [&before, &after] {
+        for (input, result, trace) in [(0, 107, vec![0]), (1, 107, vec![1, 0]), (2, 111, vec![2])] {
+            let (mut store, instance) = instantiate(&engine, wasm);
+            assert_eq!(
+                instance
+                    .get_typed_func::<i64, i64>(&mut store, "run")
+                    .unwrap()
+                    .call(&mut store, input)
+                    .unwrap(),
+                result
+            );
+            assert_eq!(store.data(), &trace);
+        }
+    }
+}
+
+#[test]
+fn branch_constants_keep_trapping_conditions_and_gc_null_payloads() {
+    let mut types = TypeSection::new();
+    types.ty().function([ValType::FUNCREF], [ValType::I64]);
+    let before = module(
+        types,
+        0,
+        &[],
+        &[
+            I::Block(BlockType::Result(ValType::FUNCREF)),
+            // A null argument must trap even though the branch payload is null.
+            I::LocalGet(0),
+            I::RefAsNonNull,
+            I::RefIsNull,
+            I::If(BlockType::Empty),
+            I::RefNull(wasm_encoder::HeapType::FUNC),
+            I::Br(1),
+            I::End,
+            I::LocalGet(0),
+            I::End,
+            I::RefIsNull,
+            I::I64ExtendI32U,
+            I::End,
+        ],
+        &[],
+    );
+    let after = cleanup(&before);
+    assert!(after.len() < before.len());
+    let mut config = wasmtime::Config::new();
+    config.wasm_function_references(true);
+    let engine = wasmtime::Engine::new(&config).unwrap();
+    for wasm in [&before, &after] {
+        let (mut store, instance) = instantiate(&engine, wasm);
+        let run = instance.get_func(&mut store, "run").unwrap();
+        let mut results = [wasmtime::Val::I64(0)];
+        assert!(
+            run.call(&mut store, &[wasmtime::Val::FuncRef(None)], &mut results)
+                .is_err()
+        );
+        run.call(
+            &mut store,
+            &[wasmtime::Val::FuncRef(Some(run))],
+            &mut results,
+        )
+        .unwrap();
+        assert_eq!(results[0].i64(), Some(0));
+    }
+}
