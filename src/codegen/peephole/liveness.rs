@@ -5,7 +5,13 @@
 use super::{I, ValType};
 use std::collections::VecDeque;
 
-pub(super) fn reuse(ops: &mut [I<'_>], params: &[ValType], locals: &[ValType]) {
+pub(super) fn reuse(
+    ops: &mut [I<'_>],
+    params: &[ValType],
+    locals: &[ValType],
+    types: &super::fallthrough::Types,
+    fields: &[Option<usize>],
+) {
     let n = ops.len();
     let count = params.len() + locals.len();
     if count == 0 || count > 1024 || n > 50000 {
@@ -150,6 +156,38 @@ pub(super) fn reuse(ops: &mut [I<'_>], params: &[ValType], locals: &[ValType]) {
             .any(|&next| live[next][local as usize / 64] >> (local % 64) & 1 != 0)
         {
             ops[at] = if tee { I::Nop } else { I::Drop };
+        }
+    }
+    // Keep a stored value on the operand stack until its first read when the
+    // intervening straight-line statements balance their own stack. If later
+    // reads still need the local, assign it with a tee at that first read.
+    for at in 0..n {
+        let I::LocalSet(local) = ops[at] else {
+            continue;
+        };
+        let mut height = 0;
+        for end in at + 1..n.min(at + 513) {
+            if matches!(ops[end], I::LocalSet(l) | I::LocalTee(l) if l == local) {
+                break;
+            }
+            if matches!(ops[end], I::LocalGet(l) if l == local) {
+                if height == 0 {
+                    let needed = succ[end]
+                        .iter()
+                        .any(|&next| live[next][local as usize / 64] >> (local % 64) & 1 != 0);
+                    ops[at] = I::Nop;
+                    ops[end] = if needed { I::LocalTee(local) } else { I::Nop };
+                }
+                break;
+            }
+            let Some((inputs, outputs)) = super::stack_locals::arity(&ops[end], types, fields)
+            else {
+                break;
+            };
+            if inputs > height {
+                break;
+            }
+            height = height - inputs + outputs;
         }
     }
     // Copies allow equal values to share a slot; all other writes interfere

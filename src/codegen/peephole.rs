@@ -6,7 +6,10 @@ use wasm_encoder::{
 };
 use wasmparser::{CompositeInnerType, Parser, Payload};
 
+mod branch_tails;
 mod branch_values;
+#[cfg(test)]
+mod cleanup_tests;
 mod control;
 mod fallthrough;
 #[cfg(test)]
@@ -19,6 +22,7 @@ mod propagation_tests;
 mod returns;
 #[cfg(test)]
 mod returns_tests;
+mod scalar_structs;
 mod stack_locals;
 #[cfg(test)]
 mod tests;
@@ -233,6 +237,23 @@ impl Cleanup {
             );
         }
         if self.passes.control {
+            if self.passes.flow_locals && self.passes.locals {
+                scalar_structs::run(
+                    &mut ops,
+                    parameter_count,
+                    &mut locals,
+                    &self.arities,
+                    &self.struct_fields,
+                );
+            }
+            // Hoisting a tail introduces a merge point; non-defaultable local
+            // initialization inside an arm does not survive that merge.
+            if !locals
+                .iter()
+                .any(|ty| matches!(ty, ValType::Ref(ty) if !ty.nullable))
+            {
+                branch_tails::fold(&mut ops, &self.arities, &self.struct_fields);
+            }
             control::remove_unused_labels(&mut ops);
             control::merge_if_assignments(&mut ops, parameter_count, &locals);
             branch_values::fold(&mut ops, &self.arities, &self.struct_fields);
@@ -256,7 +277,13 @@ impl Cleanup {
                     .iter()
                     .map(|&ty| reencode::RoundtripReencoder.val_type(ty))
                     .collect::<Result<Vec<_>, _>>()?;
-                liveness::reuse(&mut ops, &params, &locals);
+                liveness::reuse(
+                    &mut ops,
+                    &params,
+                    &locals,
+                    &self.arities,
+                    &self.struct_fields,
+                );
             }
             let locals = compact_locals(&mut ops, parameter_count, locals);
             if self.passes.instructions {

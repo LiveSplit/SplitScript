@@ -4,7 +4,7 @@ use wasm_encoder::{
     ImportSection, Instruction as I, Module, TypeSection, ValType,
 };
 
-fn module(
+pub(super) fn module(
     types: TypeSection,
     signature: u32,
     locals: &[(u32, ValType)],
@@ -51,7 +51,7 @@ fn instructions(wasm: &[u8]) -> Vec<u8> {
     )
 }
 
-fn instantiate(
+pub(super) fn instantiate(
     engine: &wasmtime::Engine,
     wasm: &[u8],
 ) -> (wasmtime::Store<Vec<i64>>, wasmtime::Instance) {

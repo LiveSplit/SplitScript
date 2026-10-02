@@ -935,6 +935,82 @@ saves 743 / 0 / 395 / 461 in isolation, while local CSE saves 172 on Lunistice.
 These are candidates for the next investigation; standalone pass savings do
 not compose and are not guaranteed attainable by a single local change.
 
+## Temporary structs and shared branch tails — 2026-10-02
+
+The next investigation followed Binaryen's optimizing inliner into its nested
+cleanup passes. On the previous Minish Cap output, it removes just one small
+shared addition helper; most of its 743-byte improvement comes from cleanup
+inside the large caller. Disabling individual nested passes identified local
+coalescing, instruction simplification and scalar replacement as useful targets.
+Expanding more shared callees ourselves made Lunistice and A Hat in Time larger,
+so that experiment was rejected.
+
+Release cleanup now replaces private struct allocations with field locals when
+every reference use is a field read or write. The reference local must have one
+allocation site, no aliases or escaping uses, and the allocation must dominate
+all accesses within structured scopes. Objects allocated inside loops initialize
+their fields on every iteration. Packed, shared and non-defaultable field
+layouts remain conservative exclusions. Immediate `struct.new; struct.get`
+projections also avoid constructing an object, while retaining evaluation of
+every field, including unused fields with effects or traps.
+
+Two related cleanup rules share identical closed tails of `if` arms and keep
+local values on the operand stack across balanced straight-line statements.
+Branch targets and non-defaultable local initialization prevent unsafe tail
+movement. Existing control-flow liveness decides whether the first local read
+can disappear or must become a tee for subsequent reads. These transformations
+retain the existing body/module size gates and run only in Release.
+
+| Real script | Before | After | Saved | Binaryen `-Oz` on new output | Remaining gap |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Minish Cap | 29,660 | 29,433 | 227 | 28,657 | 776 |
+| Lunistice | 26,701 | 26,583 | 118 | 25,856 | 727 |
+| Celeste | 29,398 | 29,201 | 197 | 28,714 | 487 |
+| A Hat in Time | 43,031 | 42,984 | 47 | 42,018 | 966 |
+| Neon White | 4,149 | 4,109 | 40 | — | — |
+| Automatic Lunistice | 115,571 | 114,792 | 779 | — | — |
+
+Collections and nested collections save 865 and 943 bytes; async fixtures stay
+unchanged. All ten modules validate, none grows, and stable Debug output remains
+identical. The external Celeste source remains untouched and has no maintained
+gameplay harness.
+
+The staged experiment separated the improvements: stack forwarding saved
+28 / 14 / 6 bytes on Minish Cap / Lunistice / Celeste; shared branch tails added
+104 on Lunistice. Private struct locals then saved another 165 on Minish Cap and
+180 on Celeste. Immediate projections added 34 / 11 on those scripts and 725 on
+automatic Lunistice. These are sequential pipeline measurements, not independent
+pass savings. Experiments and comparison artifacts are under `target/inline-next`.
+
+Nine focused execution tests cover field mutation and constructor effects,
+loop initialization, discarded-field traps, null reads, identity uses, packed
+field truncation, branch effects and exits, non-defaultable locals, and repeated
+local lifetimes with later reads. They compare original and optimized execution
+including host call traces and trap kinds.
+
+Validation passes 564 library tests, 697 compiler tests, 20 binary tests and five
+example tests, Clippy with warnings denied, and the browser compiler's wasm32
+check. All 176 runtime fixtures validate; all 211 scenarios and the profile check
+pass, as do 36 corpus runtime invocations.
+
+The Unity baseline review accepts four collection callback bodies growing by
+two bytes each (IL2CPP map/set and Mono map/set). Their complete modules shrink
+by 147 / 147 / 376 / 376 bytes. These are interactions between successive cleanup
+and inlining choices; per-invocation body gates do not guarantee every final body
+beats its previous compiler version. Every complete module and section stays
+equal or shrinks, source fingerprints stay identical, and the gate reports no
+other regressions. No regression checks are relaxed.
+
+Optimized-host whole-compilation measurements are 169.0 ms for Lunistice,
+1,106.0 ms for automatic Lunistice and 1,079.5 ms for nested metadata, versus
+172.1 / 716.1 / 1,075.6 in the previous recorded baseline. These are cross-run
+measurements, not isolated pass costs. Debug adds no analysis.
+
+On the new output, standalone Binaryen heap-to-local replacement saves nothing
+on Minish Cap, while local CSE still saves 170 / 206 bytes on Lunistice / A Hat
+in Time relative to Binaryen's no-pass rewrite. This suggests local expression
+reuse as a next candidate; standalone pass savings do not compose.
+
 ## Original promotion compiler cost
 
 Optimized-host seven-sample medians for the promoted pipeline:

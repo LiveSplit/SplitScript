@@ -994,6 +994,11 @@ add another 150 / 174 / 121 bytes on those scripts (845 on automatic Lunistice).
 [Private argument specialization](docs/WASM_SIZE_OPTIMIZATION.md#private-argument-specialization--2026-10-02)
 adds 88 / 96 / 50 more (491 on automatic Lunistice), with the original full
 pipeline retained as a size fallback.
+[Temporary structs and shared branch tails](docs/WASM_SIZE_OPTIMIZATION.md#temporary-structs-and-shared-branch-tails--2026-10-02)
+save another 227 / 118 / 197 bytes on Minish Cap / Lunistice / Celeste and
+779 on automatic Lunistice. Only private allocations with proven field-only
+uses become scalar locals; constructor effects, traps and per-iteration defaults
+remain observable. All added analysis stays in Release.
 The earlier broader inlining/temporary-sinking and propagation prototypes remain
 on the experimental branch; their remaining real-script benefit does not yet justify promotion. Prefer
 measured savings on Minish Cap, Lunistice and Celeste over large synthetic fixtures. Direct emitter
