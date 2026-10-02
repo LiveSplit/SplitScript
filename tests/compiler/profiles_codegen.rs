@@ -256,7 +256,14 @@ fn static_strings_follow_abi_demand_instead_of_expression_reachability() {
                     Some(
                         section
                             .into_iter()
-                            .flat_map(|segment| segment.unwrap().data.to_vec())
+                            // Only active segments occupy linear memory. GC
+                            // literals may now use passive data even when short.
+                            .filter_map(|segment| {
+                                let segment = segment.unwrap();
+                                matches!(segment.kind, wasmparser::DataKind::Active { .. })
+                                    .then_some(segment)
+                            })
+                            .flat_map(|segment| segment.data.to_vec())
                             .collect::<Vec<_>>(),
                     )
                 } else {

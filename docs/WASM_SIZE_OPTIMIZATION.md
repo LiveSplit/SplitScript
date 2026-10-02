@@ -7,7 +7,8 @@ compiler dependency.
 
 Direct emission also uses `struct.new_default` for payload-free first enum
 variants in both profiles. This skips explicit zero/null operands without
-adding an analysis pass.
+adding an analysis pass. Release string emission chooses passive GC initializer
+data by encoded cost instead of using a fixed minimum string length.
 
 ## Promoted pipeline
 
@@ -518,6 +519,67 @@ the behavioral harness. They are not the ordinary `-Oz` comparison in the table
 above. The larger reduction, especially in Lunistice, motivates further study
 of interacting type/call simplification and repeated cleanup; it does not imply
 that a single missing pass will achieve it.
+
+## Cost-based GC string literals — 2026-10-02
+
+Function-level Binaryen inspection exposed another direct-emission opportunity:
+GC strings shorter than 32 bytes still used one `i32.const` per UTF-8 byte,
+followed by `array.new_fixed`. Many metadata and display strings are shorter
+than that cutoff but substantially cheaper as passive data. For example, each
+ASCII byte at or above 64 needs a two-byte signed LEB operand in addition to the
+constant opcode, whereas passive data stores the byte once.
+
+Release emission now compares the two encodings as each literal is emitted.
+The comparison includes constant operands, segment indices, newly stored bytes,
+segment headers, the DataCount section, and a conservative allowance for growth
+of the data-section size prefix. Existing pooled bytes are reused. Only a
+strictly smaller estimate is accepted; empty and tiny literals stay inline.
+This extends the existing literal pool without adding a module pass or a
+Binaryen dependency. Each use still allocates a fresh GC array, and passive
+initializer data remains available across calls and suspension. It does not
+occupy linear memory. Debug retains its existing emission and hot-reload behavior.
+
+Measured against master `3b849bb`, with the same real-script sources:
+
+| Real script | Previous Release | New Release | Additional saving | New Binaryen `-Oz` | Remaining gap |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Minish Cap | 31,477 | 30,516 | 961 | 28,687 | 1,829 |
+| Lunistice | 28,530 | 27,949 | 581 | 25,781 | 2,168 |
+| Celeste external port | 30,502 | 30,352 | 150 | 28,730 | 1,622 |
+| Neon White | 4,646 | 4,488 | 158 | 3,775 | 713 |
+| A Hat in Time | 43,943 | 43,943 | 0 | 42,014 | 1,929 |
+
+No measured fixture grows. Automatic Unity and the collection fixtures also
+shrink, but the real-script savings justify the change independently. These
+savings also improve the input to Binaryen: its new outputs are smaller too,
+so the remaining optimization gap is largely unchanged. A refreshed pass-family
+comparison still identifies local/control cleanup and its interaction with
+inlining as the larger remaining opportunities.
+
+Validation covers complete encoded module sizes around signed/unsigned LEB
+boundaries, section overhead, duplicate literals, ASCII and multibyte UTF-8.
+A source-level runtime test checks short literals, empty strings, byte lengths,
+repeated allocation and suspension in both profiles. The existing static-data
+test now explicitly checks active segments: passive GC data is allowed, while
+GC-only literals must still stay out of linear memory.
+
+All 525 library, 697 compiler, 20 binary and five example tests pass, as do
+Clippy and the browser compiler check. All 176 maintained modules validate,
+all 211 runtime scenarios and the Debug/Release profile check pass, and the
+size corpus passes its 36 behavioral invocations. Celeste remains unchanged
+and validates, without a maintained gameplay harness here.
+
+The Unity baseline requires a reviewed refresh because bytes move from code
+into passive data. All 38 complete modules shrink relative to the stored
+baseline; function/type counts, helper sets, source fingerprints, linear static
+data, scratch/read capacities and memory-page counts are unchanged. Data-section
+growth is expected, and local Map/Set fixtures gain a three-byte DataCount
+section. Several discovery/scanning helpers grow by one byte because an existing
+pooled string's offset crosses the signed-LEB 64-byte boundary. For example,
+Lunistice's `UnityDiscoverIl2Cpp64::poll` differs from `3b849bb` only by changing
+that offset from 56 to 87. Both Lunistice editions pass before refreshing the
+baseline. The refresh also records the earlier control/global savings already
+on master; the incremental real-script table above isolates this change.
 
 ## Original promotion compiler cost
 

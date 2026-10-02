@@ -412,6 +412,44 @@ fn release_gc_data_literals_remain_available_across_suspensions() {
     );
 }
 
+#[test]
+fn short_gc_literals_preserve_utf8_lengths_and_repeated_allocations() {
+    let markers = [
+        "metadata field",
+        "12345678",
+        "éééééééé",
+        "🦊🦊🦊",
+        "short",
+        "",
+    ];
+    for profile in [
+        splitscript::BuildProfile::Debug,
+        splitscript::BuildProfile::Release,
+    ] {
+        let mut source = String::from("state \"game.exe\" {}\nonAttach {\n");
+        let mut expected = Vec::new();
+        for marker in markers {
+            source.push_str(&format!(
+                "print(\"{marker}\")\nawait nextTick()\nprint(\"{marker}\")\nprint(\"{marker}\".byteLength())\n"
+            ));
+            expected.extend([
+                marker.to_owned(),
+                marker.to_owned(),
+                marker.len().to_string(),
+            ]);
+        }
+        source.push('}');
+        let (mut store, instance) = execute_with_mock_host_with_profile(&source, profile);
+        let update = instance
+            .get_typed_func::<(), ()>(&mut store, "update")
+            .unwrap();
+        for _ in 0..20 {
+            update.call(&mut store, ()).unwrap();
+        }
+        assert_eq!(store.data().messages, expected, "{profile:?}");
+    }
+}
+
 fn execute_with_mock_host_with_profile(
     source: &str,
     profile: splitscript::BuildProfile,

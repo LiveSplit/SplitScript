@@ -12,6 +12,9 @@ use super::memory_plan::LinearMemoryLayout;
 use super::reachability::Reachability;
 use super::{dependencies::BackendDependencies, runtime_helpers::float_format};
 
+#[cfg(test)]
+mod tests;
+
 pub(super) struct StaticData {
     pub strings: StringPool,
     pub signatures: SignaturePool,
@@ -51,20 +54,45 @@ impl GcStringLiterals {
 
     pub fn intern(&self, value: &str) -> Option<(u32, u32)> {
         let segment = self.segment?;
-        // Short strings do not reliably recover the data-section and operand
-        // overhead. Keep their existing fixed-array encoding.
-        if value.len() < 32 {
+        let mut pool = self.pool.borrow_mut();
+        let existing = pool.offsets.get(value).copied();
+        let length = u32::try_from(value.len()).expect("GC strings must fit wasm32");
+        let old_length = u32::try_from(pool.bytes.len()).expect("GC string data must fit wasm32");
+        let offset = existing.unwrap_or(old_length);
+        let new_length = if existing.is_some() {
+            old_length
+        } else {
+            old_length
+                .checked_add(length)
+                .expect("GC string data must fit wasm32")
+        };
+        // The GC opcode and array type index have the same size in both forms.
+        // Each fixed-array byte needs an i32.const and its signed LEB operand.
+        let fixed = uleb_len(length)
+            + value
+                .bytes()
+                .map(|byte| 1 + sleb_len(i32::from(byte)))
+                .sum::<usize>();
+        let from_data = 2 + sleb_len(offset as i32) + sleb_len(length as i32) + uleb_len(segment);
+        let data_growth = if existing.is_some() {
+            0
+        } else if pool.bytes.is_empty() {
+            // Passive flag, byte count, DataCount section, and segment-count
+            // growth. Reserve four bytes for growth of the data-section size
+            // prefix (the full u32 LEB range), whose old size is not known here.
+            value.len() + 1 + uleb_len(length) + 2 + uleb_len(segment + 1) + uleb_len(segment + 1)
+                - uleb_len(segment)
+                + 4
+        } else {
+            value.len() + uleb_len(new_length) - uleb_len(old_length) + 4
+        };
+        if from_data + data_growth >= fixed {
             return None;
         }
-        let mut pool = self.pool.borrow_mut();
-        let offset = if let Some(offset) = pool.offsets.get(value) {
-            *offset
-        } else {
-            let offset = u32::try_from(pool.bytes.len()).expect("GC string data must fit wasm32");
+        if existing.is_none() {
             pool.bytes.extend_from_slice(value.as_bytes());
             pool.offsets.insert(value.to_owned(), offset);
-            offset
-        };
+        }
         Some((segment, offset))
     }
 
@@ -77,6 +105,15 @@ impl GcStringLiterals {
         data.passive(pool.bytes.iter().copied());
         true
     }
+}
+
+fn uleb_len(value: u32) -> usize {
+    (32 - value.leading_zeros()).max(1).div_ceil(7) as usize
+}
+
+fn sleb_len(value: i32) -> usize {
+    let magnitude = if value < 0 { !value } else { value } as u32;
+    (33 - magnitude.leading_zeros()).div_ceil(7) as usize
 }
 
 #[derive(Clone, Copy)]
