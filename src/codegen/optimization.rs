@@ -21,6 +21,7 @@ pub(super) fn cleanup(
                 returns: true,
                 propagation: true,
                 flow_locals,
+                expressions: false,
             },
         );
         if candidate.len() >= wasm.len() {
@@ -68,7 +69,14 @@ pub(super) fn optimize(wasm: Vec<u8>, mut report: Option<&mut CodegenReport>) ->
     if let Some(report) = report {
         *report = selected_report.unwrap();
     }
-    result
+    peephole::optimize(
+        &result,
+        peephole::Passes {
+            expressions: true,
+            locals: true,
+            ..Default::default()
+        },
+    )
 }
 
 fn finish_inlining(baseline: Vec<u8>, report: Option<&mut CodegenReport>) -> Vec<u8> {

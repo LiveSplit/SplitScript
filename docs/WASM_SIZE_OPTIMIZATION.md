@@ -1011,6 +1011,75 @@ on Minish Cap, while local CSE still saves 170 / 206 bytes on Lunistice / A Hat
 in Time relative to Binaryen's no-pass rewrite. This suggests local expression
 reuse as a next candidate; standalone pass savings do not compose.
 
+## Repeated-expression reuse — 2026-10-02
+
+Following Binaryen's local-CSE results, Release now reuses already-computed
+integer calculations, casts and eligible field/memory reads. A selected first
+occurrence stores its result with `local.tee`; later occurrences read that
+temporary. The cost model includes instruction encoding, local-index LEB sizes
+and declaration costs, and reuses temporary slots with non-overlapping lifetimes.
+The existing exact function-body and complete-module gates make the final
+decision. This is a final pass, so it cannot disturb earlier specialization,
+inlining or function-sharing choices. Debug does not run it.
+
+Expression keys include local assignment versions and a state generation for
+mutable reads. Calls and stores invalidate state-dependent expressions;
+immutable field reads and pure arithmetic can survive unrelated effects.
+Only values computed before a conditional/block are available to both arms and
+its continuation. Loops start with fresh facts. Shared memory/globals and
+unsupported exception/control constructs conservatively exclude reuse.
+
+Overlapping expressions retain their original dominating computation. Selecting
+a larger expression may allow a nested original to remain, but may never move
+a smaller expression's cache initialization into just one conditional arm.
+The scan is bounded by body/local/expression limits, available-fact limits and
+a budget for copying expression keys at control boundaries.
+
+| Real script | Before | After | Saved | Binaryen `-Oz` on new output | Remaining gap |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Minish Cap | 29,433 | 29,217 | 216 | 28,493 | 724 |
+| Lunistice | 26,583 | 26,217 | 366 | 25,618 | 599 |
+| Celeste | 29,201 | 29,050 | 151 | 28,573 | 477 |
+| A Hat in Time | 42,984 | 42,677 | 307 | 41,711 | 966 |
+| Neon White | 4,109 | 4,088 | 21 | — | — |
+| Automatic Lunistice | 114,792 | 113,195 | 1,597 | — | — |
+
+Collections / nested collections save 1,893 / 2,163 bytes; async / async-loop
+save 1 / 19. The first strictly straight-line prototype saved only 32 / 113 /
+11 / 12 on Minish Cap / Lunistice / Celeste / A Hat in Time. Tracking dominating
+expressions through structured conditionals and accounting for existing local
+declaration groups made the larger savings possible. Experiment artifacts are
+under `target/cse-next`.
+
+Eight focused execution tests cover local writes and operand-stack snapshots,
+calls, memory/global/struct mutations, loops, conditional joins, overlapping
+expressions, first-trap ordering and non-defaultable reference initialization.
+They compare returned values, host-call traces and trap kinds. A shared-memory
+fixture verifies that expression reuse is disabled independently of ordinary
+unused-local compaction.
+
+Validation passes 572 library tests, 697 compiler tests, 20 binary tests and five
+example tests, Clippy with warnings denied, the browser compiler's wasm32 check,
+and 36 corpus runtime invocations. All ten corpus modules validate and shrink;
+stable Debug output remains identical. The external Celeste source fingerprint
+is unchanged; its validation does not replace a gameplay harness.
+All 176 maintained runtime fixtures validate, and all 211 execution scenarios
+plus the Debug/Release profile check pass.
+
+The Unity gate and both Lunistice editions pass with no function-body, section or
+whole-module growth. Its refreshed baseline records only equal or smaller
+outputs; source fingerprints, function/type counts and retention budgets stay
+unchanged. Optimized-host whole-compilation measurements are 173.7 ms for
+Lunistice, 1,050.6 ms for automatic Lunistice and 1,026.4 ms for nested metadata,
+versus 172.3 / 1,058.9 / 1,073.9 in the preceding baseline. These cross-run
+measurements show no material slowdown and are not isolated pass timings.
+
+On the new output, Binaryen's standalone local CSE saves only four bytes on
+Minish Cap, grows Lunistice/Celeste, and still saves 149 on A Hat in Time relative
+to its no-pass rewrite. Optimizing inlining plus its nested cleanup still saves
+476 / 0 / 243 / 400 on Minish Cap / Lunistice / Celeste / A Hat in Time. Those
+figures identify remaining investigation targets, not additive pass benefits.
+
 ## Original promotion compiler cost
 
 Optimized-host seven-sample medians for the promoted pipeline:

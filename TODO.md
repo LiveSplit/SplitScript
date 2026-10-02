@@ -999,6 +999,10 @@ save another 227 / 118 / 197 bytes on Minish Cap / Lunistice / Celeste and
 779 on automatic Lunistice. Only private allocations with proven field-only
 uses become scalar locals; constructor effects, traps and per-iteration defaults
 remain observable. All added analysis stays in Release.
+[Repeated-expression reuse](docs/WASM_SIZE_OPTIMIZATION.md#repeated-expression-reuse--2026-10-02)
+saves another 216 / 366 / 151 bytes on Minish Cap / Lunistice / Celeste, 307 on
+A Hat in Time and 1,597 on automatic Lunistice. It runs after the existing
+pipeline and requires each changed function and the complete module to shrink.
 The earlier broader inlining/temporary-sinking and propagation prototypes remain
 on the experimental branch; their remaining real-script benefit does not yet justify promotion. Prefer
 measured savings on Minish Cap, Lunistice and Celeste over large synthetic fixtures. Direct emitter

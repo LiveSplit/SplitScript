@@ -11,6 +11,8 @@ pub(super) struct Types {
     pub types: Vec<SubType>,
     pub functions: Vec<u32>,
     pub imported: usize,
+    pub globals: Vec<wasmparser::GlobalType>,
+    pub shared: bool,
 }
 
 struct Frame {

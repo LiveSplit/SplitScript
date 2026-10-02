@@ -11,6 +11,9 @@ mod branch_values;
 #[cfg(test)]
 mod cleanup_tests;
 mod control;
+mod expression_reuse;
+#[cfg(test)]
+mod expression_tests;
 mod fallthrough;
 #[cfg(test)]
 mod instruction_tests;
@@ -37,6 +40,7 @@ pub(super) struct Passes {
     pub returns: bool,
     pub propagation: bool,
     pub flow_locals: bool,
+    pub expressions: bool,
 }
 
 pub(super) fn optimize(wasm: &[u8], passes: Passes) -> Vec<u8> {
@@ -92,7 +96,7 @@ impl Cleanup {
                                     _ => 0,
                                 });
                             }
-                            if passes.returns || passes.instructions {
+                            if passes.returns || passes.instructions || passes.expressions {
                                 struct_fields.push(match &ty.composite_type.inner {
                                     CompositeInnerType::Struct(ty) => Some(ty.fields.len()),
                                     _ => None,
@@ -108,11 +112,17 @@ impl Cleanup {
                 }
                 Payload::ImportSection(section) => {
                     for import in section.into_imports() {
-                        if let wasmparser::TypeRef::Func(ty) | wasmparser::TypeRef::FuncExact(ty) =
-                            import.unwrap().ty
-                        {
-                            arities.functions.push(ty);
-                            arities.imported += 1;
+                        match import.unwrap().ty {
+                            wasmparser::TypeRef::Func(ty) | wasmparser::TypeRef::FuncExact(ty) => {
+                                arities.functions.push(ty);
+                                arities.imported += 1;
+                            }
+                            wasmparser::TypeRef::Global(ty) => {
+                                arities.shared |= ty.shared;
+                                arities.globals.push(ty);
+                            }
+                            wasmparser::TypeRef::Memory(ty) => arities.shared |= ty.shared,
+                            _ => {}
                         }
                     }
                 }
@@ -124,6 +134,18 @@ impl Cleanup {
                         if passes.returns {
                             results.push(type_results[ty]);
                         }
+                    }
+                }
+                Payload::GlobalSection(section) => {
+                    for global in section {
+                        let ty = global.unwrap().ty;
+                        arities.shared |= ty.shared;
+                        arities.globals.push(ty);
+                    }
+                }
+                Payload::MemorySection(section) => {
+                    for memory in section {
+                        arities.shared |= memory.unwrap().shared;
                     }
                 }
                 _ => {}
@@ -281,6 +303,26 @@ impl Cleanup {
                     &mut ops,
                     &params,
                     &locals,
+                    &self.arities,
+                    &self.struct_fields,
+                );
+            }
+            if self.passes.expressions && !self.arities.shared {
+                let signature = self.arities.functions[self.arities.imported + self.next_body - 1];
+                let CompositeInnerType::Func(ty) =
+                    &self.arities.types[signature as usize].composite_type.inner
+                else {
+                    unreachable!()
+                };
+                let params = ty
+                    .params()
+                    .iter()
+                    .map(|&ty| reencode::RoundtripReencoder.val_type(ty))
+                    .collect::<Result<Vec<_>, _>>()?;
+                expression_reuse::run(
+                    &mut ops,
+                    &params,
+                    &mut locals,
                     &self.arities,
                     &self.struct_fields,
                 );
@@ -711,6 +753,7 @@ impl BodyCleanup {
                 returns: true,
                 propagation: true,
                 flow_locals: true,
+                expressions: false,
             },
         ))
     }
