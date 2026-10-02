@@ -98,6 +98,23 @@ and null checks before calls or division traps. All 501 library, 696 compiler,
 and 36 baseline-versus-optimized corpus runtime invocations.
 All 176 maintained modules validate; all 211 runtime scenarios and the
 Debug/Release profile check pass.
+The unchanged Unity size gate also passes, including individual function/type
+budgets and Lunistice base/DLC behavior; no baseline refresh was needed.
+
+Final optimized-host seven-sample medians, with no concurrent build or runtime
+suite, are:
+
+| Real script | Passes disabled | Complete Release backend | Added backend time |
+| --- | ---: | ---: | ---: |
+| Minish Cap | 3.101 ms | 6.717 ms | 3.616 ms |
+| Lunistice | 16.138 ms | 19.389 ms | 3.251 ms |
+| Neon White | 0.501 ms | 1.033 ms | 0.532 ms |
+| A Hat in Time | 4.387 ms | 7.360 ms | 2.973 ms |
+
+These include lowering/emission but exclude parsing/type checking. The complete
+pipeline remains close to the original promotion's 6.448 / 19.161 ms totals on
+the primary scripts. Cross-run differences include measurement variation and
+do not isolate the new rules' cost. Samples remain in `target/size-check/timing.json`.
 
 Binaryen's remaining instruction-only savings fall to 194 / 195 bytes on the
 primary scripts. Full `-Oz` on the new output reaches 29,638 / 26,344 bytes;
