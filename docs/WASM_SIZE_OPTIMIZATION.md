@@ -56,7 +56,56 @@ fits into the existing instruction scan. A second cleanup sweep saves another
 enabled; it exposes useful simplifications without introducing another analysis.
 Pass savings interact and must not be added together as independent totals.
 
-## Compiler cost
+## Instruction cleanup follow-up — 2026-10-02
+
+A fresh Binaryen 132 pass comparison on the promoted Release output identified
+instruction simplification as the largest remaining individual opportunity on
+the primary scripts. After subtracting Binaryen's no-pass re-encoding, it saved
+371 / 315 bytes on Minish Cap / Lunistice; constant propagation saved 224 / 14,
+local simplification/coalescing 179 / 157, and code folding 92 / 125.
+
+The existing Release cleanup now also inverts integer comparisons followed by
+`eqz`, removes redundant Boolean normalization where the value or its consumer
+permits it, and simplifies lossless extend/wrap pairs. Floating-point comparison
+inversion is excluded because NaNs invalidate the usual inequality identities.
+
+Identical `if` arms share one body while retaining the condition's evaluation
+and the original typed label as a block. Negated conditions with an `else` can
+swap complete arms. Branch depths, block parameters and result values remain
+intact. Arm comparisons examine at most 256 instructions, and overlapping inner
+matches wait for the existing second cleanup sweep. A more elaborate nested
+rewrite added no real-script savings and was discarded.
+
+Redundant null assertions are removed from statically non-null constructor/cast
+results and before GC reads/writes when intervening operands are only individual
+nontrapping constants or reads. Checks stay before calls, writes and potentially
+trapping operands, preserving the first trap and preceding observable effects.
+The pipeline still has two bounded cleanup sweeps and the same strict body and
+module size gates. Debug bypasses these changes.
+
+| Real script | Before | After | Additional saving |
+| --- | ---: | ---: | ---: |
+| Minish Cap | 32,648 | 32,488 | 160 |
+| Lunistice | 29,163 | 29,025 | 138 |
+| Neon White | 4,768 | 4,692 | 76 |
+| A Hat in Time | 48,536 | 48,449 | 87 |
+
+Seven new runtime tests cover signed/unsigned boundaries, non-Boolean conditions,
+truncation, unordered NaNs, typed branch parameters/results, nested selected
+calls, preserved condition traps, GC constructor results, packed array reads,
+and null checks before calls or division traps. All 501 library, 696 compiler,
+20 binary and five example tests pass, as do Clippy, the browser-target check,
+and 36 baseline-versus-optimized corpus runtime invocations.
+All 176 maintained modules validate; all 211 runtime scenarios and the
+Debug/Release profile check pass.
+
+Binaryen's remaining instruction-only savings fall to 194 / 195 bytes on the
+primary scripts. Full `-Oz` on the new output reaches 29,638 / 26,344 bytes;
+these are diagnostic comparisons, not an assertion that the remaining passes
+compose additively. The next measured candidates are constant propagation on
+Minish Cap and further instruction/local simplification on both primary scripts.
+
+## Original promotion compiler cost
 
 Optimized-host seven-sample medians for the promoted pipeline:
 

@@ -93,6 +93,7 @@ pub(super) fn remove_unused_labels(ops: &mut Vec<I<'_>>) {
         return;
     }
     constant_selections(ops);
+    simplify_if_arms(ops);
     conditional_branches(ops);
     // The implicit function label is always retained.
     let root = ops.len();
@@ -153,6 +154,75 @@ pub(super) fn remove_unused_labels(ops: &mut Vec<I<'_>>) {
             _ => true,
         }
     });
+}
+
+/// Keep the condition's effects and the original typed label. Replacing the
+/// if with a block preserves branch depths, block parameters and return paths.
+fn simplify_if_arms(ops: &mut Vec<I<'_>>) {
+    use wasm_encoder::Encode;
+    let mut stack = Vec::new();
+    let mut changes = Vec::new();
+    for (at, op) in ops.iter().enumerate() {
+        match op {
+            I::Block(_) | I::Loop(_) | I::If(_) => stack.push((at, None)),
+            I::Else => stack.last_mut().unwrap().1 = Some(at),
+            I::End => {
+                let Some((start, Some(alternate))) = stack.pop() else {
+                    continue;
+                };
+                let count = alternate - start - 1;
+                // Bound comparisons even for deeply nested candidate arms.
+                let mut identical = false;
+                if count != 0 && count <= 256 && count == at - alternate - 1 {
+                    let mut left = Vec::new();
+                    let mut right = Vec::new();
+                    for op in &ops[start + 1..alternate] {
+                        op.encode(&mut left);
+                    }
+                    for op in &ops[alternate + 1..at] {
+                        op.encode(&mut right);
+                    }
+                    identical = left == right;
+                }
+                let negate = start != 0 && matches!(ops[start - 1], I::I32Eqz);
+                if identical || negate {
+                    changes.push((start, alternate, at, identical, negate));
+                }
+            }
+            _ => {}
+        }
+    }
+    if changes.is_empty() {
+        return;
+    }
+    // Prefer the outermost match; overlapping inner matches can wait for the
+    // next bounded cleanup sweep. Never splice using already-shifted indices.
+    changes.sort_unstable_by_key(|&(start, _, _, _, _)| start);
+    let original = std::mem::take(ops);
+    let mut copied = 0;
+    for (start, alternate, end, identical, negate) in changes {
+        if start < copied {
+            continue;
+        }
+        let I::If(ty) = original[start] else {
+            unreachable!()
+        };
+        ops.extend_from_slice(&original[copied..start - usize::from(negate)]);
+        if identical {
+            ops.extend([I::Drop, I::Block(ty)]);
+            ops.extend_from_slice(&original[start + 1..alternate]);
+        } else {
+            // Swapping complete arms leaves their typed label and every
+            // nested relative branch depth unchanged.
+            ops.push(I::If(ty));
+            ops.extend_from_slice(&original[alternate + 1..end]);
+            ops.push(I::Else);
+            ops.extend_from_slice(&original[start + 1..alternate]);
+        }
+        ops.push(I::End);
+        copied = end + 1;
+    }
+    ops.extend_from_slice(&original[copied..]);
 }
 
 /// Factor the final assignment in both arms into one assignment after the if.

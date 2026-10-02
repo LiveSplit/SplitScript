@@ -7,6 +7,8 @@ use wasm_encoder::{
 use wasmparser::{CompositeInnerType, Parser, Payload};
 
 mod control;
+#[cfg(test)]
+mod instruction_tests;
 mod returns;
 #[cfg(test)]
 mod returns_tests;
@@ -276,7 +278,66 @@ fn simplify(ops: &mut Vec<I<'_>>) {
         ops.pop();
         return;
     }
+    // These GC consumers already trap on null. Only move that check across
+    // individual nontrapping reads/constants, never calls, stores or traps.
+    if let [.., I::RefAsNonNull, operand, consumer] = ops.as_slice()
+        && nontrapping_operand(operand)
+        && matches!(
+            consumer,
+            I::StructSet { .. } | I::ArrayGet(_) | I::ArrayGetS(_) | I::ArrayGetU(_)
+        )
+    {
+        ops.remove(ops.len() - 3);
+        return;
+    }
+    if let [.., I::RefAsNonNull, index, value, I::ArraySet(_)] = ops.as_slice()
+        && nontrapping_operand(index)
+        && nontrapping_operand(value)
+    {
+        ops.remove(ops.len() - 4);
+        return;
+    }
+    // Boolean-producing instructions already return exactly zero or one.
+    if let [.., producer, I::I32Eqz, I::I32Eqz] = ops.as_slice()
+        && boolean_result(producer)
+    {
+        ops.truncate(ops.len() - 2);
+        return;
+    }
+    // Conditions consume truthiness, so normalizing an arbitrary i32 twice
+    // is redundant here even when its value is not already zero or one.
+    if let [.., I::I32Eqz, I::I32Eqz, condition] = ops.as_slice()
+        && matches!(
+            condition,
+            I::If(_) | I::BrIf(_) | I::Select | I::TypedSelect(_)
+        )
+    {
+        let condition = condition.clone();
+        ops.truncate(ops.len() - 3);
+        ops.push(condition);
+        return;
+    }
     let replacement = match ops.as_slice() {
+        [.., producer, I::RefAsNonNull]
+            if matches!(
+                producer,
+                I::StructNew(_)
+                    | I::StructNewDefault(_)
+                    | I::ArrayNew(_)
+                    | I::ArrayNewDefault(_)
+                    | I::ArrayNewFixed { .. }
+                    | I::RefFunc(_)
+                    | I::RefCastNonNull(_)
+                    | I::RefAsNonNull
+            ) =>
+        {
+            Some(Some(producer.clone()))
+        }
+        [.., compare, I::I32Eqz] if invert_integer_comparison(compare).is_some() => {
+            Some(invert_integer_comparison(compare))
+        }
+        [.., I::I64ExtendI32S | I::I64ExtendI32U, I::I32WrapI64] => Some(None),
+        [.., I::I64ExtendI32S | I::I64ExtendI32U, I::I64Eqz] => Some(Some(I::I32Eqz)),
         [.., I::LocalSet(a), I::LocalGet(b)] if a == b => Some(Some(I::LocalTee(*a))),
         [.., I::LocalTee(a), I::Drop] => Some(Some(I::LocalSet(*a))),
         [.., I::LocalGet(a), I::LocalSet(b)] if a == b => Some(None),
@@ -313,6 +374,50 @@ fn simplify(ops: &mut Vec<I<'_>>) {
             ops.push(op);
         }
     }
+}
+
+fn nontrapping_operand(op: &I<'_>) -> bool {
+    pure_push(op) || matches!(op, I::GlobalGet(_))
+}
+
+fn boolean_result(op: &I<'_>) -> bool {
+    matches!(
+        op,
+        I::I32Eqz
+            | I::I64Eqz
+            | I::RefIsNull
+            | I::RefEq
+            | I::RefTestNonNull(_)
+            | I::RefTestNullable(_)
+    ) || invert_integer_comparison(op).is_some()
+}
+
+// Floating-point inequalities are deliberately excluded: unordered NaNs make
+// !(a < b) different from a >= b. Integer comparisons have no unordered case.
+fn invert_integer_comparison(op: &I<'_>) -> Option<I<'static>> {
+    Some(match op {
+        I::I32Eq => I::I32Ne,
+        I::I32Ne => I::I32Eq,
+        I::I32LtS => I::I32GeS,
+        I::I32GeS => I::I32LtS,
+        I::I32LtU => I::I32GeU,
+        I::I32GeU => I::I32LtU,
+        I::I32LeS => I::I32GtS,
+        I::I32GtS => I::I32LeS,
+        I::I32LeU => I::I32GtU,
+        I::I32GtU => I::I32LeU,
+        I::I64Eq => I::I64Ne,
+        I::I64Ne => I::I64Eq,
+        I::I64LtS => I::I64GeS,
+        I::I64GeS => I::I64LtS,
+        I::I64LtU => I::I64GeU,
+        I::I64GeU => I::I64LtU,
+        I::I64LeS => I::I64GtS,
+        I::I64GtS => I::I64LeS,
+        I::I64LeU => I::I64GtU,
+        I::I64GtU => I::I64LeU,
+        _ => return None,
+    })
 }
 
 fn fold(ops: &mut Vec<I<'_>>) {

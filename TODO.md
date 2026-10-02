@@ -981,7 +981,8 @@ concepts rather than maintaining a parallel inventory.
 The [promoted size pipeline](docs/WASM_SIZE_OPTIMIZATION.md) performs bounded
 Release-only instruction, integer-constant, dead-code, local and control-flow
 cleanup, shared returns, and sharing of bodies differing in integer constants.
-It saves 7.0% / 7.2% on Minish Cap / Lunistice. Debug bypasses all passes.
+With the instruction-cleanup follow-up, it saves 7.5% / 7.6% on Minish Cap /
+Lunistice relative to pre-optimizer master. Debug bypasses all passes.
 Inlining, temporary sinking and propagation remain on the experimental branch;
 their remaining real-script benefit does not yet justify promotion. Prefer
 measured savings on real scripts over large synthetic fixtures. Direct emitter
