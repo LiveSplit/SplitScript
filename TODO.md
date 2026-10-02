@@ -982,9 +982,9 @@ The [promoted size pipeline](docs/WASM_SIZE_OPTIMIZATION.md) performs bounded
 Release-only instruction, integer-constant, dead-code, local and control-flow
 cleanup, shared returns, and sharing of bodies differing in integer constants.
 With instruction, constant-local, global and control cleanup plus direct default-enum
-emission, conditional/fallthrough cleanup and cost-based GC literals, it saves 13.2% / 11.1%
+emission, conditional/fallthrough cleanup and cost-based GC literals, it saves 13.4% / 11.4%
 on Minish Cap / Lunistice relative to pre-optimizer master. The external Celeste
-port is also measured and saves 14.8%. Debug bypasses all passes and also benefits
+port is also measured and saves 15.1%. Debug bypasses all passes and also benefits
 from the default-enum emission shortcut, which adds no analysis.
 Inlining, temporary sinking and the original propagation prototype remain on
 the experimental branch; their remaining real-script benefit does not yet justify promotion. Prefer

@@ -47,6 +47,8 @@ pub(super) fn optimize(wasm: &[u8], passes: Passes) -> Vec<u8> {
                                 CompositeInnerType::Func(ty) => ty.results().len(),
                                 _ => 0,
                             });
+                        }
+                        if passes.returns || passes.instructions {
                             struct_fields.push(match &ty.composite_type.inner {
                                 CompositeInnerType::Struct(ty) => Some(ty.fields.len()),
                                 _ => None,
@@ -191,6 +193,7 @@ impl Cleanup {
                 }
                 if self.passes.instructions {
                     simplify(&mut ops);
+                    default_structs(&mut ops, &self.struct_fields);
                 }
                 if ops.len() == old_len {
                     break;
@@ -300,6 +303,31 @@ fn encoded_size(ops: &[I<'_>]) -> usize {
     bytes.len()
 }
 
+/// Default construction keeps the allocation and type, omitting only literal
+/// default operands. Float defaults must be positive zero, bit for bit.
+fn default_structs(ops: &mut Vec<I<'_>>, fields: &[Option<usize>]) {
+    let Some(I::StructNew(ty)) = ops.last() else {
+        return;
+    };
+    let ty = *ty;
+    let Some(count) = fields.get(ty as usize).copied().flatten() else {
+        return;
+    };
+    if count == 0 || count >= ops.len() {
+        return;
+    }
+    let start = ops.len() - count - 1;
+    if ops[start..ops.len() - 1].iter().all(|op| match op {
+        I::I32Const(0) | I::I64Const(0) | I::RefNull(_) => true,
+        I::F32Const(value) => value.bits() == 0,
+        I::F64Const(value) => value.bits() == 0,
+        _ => false,
+    }) {
+        ops.truncate(start);
+        ops.push(I::StructNewDefault(ty));
+    }
+}
+
 fn pure_push(op: &I<'_>) -> bool {
     matches!(
         op,
@@ -315,6 +343,23 @@ fn pure_push(op: &I<'_>) -> bool {
 }
 
 fn simplify(ops: &mut Vec<I<'_>>) {
+    if let [.., identity, value, operation] = ops.as_slice()
+        && nontrapping_operand(value)
+        && matches!(
+            (identity, operation),
+            (I::I32Const(0), I::I32Add | I::I32Or | I::I32Xor)
+                | (I::I64Const(0), I::I64Add | I::I64Or | I::I64Xor)
+                | (I::I32Const(1), I::I32Mul)
+                | (I::I64Const(1), I::I64Mul)
+                | (I::I32Const(-1), I::I32And)
+                | (I::I64Const(-1), I::I64And)
+        )
+    {
+        let value = value.clone();
+        ops.truncate(ops.len() - 3);
+        ops.push(value);
+        return;
+    }
     if matches!(ops.last(), Some(I::Nop)) {
         ops.pop();
         return;

@@ -628,6 +628,60 @@ All 176 maintained modules validate, all 211 runtime scenarios and the
 Debug/Release profile check pass, and the optimized Unity gate passes both
 Lunistice editions without a baseline refresh.
 
+## Default structs and left-hand identities — 2026-10-02
+
+A local-lifetime experiment reused slots for nonoverlapping lexical intervals,
+conservatively widening them across loops and protecting reads of implicit
+defaults. Alone it saved 68 / 28 / 28 bytes on Lunistice / Celeste / A Hat in
+Time but grew Minish Cap by 83 bytes by interfering with function sharing.
+Giving the earlier inliner full module type information, two cleanup sweeps,
+local reuse, and temporary sinking improved the all-call-site trial to
+292 / 300 / 351 / 237 bytes saved on Minish Cap / Lunistice / Celeste /
+A Hat in Time. Those experimental modules validate, but the larger machinery
+and extra analyses are still not promoted. Sources and logs remain under
+`target/lifetimes-trial` and `target/lifetimes-inline-sinking.log` locally.
+
+Binaryen's instruction diff instead exposed a smaller implementation opportunity:
+some ordinary struct constructors still push every zero/null field explicitly.
+The existing Release instruction cleanup now uses `struct.new_default` when
+every operand is a literal Wasm default. It retains the exact struct type and
+a fresh allocation. Packed integer fields, positive floating-point zero and
+nullable references are supported; negative zero, NaNs, nonzero fields and
+effectful computations are not replaced. This complements the earlier direct
+default-enum emitter shortcut; the general operand check remains Release-only.
+
+The same cleanup now removes left-hand integer identities such as `0 + index`,
+`1 * value` and `-1 & value` when the other operand is a nontrapping, zero-input
+push. In particular, `local.tee` is not such a push. These rules extend the
+existing instruction traversal and add no module pass. Debug is unchanged.
+
+Measured against master `8bc799d`:
+
+| Real script | Previous Release | New Release | Additional saving | Binaryen `-Oz` | Remaining gap |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Minish Cap | 30,492 | 30,421 | 71 | 28,662 | 1,759 |
+| Lunistice | 27,920 | 27,836 | 84 | 25,781 | 2,055 |
+| Celeste external port | 30,210 | 30,102 | 108 | 28,721 | 1,381 |
+| Neon White | 4,482 | 4,451 | 31 | 3,775 | 676 |
+| A Hat in Time | 43,834 | 43,667 | 167 | 41,999 | 1,668 |
+
+No measured fixture grows. Struct-default rewriting alone contributes
+68 / 66 / 90 / 164 bytes on Minish Cap / Lunistice / Celeste / A Hat in Time.
+Binaryen's final outputs on those four scripts are unchanged, so these savings
+reduce the measured gap rather than also moving the reference result.
+
+Three new runtime tests check packed/float/reference fields, fresh allocation
+identity, retained effects, negative-zero and NaN payload bits, both integer
+widths and boundaries, and the distinction between local reads and tees.
+
+Validation passed: 531 library, 697 compiler, 20 binary and five example tests;
+Clippy with warnings denied; the browser compiler wasm32 check; all 176
+maintained modules and 211 runtime scenarios; the Debug/Release profile check;
+and 36 corpus runtime invocations. The Unity size gate and Lunistice base/DLC
+behavior passed without changing the baseline. All ten corpus fixtures validate
+and retain Debug equivalence. Celeste received compilation, validation and
+Debug-equivalence checks; no maintained gameplay harness is available here.
+
 ## Original promotion compiler cost
 
 Optimized-host seven-sample medians for the promoted pipeline:
