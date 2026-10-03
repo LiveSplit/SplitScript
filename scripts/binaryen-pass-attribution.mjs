@@ -48,6 +48,9 @@ for (const fixture of fixtures) {
     const row = {
         name: fixture.name, source: fixture.source, original: fs.statSync(source).size,
         roundtrip: measure(source, [], path.join(dir, "roundtrip.wasm")),
+        // Optimization levels affect Binaryen's writer even without passes.
+        // Compare standalone/prefix savings against matching writer settings.
+        encodingBaseline: measure(source, ["--optimize-level=2", "--shrink-level=2"], path.join(dir, "encoding-baseline.wasm")),
         prefix: [], standalone: {}, skip: {},
     };
     // Each prefix starts from the original module and runs in one process:
@@ -67,5 +70,5 @@ for (const fixture of fixtures) {
     }
     report.fixtures.push(row);
     fs.writeFileSync(path.join(output, "report.json"), JSON.stringify(report, null, 2) + "\n");
-    console.log(JSON.stringify({ name: row.name, original: row.original, roundtrip: row.roundtrip, oz: row.oz, skip: row.skip }));
+    console.log(JSON.stringify({ name: row.name, original: row.original, roundtrip: row.roundtrip, encodingBaseline: row.encodingBaseline, oz: row.oz, skip: row.skip }));
 }
