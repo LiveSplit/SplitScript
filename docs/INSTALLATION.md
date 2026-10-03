@@ -26,8 +26,9 @@ and run **Extensions: Install from VSIX**.
 
 The VSIX is batteries-included: do not install `splitc`, `splitls`, Rust, Node,
 or a WebAssembly toolchain merely to use the extension. Release packaging
-rejects a compiler Wasm module larger than 8 MiB or a complete VSIX larger than
-12 MiB. The package contains native debugger bridges for Windows x64, Linux x64
+checks artifact integrity and reports the compiler Wasm and compressed VSIX
+sizes without enforcing fixed size budgets. The package contains native
+debugger bridges for Windows x64, Linux x64
 and ARM64, and macOS Intel and Apple Silicon; only the bridge for the running
 desktop host is loaded.
 
