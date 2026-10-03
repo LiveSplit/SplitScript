@@ -1,0 +1,120 @@
+name: Publish VS Code Marketplace
+
+# Publish the audited artifact only after every Check job succeeds. This
+# workflow is separate so superseding a master build cannot interrupt an
+# upload already in progress.
+on:
+  workflow_run:
+    workflows: [Check]
+    types: [completed]
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  prepare:
+    name: Validate the audited release
+    if: >-
+      github.repository == 'LiveSplit/SplitScript' &&
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.head_repository.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      publish: ${{ steps.check.outputs.publish }}
+    steps:
+      # workflow_run checks out the default-branch workflow revision, not code
+      # supplied by an artifact. Its scripts verify the producer commit/ref.
+      - name: Check out the publishing tools
+        uses: actions/checkout@v7
+
+      - name: Install Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: editors/vscode/package-lock.json
+
+      - name: Install extension dependencies
+        working-directory: editors/vscode
+        run: npm ci
+
+      - name: Download the audited VSIX and receipt
+        uses: actions/download-artifact@v7
+        with:
+          name: splitscript-vscode-extension
+          path: target/marketplace
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ github.token }}
+
+      - name: Check version, channel, checksum, and source commit
+        id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node editors/vscode/scripts/publish-marketplace.mjs --check target/marketplace
+
+  publish:
+    name: Publish the verified VSIX
+    needs: prepare
+    if: needs.prepare.outputs.publish == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment:
+      name: vscode-marketplace
+      url: https://marketplace.visualstudio.com/items?itemName=LiveSplit.splitscript
+    permissions:
+      contents: read
+      actions: read
+      id-token: write
+    concurrency:
+      group: vscode-marketplace
+      cancel-in-progress: false
+      # Keep full releases in the queue when additional previews finish.
+      # https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/control-workflow-concurrency
+      queue: max
+    steps:
+      - name: Check out the publishing tools
+        uses: actions/checkout@v7
+
+      - name: Install Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: editors/vscode/package-lock.json
+
+      - name: Install extension dependencies
+        working-directory: editors/vscode
+        run: npm ci
+
+      - name: Download the same audited VSIX and receipt
+        uses: actions/download-artifact@v7
+        with:
+          name: splitscript-vscode-extension
+          path: target/marketplace
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ github.token }}
+
+      - name: Check the publishing identity configuration
+        env:
+          MARKETPLACE_CLIENT_ID: ${{ vars.MARKETPLACE_CLIENT_ID }}
+          MARKETPLACE_TENANT_ID: ${{ vars.MARKETPLACE_TENANT_ID }}
+        run: |
+          if [[ -z "$MARKETPLACE_CLIENT_ID" || -z "$MARKETPLACE_TENANT_ID" ]]; then
+            echo 'Configure MARKETPLACE_CLIENT_ID and MARKETPLACE_TENANT_ID in the vscode-marketplace environment. See editors/vscode/DEVELOPMENT.md.' >&2
+            exit 1
+          fi
+
+      - name: Authenticate the publisher with GitHub OIDC
+        uses: azure/login@v3
+        with:
+          client-id: ${{ vars.MARKETPLACE_CLIENT_ID }}
+          tenant-id: ${{ vars.MARKETPLACE_TENANT_ID }}
+          allow-no-subscriptions: true
+
+      - name: Publish the package without rebuilding it
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node editors/vscode/scripts/publish-marketplace.mjs target/marketplace

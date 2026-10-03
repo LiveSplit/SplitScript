@@ -1197,14 +1197,23 @@ remaining work is product hardening and distribution.
   moves the stable `latest` tag and replaces `splitscript-latest.vsix` on one
   durable GitHub release; pull requests and other branches remain read-only.
 
-- [ ] Publish extension version 0.1.0 through the Visual Studio Marketplace's
-  pre-release channel. Packaging already applies the VSCE pre-release marker,
-  the manifest identity is `LiveSplit.splitscript`, and Marketplace-facing
-  documentation is ready. Smoke-test the complete CI-assembled VSIX rather than
-  a single-platform local package, then upload that immutable artifact through
-  the `LiveSplit` publisher. Keep later Marketplace uploads explicitly
-  versioned; the rolling GitHub `latest` release may continue replacing its
-  separately distributed asset.
+- [x] Publish extension version 0.1.0 through the Visual Studio Marketplace's
+  pre-release channel under `LiveSplit.splitscript`. The initial CI-assembled
+  VSIX was uploaded manually.
+- [x] Automate Marketplace publishing: every verified `master` build gets an
+  automatically numbered preview, and `vX.Y.Z` tag pushes create full releases
+  without requiring source-manifest version edits. The separate publishing
+  workflow checks the audited VSIX's channel/version, checksum, and producer
+  commit before uploading the original bytes. GitHub releases include the VSIX
+  and native CLI/LSP archives; reruns skip existing Marketplace versions.
+- [x] Enable the Marketplace publishing identity: configure Microsoft Entra
+  federation for the `vscode-marketplace` environment, grant the identity
+  Contributor access to the `LiveSplit` publisher, and set
+  `MARKETPLACE_CLIENT_ID` / `MARKETPLACE_TENANT_ID`. Verified the GitHub OIDC
+  login and Marketplace profile lookup; the publisher lists the app as a
+  Contributor. Setup instructions are in `editors/vscode/DEVELOPMENT.md`.
+- [ ] Verify the first automatic Marketplace preview upload from the complete
+  `Check` workflow and confirm its version/channel in the Marketplace.
 
 - [x] Add cooperative cancellation points to expensive compiler stages so a
   superseded editor build can stop work rather than merely have its completed

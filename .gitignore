@@ -3,5 +3,6 @@
 /editors/vscode/dist
 /editors/vscode/.vscode-test-web
 /editors/vscode/*.vsix
+/editors/vscode/*.vsix.json
 *.wasm
 *.wat

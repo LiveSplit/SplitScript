@@ -1,23 +1,27 @@
 import assert from 'node:assert/strict';
-import { mkdtemp, readFile, rm, stat } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import { nativeBridgeFileName, supportedNativePlatforms } from './native-platforms.mjs';
 import { stageExtension } from './stage-extension.mjs';
+import { readReleaseMetadata } from './release-metadata.mjs';
+import { readPackagedRelease } from './vsce-release.mjs';
 
 const extension = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const repository = resolve(extension, '..', '..');
 const commandArguments = process.argv.slice(2);
-const preRelease = commandArguments.includes('--pre-release');
-const positionalArguments = commandArguments.filter(argument => argument !== '--pre-release');
+const keepPackage = commandArguments.includes('--keep-package');
+const positionalArguments = commandArguments.filter(argument => argument !== '--keep-package');
 assert(
     positionalArguments.every(argument => !argument.startsWith('--')),
     `unknown package probe option ${positionalArguments.find(argument => argument.startsWith('--'))}`,
 );
 assert(positionalArguments.length <= 2, 'expected at most a production dist and package output');
 const [suppliedProductionDist, suppliedPackageOutput] = positionalArguments;
+const release = await readReleaseMetadata();
 const productionDist = resolve(
     suppliedProductionDist ?? resolve(repository, 'target', 'vscode-package', 'dist'),
 );
@@ -54,6 +58,13 @@ try {
     // staged build script recognizes this marker and leaves the exact audited
     // production tree untouched.
     await stageExtension(extension, productionDist, staging, true);
+    // Stamp only the disposable packaging manifest. Branch/tag metadata
+    // determines the distribution version and channel; source edits are not
+    // required to publish either kind of release.
+    const manifestPath = resolve(staging, 'package.json');
+    const manifest = JSON.parse(await readFile(manifestPath, 'utf8'));
+    manifest.version = release.version;
+    await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
 
     const listing = spawnSync(process.execPath, [vsce, 'ls', '--no-dependencies'], {
         cwd: staging,
@@ -184,12 +195,14 @@ try {
         }
     }
 
-    const output = resolve(suppliedPackageOutput ?? resolve(temporary, 'splitscript-probe.vsix'));
+    const output = resolve(suppliedPackageOutput ?? (keepPackage
+        ? resolve(extension, `splitscript-${release.version}.vsix`)
+        : resolve(temporary, 'splitscript-probe.vsix')));
     const packaged = spawnSync(process.execPath, [
         vsce,
         'package',
         '--no-dependencies',
-        ...(preRelease ? ['--pre-release'] : []),
+        ...(release.preRelease ? ['--pre-release'] : []),
         '--out',
         output,
     ], {
@@ -209,11 +222,26 @@ try {
         packageSize <= maxVsixBytes,
         `the VSIX exceeds its ${maxVsixBytes}-byte distribution budget`,
     );
+    const packageBytes = await readFile(output);
+    assert.deepEqual(await readPackagedRelease(output), {
+        id: 'LiveSplit.splitscript',
+        version: release.version,
+        preRelease: release.preRelease,
+    }, 'the packaged release version or channel is incorrect');
+    await writeFile(`${output}.json`, `${JSON.stringify({
+        id: 'LiveSplit.splitscript',
+        version: release.version,
+        preRelease: release.preRelease,
+        marketplace: release.marketplace,
+        sourceCommit: process.env.SPLITSCRIPT_GIT_REVISION ?? null,
+        sourceRef: process.env.GITHUB_REF ?? null,
+        sha256: createHash('sha256').update(packageBytes).digest('hex'),
+    }, null, 2)}\n`);
     console.log(
         `VSIX packaging probe passed with ${files.length} production files and `
         + `${requiredPlatforms.length} required native bridge artifact(s); `
         + `${compilerWasm.byteLength} compiler bytes and ${packageSize} packaged bytes`
-        + `${preRelease ? ' as a pre-release' : ''}.`,
+        + ` as ${release.preRelease ? 'a pre-release' : 'a stable release'} ${release.version}.`,
     );
 } finally {
     await rm(temporary, { recursive: true, force: true });

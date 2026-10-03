@@ -545,7 +545,7 @@
   "scripts": {
     "vscode:prepublish": "node scripts/build.mjs --production",
     "compile": "node scripts/build.mjs",
-    "package:vsix": "vsce package --pre-release",
+    "package:vsix": "node scripts/probe-package.mjs --keep-package",
     "clean": "node scripts/clean.mjs",
     "compile:ts": "tsc -p tsconfig.node.json",
     "bundle:web": "node scripts/bundle-web.mjs",
@@ -553,7 +553,7 @@
     "open:web-host": "vscode-test-web --browser=chromium --headless=false --quality=stable --commit=e4c7e7b1d6d060162f4aa7f8225271b67ce1df75 --extensionDevelopmentPath=. test-workspace",
     "watch": "tsc --watch -p ./",
     "check": "tsc --noEmit -p ./",
-    "test": "tsc --noEmit -p tsconfig.test.json && node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test test/*.test.mts",
+    "test": "tsc --noEmit -p tsconfig.test.json && node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test test/*.test.mts test/*.test.mjs",
     "probe:runtime": "node scripts/probe-runtime.mjs",
     "probe:debug-runtime": "node scripts/probe-debug-runtime.mjs",
     "probe:native": "node scripts/probe-native.mjs",
