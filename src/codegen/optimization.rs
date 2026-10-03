@@ -23,6 +23,7 @@ pub(super) fn cleanup(
                 flow_locals,
                 expressions: false,
                 discarded_values: false,
+                movements: false,
             },
         );
         if candidate.len() >= wasm.len() {
@@ -80,26 +81,31 @@ pub(super) fn optimize(wasm: Vec<u8>, mut report: Option<&mut CodegenReport>) ->
     );
     // Reused expressions introduce temporaries and expose dead calculations.
     // Revisit cleanup, retaining only strict reductions in the complete file.
-    for _ in 0..6 {
-        let candidate = peephole::optimize(
-            &result,
-            peephole::Passes {
-                instructions: true,
-                constants: true,
-                locals: true,
-                flow_locals: true,
-                propagation: true,
-                control: true,
-                returns: true,
-                dead_code: true,
-                discarded_values: true,
-                ..Default::default()
-            },
-        );
-        if candidate.len() >= result.len() {
-            break;
+    // Finish the established pipeline before trying more aggressive movement.
+    // A locally profitable early rewrite can obstruct a later, larger saving.
+    for movements in [false, true] {
+        for _ in 0..6 {
+            let candidate = peephole::optimize(
+                &result,
+                peephole::Passes {
+                    instructions: true,
+                    constants: true,
+                    locals: true,
+                    flow_locals: true,
+                    propagation: true,
+                    control: true,
+                    returns: true,
+                    dead_code: true,
+                    discarded_values: true,
+                    movements,
+                    ..Default::default()
+                },
+            );
+            if candidate.len() >= result.len() {
+                break;
+            }
+            result = candidate;
         }
-        result = candidate;
     }
     result
 }

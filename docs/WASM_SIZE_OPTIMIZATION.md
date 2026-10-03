@@ -1147,6 +1147,113 @@ a four-byte A Hat in Time saving. Tiny multi-use forwarding wrappers saved only
 benefit. Running discarded-value cleanup earlier did not improve the primary
 scripts. These experiments are excluded; artifacts are under `target/post-cse`.
 
+## Structured conditions and temporary expression movement — 2026-10-03
+
+The next investigation compared all four real scripts with Binaryen 132,
+replayed every `-Oz` prefix, disabled related groups of passes, and inspected
+individual function changes. Source inspection used Binaryen checkout
+`79dfe6b412a3c22bfdb190ed6a4d79adf734db5d`, particularly `SimplifyLocals.cpp`,
+`RemoveUnusedBrs.cpp`, `SSAify.cpp` and the default pass schedule in `pass.cpp`.
+Artifacts are under `target/next-biggest`; the full pipeline replay exactly
+matches `-Oz` on each script.
+
+On `0a0686d`, disabling control-flow passes cost 236 / 275 / 391 / 209 bytes on
+Minish Cap / Lunistice / A Hat in Time / Celeste. Disabling local-variable passes
+cost 283 / 273 / 278 / 153 bytes. Disabling optimizing inlining cost only
+41 / 0 / 62 / 37. These are interacting pipeline ablations, not additive savings.
+The apparently large standalone optimizing-inlining wins mostly include its
+nested cleanup; they do not establish that more inlining is the dominant gap.
+
+A second diagnostic fed Binaryen's individual pass results through our optimizer.
+Against matching no-op writer settings, `simplify-locals-nostructure` unlocked
+155 / 200 / 229 / 62 additional bytes. Merely splitting locals with `ssa-nomerge`
+unlocked 37 / 22 / 18 / 53. This points to expression movement and control-flow
+reasoning before investing in a larger SSA conversion or another allocation
+heuristic. The diagnostic used the intermediate structured-condition prototype;
+these numbers are evidence for the chosen direction, not further savings on the
+final implementation.
+
+The attribution tool now records `encodingBaseline`, a no-pass rewrite with
+optimization level 2 and shrink level 2. Binaryen's writer also responds to
+these settings: its ordinary roundtrip differs even without an optimization
+pass. Standalone and prefix deltas must use the matching encoding baseline.
+Whole-module comparisons always use the actual compiler output.
+
+The promoted implementation runs after the established Release pipeline and
+its final cleanup, for at most six additional shrinking rounds:
+
+- Conditional selection follows closed nested `if`/`block` expressions and
+  floating-point conditions, while checking local writes and rejecting calls,
+  global writes and escaping labels. Nontrapping arms can be evaluated eagerly;
+  allocations, casts and loads are not speculated. A bounded 256-instruction arm
+  limit handles longer chains that stopped at the earlier 32-instruction limit.
+- Temporary expressions can move to their first use across independent
+  calculations. One side must be nontrapping and independent of external state,
+  or both sides must avoid external writes and one must be nontrapping. Reads
+  and writes of locals are checked in both directions. A potentially trapping
+  expression cannot cross another potentially trapping expression or an
+  observable effect. A retained tee preserves later uses and initialization.
+
+The transformations share the existing nontrapping-operation classification
+and preserve floating-point calculations. Each changed body and the complete
+module must shrink against the completed previous pipeline. Movement stays
+within bounded straight-line regions. Debug and hot reload do not run this
+analysis.
+
+Early application initially saved 100 / 67 / 177 / 54 bytes on the four real
+scripts, but grew the Mach-O UUID and PE debug-ID fixtures by 2 / 8 bytes.
+Locally smaller code interfered with later optimization choices. Running the
+new transformations only after the established pipeline removes this ordering
+regression, even though it gives up some of the early prototype's gains. The
+final gate reports no body, section or module growth; the early version is not
+promoted.
+
+Against `0a0686d`, complete-module results are:
+
+| Fixture | Before | After | Saved |
+| --- | ---: | ---: | ---: |
+| minish_cap | 29,164 | 29,092 | 72 |
+| unity_explicit | 26,183 | 26,151 | 32 |
+| native | 4,046 | 4,046 | 0 |
+| large_native | 42,659 | 42,496 | 163 |
+| unity_automatic | 113,141 | 113,057 | 84 |
+| collections | 142,712 | 142,549 | 163 |
+| nested_collections | 152,058 | 151,891 | 167 |
+| async | 1,910 | 1,908 | 2 |
+| async_loop | 2,776 | 2,774 | 2 |
+| celeste | 29,014 | 28,970 | 44 |
+
+Binaryen `-Oz` on the new output gives 28493 / 25618 / 41711 / 28573 bytes
+for Minish Cap / Lunistice / A Hat in Time / Celeste, leaving gaps of
+599 / 533 / 785 / 397 bytes. Local-variable and control-flow groups remain the
+largest broad opportunities: their final-pipeline ablations cost
+250 / 236 / 264 / 109 and 200 / 267 / 250 / 209 bytes, respectively. Inlining
+still contributes only 41 / 0 / 62 / 37 bytes.
+
+Eight focused execution tests cover both directions of local dependencies,
+global mutations and mutating calls, nested conditions and escaping returns,
+floating-point NaNs/infinities/signed zero, and null and memory traps. The final
+pipeline passes 587 library, 697 compiler, 20 binary and five example tests,
+Clippy with warnings denied, and the browser compiler wasm32 check. All ten
+corpus modules validate with unchanged stable Debug output; all 36 maintained
+corpus runtime scenarios pass. All 176 maintained runtime fixtures validate;
+all 211 execution scenarios and the Debug/Release profile check pass. Celeste's
+source fingerprint is unchanged; it still has no maintained gameplay harness.
+
+The optimized-host Unity gate and Lunistice base/DLC behavior pass without any
+function-body, section or module growth. Whole-compilation times on the final
+gate run were 229.6 / 1,347.8 / 1,101.9 ms for Lunistice / automatic Lunistice /
+nested metadata. These are cross-run measurements rather than isolated pass
+timings. The refreshed baseline preserves source fingerprints, function/type
+counts and retention information.
+
+The next deeper target is movement through control-flow boundaries and stronger
+proofs about GC reads and dependencies. The current implementation deliberately
+does not reorder potentially trapping reads against each other, or move a
+producer into a branch where its execution or definite initialization could
+change. A broader effect analysis should be measured against these specific
+remaining differences rather than adding more independent peephole rules.
+
 ## Original promotion compiler cost
 
 Optimized-host seven-sample medians for the promoted pipeline:

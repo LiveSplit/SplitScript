@@ -74,7 +74,7 @@ pub(super) fn run(ops: &mut Vec<I<'_>>, types: &Types, fields: &[Option<usize>])
 
 // Floating-point operations do not trap in Wasm. Their discarded result cannot
 // expose NaN payload choices or signed zero; operands still execute normally.
-fn inputs(op: &I<'_>) -> Option<usize> {
+pub(super) fn inputs(op: &I<'_>) -> Option<usize> {
     Some(match op {
         op if super::pure_push(op) => 0,
         I::GlobalGet(_) | I::MemorySize(_) => 0,

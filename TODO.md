@@ -1009,6 +1009,12 @@ discarded nontrapping calculations and revisits local/control cleanup, while
 preserving operand effects, traps and non-defaultable reference initialization.
 Larger branch-fact, local-allocation and multi-use-wrapper trials did not justify
 promotion; Binaryen still saves 671 / 565 / 441 bytes on those three scripts.
+[Structured conditions and temporary expression movement](docs/WASM_SIZE_OPTIMIZATION.md#structured-conditions-and-temporary-expression-movement--2026-10-03)
+add 72 / 32 / 44 bytes on Minish Cap / Lunistice / Celeste and 163 on A Hat in
+Time. Binaryen pass ablations identify local-expression movement and control
+flow as the larger remaining gaps; further inlining alone contributes little.
+The next target is movement across control boundaries with precise dependency,
+trap and non-defaultable reference-initialization proofs.
 The earlier broader inlining/temporary-sinking and propagation prototypes remain
 on the experimental branch; their remaining real-script benefit does not yet justify promotion. Prefer
 measured savings on Minish Cap, Lunistice and Celeste over large synthetic fixtures. Direct emitter

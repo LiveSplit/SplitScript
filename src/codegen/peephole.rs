@@ -22,6 +22,9 @@ mod fallthrough;
 mod instruction_tests;
 mod liveness;
 mod local_layout;
+mod movement;
+#[cfg(test)]
+mod movement_tests;
 mod propagation;
 #[cfg(test)]
 mod propagation_tests;
@@ -45,6 +48,7 @@ pub(super) struct Passes {
     pub flow_locals: bool,
     pub expressions: bool,
     pub discarded_values: bool,
+    pub movements: bool,
 }
 
 pub(super) fn optimize(wasm: &[u8], passes: Passes) -> Vec<u8> {
@@ -267,6 +271,9 @@ impl Cleanup {
             );
         }
         if self.passes.control {
+            if self.passes.movements {
+                movement::selections(&mut ops);
+            }
             if self.passes.flow_locals && self.passes.locals {
                 scalar_structs::run(
                     &mut ops,
@@ -307,6 +314,9 @@ impl Cleanup {
                     .iter()
                     .map(|&ty| reencode::RoundtripReencoder.val_type(ty))
                     .collect::<Result<Vec<_>, _>>()?;
+                if self.passes.movements {
+                    movement::sink(&mut ops, &self.arities, &self.struct_fields);
+                }
                 liveness::reuse(
                     &mut ops,
                     &params,
@@ -766,6 +776,7 @@ impl BodyCleanup {
                 flow_locals: true,
                 expressions: false,
                 discarded_values: false,
+                movements: false,
             },
         ))
     }
