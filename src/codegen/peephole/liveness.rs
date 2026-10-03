@@ -145,12 +145,23 @@ pub(super) fn reuse(
             }
         }
     }
+    let needs_initialization = |local: u32| {
+        (local as usize)
+            .checked_sub(params.len())
+            .and_then(|index| locals.get(index))
+            .is_some_and(|ty| matches!(ty,ValType::Ref(reference) if !reference.nullable))
+    };
     for at in 0..n {
         let (local, tee) = match ops[at] {
             I::LocalSet(l) => (l, false),
             I::LocalTee(l) => (l, true),
             _ => continue,
         };
+        // Runtime liveness alone cannot remove the initializer required by
+        // Wasm's structural proof, even when both subsequent arms overwrite it.
+        if needs_initialization(local) {
+            continue;
+        }
         if !succ[at]
             .iter()
             .any(|&next| live[next][local as usize / 64] >> (local % 64) & 1 != 0)
@@ -172,9 +183,10 @@ pub(super) fn reuse(
             }
             if matches!(ops[end], I::LocalGet(l) if l == local) {
                 if height == 0 {
-                    let needed = succ[end]
-                        .iter()
-                        .any(|&next| live[next][local as usize / 64] >> (local % 64) & 1 != 0);
+                    let needed = needs_initialization(local)
+                        || succ[end]
+                            .iter()
+                            .any(|&next| live[next][local as usize / 64] >> (local % 64) & 1 != 0);
                     ops[at] = I::Nop;
                     ops[end] = if needed { I::LocalTee(local) } else { I::Nop };
                 }

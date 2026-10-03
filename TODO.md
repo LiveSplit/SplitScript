@@ -1003,6 +1003,12 @@ remain observable. All added analysis stays in Release.
 saves another 216 / 366 / 151 bytes on Minish Cap / Lunistice / Celeste, 307 on
 A Hat in Time and 1,597 on automatic Lunistice. It runs after the existing
 pipeline and requires each changed function and the complete module to shrink.
+[Cleanup after expression reuse](docs/WASM_SIZE_OPTIMIZATION.md#cleanup-after-expression-reuse--2026-10-03)
+saves another 53 / 34 / 36 bytes on Minish Cap / Lunistice / Celeste. It removes
+discarded nontrapping calculations and revisits local/control cleanup, while
+preserving operand effects, traps and non-defaultable reference initialization.
+Larger branch-fact, local-allocation and multi-use-wrapper trials did not justify
+promotion; Binaryen still saves 671 / 565 / 441 bytes on those three scripts.
 The earlier broader inlining/temporary-sinking and propagation prototypes remain
 on the experimental branch; their remaining real-script benefit does not yet justify promotion. Prefer
 measured savings on Minish Cap, Lunistice and Celeste over large synthetic fixtures. Direct emitter

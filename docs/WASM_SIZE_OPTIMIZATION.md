@@ -1080,6 +1080,73 @@ to its no-pass rewrite. Optimizing inlining plus its nested cleanup still saves
 476 / 0 / 243 / 400 on Minish Cap / Lunistice / Celeste / A Hat in Time. Those
 figures identify remaining investigation targets, not additive pass benefits.
 
+## Cleanup after expression reuse — 2026-10-03
+
+Expression reuse can expose new dead stores, copies, discarded calculations and
+control-flow simplifications. Release now revisits the existing cleanup passes
+for at most six rounds, stopping at the first round that does not shrink the
+complete module. Each rewritten function must also shrink. Function indices,
+signatures and report mappings do not change in this final stage.
+
+The added unused-value cleanup traces operands of discarded, nontrapping
+calculations. It removes arithmetic and comparisons but retains operand calls,
+assignments, allocations, potentially trapping operations and their original
+execution order. It can remove discarded floating-point calculations, including
+NaN and infinity results; it does not constant-fold floating-point values.
+Integer division/remainder, nonsaturating float-to-integer conversions, loads,
+GC reads and casts remain observable. Unknown instructions, control boundaries
+and multiple-result producers conservatively stop operand tracking.
+
+Late local liveness also preserves structural initialization of non-defaultable
+reference locals. A store can be dead at runtime yet required by Wasm validation
+when both conditional arms overwrite the local before a read at their join.
+
+Against `75512bd`, the complete-module results are:
+
+| Fixture | Before | After | Saved |
+| --- | ---: | ---: | ---: |
+| minish_cap | 29,217 | 29,164 | 53 |
+| unity_explicit | 26,217 | 26,183 | 34 |
+| native | 4,088 | 4,046 | 42 |
+| large_native | 42,677 | 42,659 | 18 |
+| unity_automatic | 113,195 | 113,141 | 54 |
+| collections | 142,810 | 142,712 | 98 |
+| nested_collections | 152,158 | 152,058 | 100 |
+| async | 1,920 | 1,910 | 10 |
+| async_loop | 2,786 | 2,776 | 10 |
+| celeste | 29,050 | 29,014 | 36 |
+
+Binaryen 132 `-Oz` produces 28,493 / 25,618 / 28,573 / 41,711 bytes on
+the new Minish Cap / Lunistice / Celeste / A Hat in Time output. Its remaining
+advantage is 671 / 565 / 441 / 948 bytes. These are modest incremental gains;
+the experiments did not uncover another large general-purpose saving.
+
+Seven focused execution tests cover discarded arithmetic, float exceptional
+values, ordered calls, eager select operands, assignments, integer/conversion
+and GC null traps, control/multiple-result boundaries, and structural reference
+initializers. Validation passes 579 library, 697 compiler, 20 binary and five
+example tests, Clippy with warnings denied and the browser compiler wasm32 check.
+All ten corpus modules validate with identical stable Debug output, and all 36
+maintained corpus scenarios pass. Celeste has no maintained gameplay harness;
+its external source fingerprint is unchanged. All 176 maintained runtime
+fixtures validate, and all 211 execution scenarios plus the Debug/Release
+profile check pass.
+
+The Unity gate and Lunistice base/DLC behavior pass with no function-body,
+section or whole-module growth. Optimized-host full compilations measured
+185.1 ms for Lunistice, 1,214.9 ms for automatic Lunistice and 1,047.3 ms for
+nested metadata, versus 173.3 / 1,077.2 / 1,004.6 ms in the previous checked-in
+baseline. These are cross-run measurements, not isolated pass timings.
+
+The larger experiments did not justify promotion. Conditional facts added only
+6 / 14 / 6 / 6 bytes of savings on Minish Cap / Lunistice / A Hat in Time / Celeste
+beyond cleanup, despite larger synthetic benefits. Prioritizing copy hints and
+interference degree during local allocation made Minish Cap 22 bytes larger for
+a four-byte A Hat in Time saving. Tiny multi-use forwarding wrappers saved only
+15 more bytes on A Hat in Time, with no primary Minish Cap, Lunistice or Celeste
+benefit. Running discarded-value cleanup earlier did not improve the primary
+scripts. These experiments are excluded; artifacts are under `target/post-cse`.
+
 ## Original promotion compiler cost
 
 Optimized-host seven-sample medians for the promoted pipeline:

@@ -358,6 +358,7 @@ fn exception_control_boundaries_are_left_untouched() {
             propagation: false,
             flow_locals: false,
             expressions: false,
+            discarded_values: false,
         },
     );
     assert_eq!(optimized, baseline);

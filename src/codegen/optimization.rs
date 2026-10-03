@@ -22,6 +22,7 @@ pub(super) fn cleanup(
                 propagation: true,
                 flow_locals,
                 expressions: false,
+                discarded_values: false,
             },
         );
         if candidate.len() >= wasm.len() {
@@ -69,14 +70,38 @@ pub(super) fn optimize(wasm: Vec<u8>, mut report: Option<&mut CodegenReport>) ->
     if let Some(report) = report {
         *report = selected_report.unwrap();
     }
-    peephole::optimize(
+    let mut result = peephole::optimize(
         &result,
         peephole::Passes {
             expressions: true,
             locals: true,
             ..Default::default()
         },
-    )
+    );
+    // Reused expressions introduce temporaries and expose dead calculations.
+    // Revisit cleanup, retaining only strict reductions in the complete file.
+    for _ in 0..6 {
+        let candidate = peephole::optimize(
+            &result,
+            peephole::Passes {
+                instructions: true,
+                constants: true,
+                locals: true,
+                flow_locals: true,
+                propagation: true,
+                control: true,
+                returns: true,
+                dead_code: true,
+                discarded_values: true,
+                ..Default::default()
+            },
+        );
+        if candidate.len() >= result.len() {
+            break;
+        }
+        result = candidate;
+    }
+    result
 }
 
 fn finish_inlining(baseline: Vec<u8>, report: Option<&mut CodegenReport>) -> Vec<u8> {

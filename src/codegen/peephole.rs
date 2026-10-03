@@ -11,6 +11,9 @@ mod branch_values;
 #[cfg(test)]
 mod cleanup_tests;
 mod control;
+#[cfg(test)]
+mod discarded_tests;
+mod discarded_values;
 mod expression_reuse;
 #[cfg(test)]
 mod expression_tests;
@@ -41,6 +44,7 @@ pub(super) struct Passes {
     pub propagation: bool,
     pub flow_locals: bool,
     pub expressions: bool,
+    pub discarded_values: bool,
 }
 
 pub(super) fn optimize(wasm: &[u8], passes: Passes) -> Vec<u8> {
@@ -96,7 +100,11 @@ impl Cleanup {
                                     _ => 0,
                                 });
                             }
-                            if passes.returns || passes.instructions || passes.expressions {
+                            if passes.returns
+                                || passes.instructions
+                                || passes.expressions
+                                || passes.discarded_values
+                            {
                                 struct_fields.push(match &ty.composite_type.inner {
                                     CompositeInnerType::Struct(ty) => Some(ty.fields.len()),
                                     _ => None,
@@ -326,6 +334,9 @@ impl Cleanup {
                     &self.arities,
                     &self.struct_fields,
                 );
+            }
+            if self.passes.discarded_values {
+                discarded_values::run(&mut ops, &self.arities, &self.struct_fields);
             }
             let locals = compact_locals(&mut ops, parameter_count, locals);
             if self.passes.instructions {
@@ -754,6 +765,7 @@ impl BodyCleanup {
                 propagation: true,
                 flow_locals: true,
                 expressions: false,
+                discarded_values: false,
             },
         ))
     }
